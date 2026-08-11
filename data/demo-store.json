@@ -1,0 +1,6460 @@
+{
+  "users": [
+    {
+      "id": "u-investor",
+      "name": "陈晨",
+      "role": "investor",
+      "projectIds": [
+        "p-orbit"
+      ]
+    },
+    {
+      "id": "u-partner",
+      "name": "吕总",
+      "role": "partner",
+      "projectIds": [
+        "p-orbit",
+        "p-launch"
+      ]
+    },
+    {
+      "id": "u-admin",
+      "name": "知识管理员",
+      "role": "knowledge_admin",
+      "projectIds": []
+    },
+    {
+      "id": "u-system",
+      "name": "系统管理员",
+      "role": "system_admin",
+      "projectIds": []
+    }
+  ],
+  "companies": [
+    {
+      "id": "c-galaxy",
+      "standardName": "银河航天（北京）科技有限公司",
+      "aliases": [
+        "银河航天",
+        "GalaxySpace"
+      ],
+      "englishName": "GalaxySpace",
+      "description": "商业航天企业，聚焦低轨宽带通信卫星及卫星互联网相关能力。",
+      "cognitionStatus": "已人工确认",
+      "attentionStatus": "持续跟踪",
+      "updatedAt": "2026-08-06T08:30:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-platform",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.96,
+          "source": "internal_evidence",
+          "sourceDate": "2026-07-28"
+        },
+        {
+          "nodeId": "sat-internet",
+          "positionType": "secondary",
+          "status": "candidate",
+          "confidence": 0.82,
+          "source": "source_map",
+          "sourceDate": "2025-12-03"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-g1",
+          "documentId": "d-g1",
+          "fileName": "银河航天项目初筛记录.docx",
+          "excerpt": "公司以低轨宽带通信卫星研制为核心，并参与卫星互联网技术验证。",
+          "page": 3,
+          "sourceDate": "2026-07-18",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-g2",
+          "documentId": "d-g2",
+          "fileName": "银河航天访谈纪要.docx",
+          "excerpt": "本轮沟通重点核实批产能力、单星成本和在轨交付节奏。",
+          "page": 2,
+          "sourceDate": "2026-07-25",
+          "visibility": "project",
+          "projectId": "p-orbit"
+        },
+        {
+          "id": "e-g3",
+          "documentId": "d-g3",
+          "fileName": "陈晨个人判断.md",
+          "excerpt": "技术路径较清晰，但商业订单兑现节奏仍需观察。",
+          "sourceDate": "2026-07-27",
+          "visibility": "private",
+          "ownerId": "u-investor"
+        },
+        {
+          "id": "e-galaxy-core-5",
+          "documentId": "d-galaxy-core-5",
+          "fileName": "Demo模拟资料_银河航天_核心事实5.md",
+          "excerpt": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 5 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-core-6",
+          "documentId": "d-galaxy-core-6",
+          "fileName": "Demo模拟资料_银河航天_核心事实6.md",
+          "excerpt": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 6 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-core-7",
+          "documentId": "d-galaxy-core-7",
+          "fileName": "Demo模拟资料_银河航天_核心事实7.md",
+          "excerpt": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 7 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-core-8",
+          "documentId": "d-galaxy-core-8",
+          "fileName": "Demo模拟资料_银河航天_核心事实8.md",
+          "excerpt": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 8 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-core-9",
+          "documentId": "d-galaxy-core-9",
+          "fileName": "Demo模拟资料_银河航天_核心事实9.md",
+          "excerpt": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 9 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-core-10",
+          "documentId": "d-galaxy-core-10",
+          "fileName": "Demo模拟资料_银河航天_核心事实10.md",
+          "excerpt": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 10 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-g1",
+          "category": "主营产品",
+          "text": "主营低轨宽带通信卫星及相关系统。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.96,
+          "version": 2,
+          "evidenceIds": [
+            "e-g1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-g2",
+          "category": "产业位置",
+          "text": "主要位于卫星平台系统环节，并与卫星互联网服务相关。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.91,
+          "version": 2,
+          "evidenceIds": [
+            "e-g1",
+            "e-g2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-g3",
+          "category": "商业进展",
+          "text": "企业材料称已具备规模化批产条件。",
+          "type": "company_statement",
+          "status": "disputed",
+          "confidence": 0.72,
+          "version": 1,
+          "evidenceIds": [
+            "e-g2"
+          ],
+          "visibility": "project",
+          "projectId": "p-orbit"
+        },
+        {
+          "id": "cl-g4",
+          "category": "投资判断",
+          "text": "商业订单兑现节奏仍需观察。",
+          "type": "user_view",
+          "status": "candidate",
+          "confidence": 0.78,
+          "version": 1,
+          "evidenceIds": [
+            "e-g3"
+          ],
+          "visibility": "private",
+          "ownerId": "u-investor"
+        },
+        {
+          "id": "cl-galaxy-core-5",
+          "category": "核心事实 5",
+          "text": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 5。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-core-5"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-core-6",
+          "category": "核心事实 6",
+          "text": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 6。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-core-6"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-core-7",
+          "category": "核心事实 7",
+          "text": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 7。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-core-7"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-core-8",
+          "category": "核心事实 8",
+          "text": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 8。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-core-8"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-core-9",
+          "category": "核心事实 9",
+          "text": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 9。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-core-9"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-core-10",
+          "category": "核心事实 10",
+          "text": "【Demo 模拟】银河航天（北京）科技有限公司核心事实 10。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-core-10"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-landspace",
+      "standardName": "蓝箭航天空间科技股份有限公司",
+      "aliases": [
+        "蓝箭航天",
+        "LandSpace"
+      ],
+      "englishName": "LandSpace",
+      "description": "商业运载火箭企业，覆盖液体火箭发动机与运载火箭系统。",
+      "cognitionStatus": "已匹配产业链",
+      "attentionStatus": "个人关注",
+      "updatedAt": "2026-08-05T10:20:00.000Z",
+      "positions": [
+        {
+          "nodeId": "rocket-engine",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.95,
+          "source": "source_map",
+          "sourceDate": "2025-12-03"
+        },
+        {
+          "nodeId": "rocket-structure",
+          "positionType": "secondary",
+          "status": "candidate",
+          "confidence": 0.76,
+          "source": "ai_recommendation",
+          "sourceDate": "2026-08-05"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-l1",
+          "documentId": "d-l1",
+          "fileName": "商业航天行业研究.pdf",
+          "excerpt": "液氧甲烷发动机是新一代商业运载火箭的重要技术路线之一。",
+          "page": 18,
+          "sourceDate": "2026-06-30",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-2",
+          "documentId": "d-landspace-core-2",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实2.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 2 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-3",
+          "documentId": "d-landspace-core-3",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实3.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 3 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-4",
+          "documentId": "d-landspace-core-4",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实4.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 4 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-5",
+          "documentId": "d-landspace-core-5",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实5.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 5 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-6",
+          "documentId": "d-landspace-core-6",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实6.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 6 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-7",
+          "documentId": "d-landspace-core-7",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实7.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 7 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-8",
+          "documentId": "d-landspace-core-8",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实8.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 8 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-9",
+          "documentId": "d-landspace-core-9",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实9.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 9 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-landspace-core-10",
+          "documentId": "d-landspace-core-10",
+          "fileName": "Demo模拟资料_蓝箭航天_核心事实10.md",
+          "excerpt": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 10 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-l1",
+          "category": "技术路线",
+          "text": "核心技术路线涉及液氧甲烷动力。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.94,
+          "version": 1,
+          "evidenceIds": [
+            "e-l1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-2",
+          "category": "核心事实 2",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 2。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-3",
+          "category": "核心事实 3",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 3。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-4",
+          "category": "核心事实 4",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 4。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-4"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-5",
+          "category": "核心事实 5",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 5。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-5"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-6",
+          "category": "核心事实 6",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 6。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-6"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-7",
+          "category": "核心事实 7",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 7。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-7"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-8",
+          "category": "核心事实 8",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 8。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-8"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-9",
+          "category": "核心事实 9",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 9。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-9"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-landspace-core-10",
+          "category": "核心事实 10",
+          "text": "【Demo 模拟】蓝箭航天空间科技股份有限公司核心事实 10。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-landspace-core-10"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-charming",
+      "standardName": "长光卫星技术股份有限公司",
+      "aliases": [
+        "长光卫星"
+      ],
+      "description": "卫星研制与遥感信息服务企业。",
+      "cognitionStatus": "已自动补全",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-04T02:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "satellite",
+          "positionType": "primary",
+          "status": "candidate",
+          "confidence": 0.87,
+          "source": "source_map",
+          "sourceDate": "2025-12-03"
+        },
+        {
+          "nodeId": "remote-sensing",
+          "positionType": "secondary",
+          "status": "candidate",
+          "confidence": 0.88,
+          "source": "source_map",
+          "sourceDate": "2025-12-03"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-c1",
+          "documentId": "d-map",
+          "fileName": "【余香斋】【商业航天】图谱.pdf",
+          "excerpt": "图谱将长光卫星列入卫星研发制造与遥感服务相关环节。",
+          "page": 1,
+          "sourceDate": "2025-12-03",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-2",
+          "documentId": "d-charming-core-2",
+          "fileName": "Demo模拟资料_长光卫星_核心事实2.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 2 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-3",
+          "documentId": "d-charming-core-3",
+          "fileName": "Demo模拟资料_长光卫星_核心事实3.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 3 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-4",
+          "documentId": "d-charming-core-4",
+          "fileName": "Demo模拟资料_长光卫星_核心事实4.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 4 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-5",
+          "documentId": "d-charming-core-5",
+          "fileName": "Demo模拟资料_长光卫星_核心事实5.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 5 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-6",
+          "documentId": "d-charming-core-6",
+          "fileName": "Demo模拟资料_长光卫星_核心事实6.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 6 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-7",
+          "documentId": "d-charming-core-7",
+          "fileName": "Demo模拟资料_长光卫星_核心事实7.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 7 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-8",
+          "documentId": "d-charming-core-8",
+          "fileName": "Demo模拟资料_长光卫星_核心事实8.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 8 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-9",
+          "documentId": "d-charming-core-9",
+          "fileName": "Demo模拟资料_长光卫星_核心事实9.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 9 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-charming-core-10",
+          "documentId": "d-charming-core-10",
+          "fileName": "Demo模拟资料_长光卫星_核心事实10.md",
+          "excerpt": "【Demo 模拟】长光卫星技术股份有限公司核心事实 10 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-c1",
+          "category": "图谱位置",
+          "text": "来源图谱显示公司横跨卫星制造与遥感服务环节，待进一步核验。",
+          "type": "external_view",
+          "status": "candidate",
+          "confidence": 0.83,
+          "version": 1,
+          "evidenceIds": [
+            "e-c1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-2",
+          "category": "核心事实 2",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 2。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-3",
+          "category": "核心事实 3",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 3。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-4",
+          "category": "核心事实 4",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 4。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-4"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-5",
+          "category": "核心事实 5",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 5。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-5"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-6",
+          "category": "核心事实 6",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 6。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-6"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-7",
+          "category": "核心事实 7",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 7。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-7"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-8",
+          "category": "核心事实 8",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 8。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-8"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-9",
+          "category": "核心事实 9",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 9。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-9"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-charming-core-10",
+          "category": "核心事实 10",
+          "text": "【Demo 模拟】长光卫星技术股份有限公司核心事实 10。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-charming-core-10"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-aero-electronics",
+      "standardName": "航天电子元器件示范公司",
+      "aliases": [
+        "航天电子示范"
+      ],
+      "description": "Demo 模拟企业：为低轨通信卫星提供星载计算、微波器件和电源组件。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "持续观察",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "components",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 1,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-ae1",
+          "documentId": "d-ae1",
+          "fileName": "Demo模拟资料_星载元器件供应商访谈纪要.docx",
+          "excerpt": "【Demo 模拟】该公司面向低轨通信卫星平台提供星载计算模块、射频前端和电源组件，样品已进入联合验证阶段。",
+          "page": 2,
+          "sourceDate": "2026-07-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-ae2",
+          "documentId": "d-ae2",
+          "fileName": "Demo模拟资料_关键元器件国产化研究.pdf",
+          "excerpt": "【Demo 模拟】卫星批量制造将增加对高可靠、低成本星载元器件的采购需求。",
+          "page": 11,
+          "sourceDate": "2026-06-20",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-2",
+          "documentId": "d-aero-electronics-core-2",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实2.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 2 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-3",
+          "documentId": "d-aero-electronics-core-3",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实3.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 3 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-4",
+          "documentId": "d-aero-electronics-core-4",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实4.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 4 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-5",
+          "documentId": "d-aero-electronics-core-5",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实5.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 5 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-6",
+          "documentId": "d-aero-electronics-core-6",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实6.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 6 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-7",
+          "documentId": "d-aero-electronics-core-7",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实7.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 7 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-8",
+          "documentId": "d-aero-electronics-core-8",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实8.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 8 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-9",
+          "documentId": "d-aero-electronics-core-9",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实9.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 9 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-aero-electronics-core-10",
+          "documentId": "d-aero-electronics-core-10",
+          "fileName": "Demo模拟资料_航天电子示范_核心事实10.md",
+          "excerpt": "【Demo 模拟】航天电子元器件示范公司核心事实 10 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-ae1",
+          "category": "产业关系",
+          "text": "【Demo 模拟】作为卫星平台上游元器件供应商，与银河航天存在潜在供应链关联。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.79,
+          "version": 1,
+          "evidenceIds": [
+            "e-ae1",
+            "e-ae2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-2",
+          "category": "核心事实 2",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 2。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-3",
+          "category": "核心事实 3",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 3。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-4",
+          "category": "核心事实 4",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 4。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-4"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-5",
+          "category": "核心事实 5",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 5。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-5"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-6",
+          "category": "核心事实 6",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 6。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-6"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-7",
+          "category": "核心事实 7",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 7。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-7"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-8",
+          "category": "核心事实 8",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 8。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-8"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-9",
+          "category": "核心事实 9",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 9。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-9"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-aero-electronics-core-10",
+          "category": "核心事实 10",
+          "text": "【Demo 模拟】航天电子元器件示范公司核心事实 10。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-aero-electronics-core-10"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-space-material",
+      "standardName": "空天复合材料示范公司",
+      "aliases": [
+        "空天材料示范"
+      ],
+      "description": "Demo 模拟企业：提供卫星结构用复合材料和热控材料。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "materials",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 1,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-sm1",
+          "documentId": "d-sm1",
+          "fileName": "Demo模拟资料_卫星轻量化材料BP.pdf",
+          "excerpt": "【Demo 模拟】产品用于卫星承力结构、天线支撑和热控系统，可降低整星结构质量。",
+          "page": 6,
+          "sourceDate": "2026-07-04",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-2",
+          "documentId": "d-space-material-core-2",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实2.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 2 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-3",
+          "documentId": "d-space-material-core-3",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实3.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 3 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-4",
+          "documentId": "d-space-material-core-4",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实4.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 4 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-5",
+          "documentId": "d-space-material-core-5",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实5.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 5 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-6",
+          "documentId": "d-space-material-core-6",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实6.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 6 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-7",
+          "documentId": "d-space-material-core-7",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实7.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 7 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-8",
+          "documentId": "d-space-material-core-8",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实8.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 8 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-9",
+          "documentId": "d-space-material-core-9",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实9.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 9 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-space-material-core-10",
+          "documentId": "d-space-material-core-10",
+          "fileName": "Demo模拟资料_空天材料示范_核心事实10.md",
+          "excerpt": "【Demo 模拟】空天复合材料示范公司核心事实 10 的标准答案与引用片段。",
+          "sourceDate": "2026-08-01",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-sm1",
+          "category": "产业关系",
+          "text": "【Demo 模拟】位于卫星平台上游基础材料环节。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.9,
+          "version": 1,
+          "evidenceIds": [
+            "e-sm1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-2",
+          "category": "核心事实 2",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 2。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-3",
+          "category": "核心事实 3",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 3。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-4",
+          "category": "核心事实 4",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 4。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-4"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-5",
+          "category": "核心事实 5",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 5。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-5"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-6",
+          "category": "核心事实 6",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 6。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-6"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-7",
+          "category": "核心事实 7",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 7。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-7"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-8",
+          "category": "核心事实 8",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 8。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-8"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-9",
+          "category": "核心事实 9",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 9。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-9"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-space-material-core-10",
+          "category": "核心事实 10",
+          "text": "【Demo 模拟】空天复合材料示范公司核心事实 10。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.86,
+          "version": 1,
+          "evidenceIds": [
+            "e-space-material-core-10"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-ground-network",
+      "standardName": "星地测运控示范公司",
+      "aliases": [
+        "星地测控示范"
+      ],
+      "description": "Demo 模拟企业：提供商业卫星地面站、测控排班和在轨运维服务。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "个人关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "ground-station",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 1,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-gn1",
+          "documentId": "d-gn1",
+          "fileName": "Demo模拟资料_商业卫星测运控项目纪要.docx",
+          "excerpt": "【Demo 模拟】已完成与三型低轨通信卫星的测控接口适配，可提供常态化在轨运维。",
+          "page": 4,
+          "sourceDate": "2026-07-21",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-gn1",
+          "category": "产业关系",
+          "text": "【Demo 模拟】位于卫星平台下游地面站与测运控环节。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.93,
+          "version": 1,
+          "evidenceIds": [
+            "e-gn1"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-sat-service",
+      "standardName": "低轨网络运营示范公司",
+      "aliases": [
+        "低轨运营示范"
+      ],
+      "description": "Demo 模拟企业：面向应急通信和行业客户提供卫星互联网运营服务。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "推荐团队",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-internet",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 1,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-so1",
+          "documentId": "d-so1",
+          "fileName": "Demo模拟资料_低轨卫星互联网应用研究.pdf",
+          "excerpt": "【Demo 模拟】低轨网络运营服务需要卫星平台、地面站和用户终端共同支撑。",
+          "page": 8,
+          "sourceDate": "2026-07-16",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-so2",
+          "documentId": "d-so2",
+          "fileName": "Demo模拟资料_行业客户需求访谈.docx",
+          "excerpt": "【Demo 模拟】应急管理客户关注终端便携性、网络可用性和按需计费能力。",
+          "page": 3,
+          "sourceDate": "2026-07-29",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-so1",
+          "category": "产业关系",
+          "text": "【Demo 模拟】位于银河航天下游卫星互联网运营服务环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.84,
+          "version": 1,
+          "evidenceIds": [
+            "e-so1",
+            "e-so2"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-orbit-payload",
+      "standardName": "寰宇载荷科技示范公司",
+      "aliases": [
+        "寰宇载荷"
+      ],
+      "description": "Demo 模拟企业：聚焦卫星有效载荷。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-payload",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-orbit-payload-1",
+          "documentId": "d-orbit-payload-1",
+          "fileName": "Demo模拟资料_寰宇载荷_BP.pdf",
+          "excerpt": "【Demo 模拟】寰宇载荷科技示范公司围绕卫星有效载荷开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-orbit-payload-2",
+          "documentId": "d-orbit-payload-2",
+          "fileName": "Demo模拟资料_寰宇载荷_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】寰宇载荷科技示范公司围绕卫星有效载荷开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-orbit-payload-3",
+          "documentId": "d-orbit-payload-3",
+          "fileName": "Demo模拟资料_寰宇载荷_内部研究.pdf",
+          "excerpt": "【Demo 模拟】寰宇载荷科技示范公司围绕卫星有效载荷开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-orbit-payload-4",
+          "documentId": "d-orbit-payload-4",
+          "fileName": "Demo模拟资料_寰宇载荷_外部动态.md",
+          "excerpt": "【Demo 模拟】寰宇载荷科技示范公司围绕卫星有效载荷开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-orbit-payload-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】寰宇载荷科技示范公司主营卫星有效载荷。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-orbit-payload-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-orbit-payload-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】寰宇载荷科技示范公司具备卫星有效载荷。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-orbit-payload-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-orbit-payload-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】寰宇载荷科技示范公司服务于卫星有效载荷。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-orbit-payload-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-orbit-payload-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】寰宇载荷科技示范公司位于产业链卫星有效载荷相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-orbit-payload-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-terminal-one",
+      "standardName": "天链终端设备示范公司",
+      "aliases": [
+        "天链终端"
+      ],
+      "description": "Demo 模拟企业：聚焦卫星通信终端。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "terminal",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-terminal-one-1",
+          "documentId": "d-terminal-one-1",
+          "fileName": "Demo模拟资料_天链终端_BP.pdf",
+          "excerpt": "【Demo 模拟】天链终端设备示范公司围绕卫星通信终端开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-terminal-one-2",
+          "documentId": "d-terminal-one-2",
+          "fileName": "Demo模拟资料_天链终端_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】天链终端设备示范公司围绕卫星通信终端开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-terminal-one-3",
+          "documentId": "d-terminal-one-3",
+          "fileName": "Demo模拟资料_天链终端_内部研究.pdf",
+          "excerpt": "【Demo 模拟】天链终端设备示范公司围绕卫星通信终端开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-terminal-one-4",
+          "documentId": "d-terminal-one-4",
+          "fileName": "Demo模拟资料_天链终端_外部动态.md",
+          "excerpt": "【Demo 模拟】天链终端设备示范公司围绕卫星通信终端开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-terminal-one-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】天链终端设备示范公司主营卫星通信终端。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-one-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-terminal-one-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】天链终端设备示范公司具备卫星通信终端。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-one-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-terminal-one-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】天链终端设备示范公司服务于卫星通信终端。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-one-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-terminal-one-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】天链终端设备示范公司位于产业链卫星通信终端相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-one-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-terminal-two",
+      "standardName": "星通便携终端示范公司",
+      "aliases": [
+        "星通终端"
+      ],
+      "description": "Demo 模拟企业：聚焦便携式卫星终端。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "terminal",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-terminal-two-1",
+          "documentId": "d-terminal-two-1",
+          "fileName": "Demo模拟资料_星通终端_BP.pdf",
+          "excerpt": "【Demo 模拟】星通便携终端示范公司围绕便携式卫星终端开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-terminal-two-2",
+          "documentId": "d-terminal-two-2",
+          "fileName": "Demo模拟资料_星通终端_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】星通便携终端示范公司围绕便携式卫星终端开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-terminal-two-3",
+          "documentId": "d-terminal-two-3",
+          "fileName": "Demo模拟资料_星通终端_内部研究.pdf",
+          "excerpt": "【Demo 模拟】星通便携终端示范公司围绕便携式卫星终端开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-terminal-two-4",
+          "documentId": "d-terminal-two-4",
+          "fileName": "Demo模拟资料_星通终端_外部动态.md",
+          "excerpt": "【Demo 模拟】星通便携终端示范公司围绕便携式卫星终端开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-terminal-two-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】星通便携终端示范公司主营便携式卫星终端。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-two-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-terminal-two-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】星通便携终端示范公司具备便携式卫星终端。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-two-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-terminal-two-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】星通便携终端示范公司服务于便携式卫星终端。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-two-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-terminal-two-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】星通便携终端示范公司位于产业链便携式卫星终端相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-terminal-two-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-remote-one",
+      "standardName": "云图遥感示范公司",
+      "aliases": [
+        "云图遥感"
+      ],
+      "description": "Demo 模拟企业：聚焦遥感数据服务。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "remote-sensing",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-remote-one-1",
+          "documentId": "d-remote-one-1",
+          "fileName": "Demo模拟资料_云图遥感_BP.pdf",
+          "excerpt": "【Demo 模拟】云图遥感示范公司围绕遥感数据服务开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-remote-one-2",
+          "documentId": "d-remote-one-2",
+          "fileName": "Demo模拟资料_云图遥感_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】云图遥感示范公司围绕遥感数据服务开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-remote-one-3",
+          "documentId": "d-remote-one-3",
+          "fileName": "Demo模拟资料_云图遥感_内部研究.pdf",
+          "excerpt": "【Demo 模拟】云图遥感示范公司围绕遥感数据服务开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-remote-one-4",
+          "documentId": "d-remote-one-4",
+          "fileName": "Demo模拟资料_云图遥感_外部动态.md",
+          "excerpt": "【Demo 模拟】云图遥感示范公司围绕遥感数据服务开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-remote-one-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】云图遥感示范公司主营遥感数据服务。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-remote-one-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-remote-one-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】云图遥感示范公司具备遥感数据服务。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-remote-one-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-remote-one-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】云图遥感示范公司服务于遥感数据服务。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-remote-one-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-remote-one-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】云图遥感示范公司位于产业链遥感数据服务相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-remote-one-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-nav-one",
+      "standardName": "北斗应用示范公司",
+      "aliases": [
+        "北斗应用"
+      ],
+      "description": "Demo 模拟企业：聚焦卫星导航应用。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "navigation",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-nav-one-1",
+          "documentId": "d-nav-one-1",
+          "fileName": "Demo模拟资料_北斗应用_BP.pdf",
+          "excerpt": "【Demo 模拟】北斗应用示范公司围绕卫星导航应用开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-nav-one-2",
+          "documentId": "d-nav-one-2",
+          "fileName": "Demo模拟资料_北斗应用_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】北斗应用示范公司围绕卫星导航应用开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-nav-one-3",
+          "documentId": "d-nav-one-3",
+          "fileName": "Demo模拟资料_北斗应用_内部研究.pdf",
+          "excerpt": "【Demo 模拟】北斗应用示范公司围绕卫星导航应用开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-nav-one-4",
+          "documentId": "d-nav-one-4",
+          "fileName": "Demo模拟资料_北斗应用_外部动态.md",
+          "excerpt": "【Demo 模拟】北斗应用示范公司围绕卫星导航应用开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-nav-one-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】北斗应用示范公司主营卫星导航应用。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-nav-one-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-nav-one-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】北斗应用示范公司具备卫星导航应用。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-nav-one-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-nav-one-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】北斗应用示范公司服务于卫星导航应用。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-nav-one-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-nav-one-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】北斗应用示范公司位于产业链卫星导航应用相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-nav-one-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-comms-one",
+      "standardName": "星网通信示范公司",
+      "aliases": [
+        "星网通信"
+      ],
+      "description": "Demo 模拟企业：聚焦卫星通信服务。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-comms",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-comms-one-1",
+          "documentId": "d-comms-one-1",
+          "fileName": "Demo模拟资料_星网通信_BP.pdf",
+          "excerpt": "【Demo 模拟】星网通信示范公司围绕卫星通信服务开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-comms-one-2",
+          "documentId": "d-comms-one-2",
+          "fileName": "Demo模拟资料_星网通信_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】星网通信示范公司围绕卫星通信服务开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-comms-one-3",
+          "documentId": "d-comms-one-3",
+          "fileName": "Demo模拟资料_星网通信_内部研究.pdf",
+          "excerpt": "【Demo 模拟】星网通信示范公司围绕卫星通信服务开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-comms-one-4",
+          "documentId": "d-comms-one-4",
+          "fileName": "Demo模拟资料_星网通信_外部动态.md",
+          "excerpt": "【Demo 模拟】星网通信示范公司围绕卫星通信服务开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-comms-one-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】星网通信示范公司主营卫星通信服务。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-comms-one-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-comms-one-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】星网通信示范公司具备卫星通信服务。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-comms-one-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-comms-one-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】星网通信示范公司服务于卫星通信服务。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-comms-one-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-comms-one-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】星网通信示范公司位于产业链卫星通信服务相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-comms-one-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-engine-one",
+      "standardName": "深空动力示范公司",
+      "aliases": [
+        "深空动力"
+      ],
+      "description": "Demo 模拟企业：聚焦液体火箭发动机。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "rocket-engine",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-engine-one-1",
+          "documentId": "d-engine-one-1",
+          "fileName": "Demo模拟资料_深空动力_BP.pdf",
+          "excerpt": "【Demo 模拟】深空动力示范公司围绕液体火箭发动机开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-engine-one-2",
+          "documentId": "d-engine-one-2",
+          "fileName": "Demo模拟资料_深空动力_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】深空动力示范公司围绕液体火箭发动机开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-engine-one-3",
+          "documentId": "d-engine-one-3",
+          "fileName": "Demo模拟资料_深空动力_内部研究.pdf",
+          "excerpt": "【Demo 模拟】深空动力示范公司围绕液体火箭发动机开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-engine-one-4",
+          "documentId": "d-engine-one-4",
+          "fileName": "Demo模拟资料_深空动力_外部动态.md",
+          "excerpt": "【Demo 模拟】深空动力示范公司围绕液体火箭发动机开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-engine-one-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】深空动力示范公司主营液体火箭发动机。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-engine-one-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-engine-one-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】深空动力示范公司具备液体火箭发动机。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-engine-one-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-engine-one-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】深空动力示范公司服务于液体火箭发动机。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-engine-one-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-engine-one-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】深空动力示范公司位于产业链液体火箭发动机相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-engine-one-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-structure-one",
+      "standardName": "箭体结构示范公司",
+      "aliases": [
+        "箭体结构"
+      ],
+      "description": "Demo 模拟企业：聚焦运载火箭结构系统。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "rocket-structure",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-structure-one-1",
+          "documentId": "d-structure-one-1",
+          "fileName": "Demo模拟资料_箭体结构_BP.pdf",
+          "excerpt": "【Demo 模拟】箭体结构示范公司围绕运载火箭结构系统开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-structure-one-2",
+          "documentId": "d-structure-one-2",
+          "fileName": "Demo模拟资料_箭体结构_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】箭体结构示范公司围绕运载火箭结构系统开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-structure-one-3",
+          "documentId": "d-structure-one-3",
+          "fileName": "Demo模拟资料_箭体结构_内部研究.pdf",
+          "excerpt": "【Demo 模拟】箭体结构示范公司围绕运载火箭结构系统开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-structure-one-4",
+          "documentId": "d-structure-one-4",
+          "fileName": "Demo模拟资料_箭体结构_外部动态.md",
+          "excerpt": "【Demo 模拟】箭体结构示范公司围绕运载火箭结构系统开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-structure-one-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】箭体结构示范公司主营运载火箭结构系统。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-structure-one-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-structure-one-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】箭体结构示范公司具备运载火箭结构系统。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-structure-one-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-structure-one-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】箭体结构示范公司服务于运载火箭结构系统。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-structure-one-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-structure-one-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】箭体结构示范公司位于产业链运载火箭结构系统相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-structure-one-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-platform-two",
+      "standardName": "星舟卫星平台示范公司",
+      "aliases": [
+        "星舟卫星"
+      ],
+      "description": "Demo 模拟企业：聚焦小卫星平台。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-platform",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-platform-two-1",
+          "documentId": "d-platform-two-1",
+          "fileName": "Demo模拟资料_星舟卫星_BP.pdf",
+          "excerpt": "【Demo 模拟】星舟卫星平台示范公司围绕小卫星平台开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-two-2",
+          "documentId": "d-platform-two-2",
+          "fileName": "Demo模拟资料_星舟卫星_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】星舟卫星平台示范公司围绕小卫星平台开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-two-3",
+          "documentId": "d-platform-two-3",
+          "fileName": "Demo模拟资料_星舟卫星_内部研究.pdf",
+          "excerpt": "【Demo 模拟】星舟卫星平台示范公司围绕小卫星平台开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-two-4",
+          "documentId": "d-platform-two-4",
+          "fileName": "Demo模拟资料_星舟卫星_外部动态.md",
+          "excerpt": "【Demo 模拟】星舟卫星平台示范公司围绕小卫星平台开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-platform-two-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】星舟卫星平台示范公司主营小卫星平台。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-two-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-two-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】星舟卫星平台示范公司具备小卫星平台。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-two-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-two-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】星舟卫星平台示范公司服务于小卫星平台。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-two-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-two-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】星舟卫星平台示范公司位于产业链小卫星平台相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-two-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-platform-three",
+      "standardName": "星舟科技（上海）有限公司",
+      "aliases": [
+        "星舟科技"
+      ],
+      "description": "Demo 模拟企业：聚焦卫星平台研制。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-platform",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-platform-three-1",
+          "documentId": "d-platform-three-1",
+          "fileName": "Demo模拟资料_星舟科技_BP.pdf",
+          "excerpt": "【Demo 模拟】星舟科技（上海）有限公司围绕卫星平台研制开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-three-2",
+          "documentId": "d-platform-three-2",
+          "fileName": "Demo模拟资料_星舟科技_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】星舟科技（上海）有限公司围绕卫星平台研制开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-three-3",
+          "documentId": "d-platform-three-3",
+          "fileName": "Demo模拟资料_星舟科技_内部研究.pdf",
+          "excerpt": "【Demo 模拟】星舟科技（上海）有限公司围绕卫星平台研制开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-three-4",
+          "documentId": "d-platform-three-4",
+          "fileName": "Demo模拟资料_星舟科技_外部动态.md",
+          "excerpt": "【Demo 模拟】星舟科技（上海）有限公司围绕卫星平台研制开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-platform-three-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】星舟科技（上海）有限公司主营卫星平台研制。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-three-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-three-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】星舟科技（上海）有限公司具备卫星平台研制。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-three-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-three-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】星舟科技（上海）有限公司服务于卫星平台研制。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-three-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-three-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】星舟科技（上海）有限公司位于产业链卫星平台研制相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-three-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-platform-four",
+      "standardName": "星舟科技（深圳）有限公司",
+      "aliases": [
+        "星舟科技"
+      ],
+      "description": "Demo 模拟企业：聚焦星载元器件。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "components",
+          "positionType": "primary",
+          "status": "candidate",
+          "confidence": 0.88,
+          "source": "source_map",
+          "sourceDate": "2025-12-03"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-platform-four-1",
+          "documentId": "d-platform-four-1",
+          "fileName": "Demo模拟资料_星舟科技_BP.pdf",
+          "excerpt": "【Demo 模拟】星舟科技（深圳）有限公司围绕星载元器件开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-four-2",
+          "documentId": "d-platform-four-2",
+          "fileName": "Demo模拟资料_星舟科技_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】星舟科技（深圳）有限公司围绕星载元器件开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-four-3",
+          "documentId": "d-platform-four-3",
+          "fileName": "Demo模拟资料_星舟科技_内部研究.pdf",
+          "excerpt": "【Demo 模拟】星舟科技（深圳）有限公司围绕星载元器件开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-platform-four-4",
+          "documentId": "d-platform-four-4",
+          "fileName": "Demo模拟资料_星舟科技_外部动态.md",
+          "excerpt": "【Demo 模拟】星舟科技（深圳）有限公司围绕星载元器件开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-platform-four-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】星舟科技（深圳）有限公司主营星载元器件。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-four-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-four-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】星舟科技（深圳）有限公司具备星载元器件。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-four-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-four-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】星舟科技（深圳）有限公司服务于星载元器件。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-four-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-platform-four-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】星舟科技（深圳）有限公司位于产业链星载元器件相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-platform-four-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-galactic-energy",
+      "standardName": "北京星河动力装备科技有限公司",
+      "aliases": [
+        "星河动力"
+      ],
+      "description": "Demo 模拟企业：聚焦商业运载火箭。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "rocket-engine",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-galactic-energy-1",
+          "documentId": "d-galactic-energy-1",
+          "fileName": "Demo模拟资料_星河动力_BP.pdf",
+          "excerpt": "【Demo 模拟】北京星河动力装备科技有限公司围绕商业运载火箭开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galactic-energy-2",
+          "documentId": "d-galactic-energy-2",
+          "fileName": "Demo模拟资料_星河动力_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】北京星河动力装备科技有限公司围绕商业运载火箭开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galactic-energy-3",
+          "documentId": "d-galactic-energy-3",
+          "fileName": "Demo模拟资料_星河动力_内部研究.pdf",
+          "excerpt": "【Demo 模拟】北京星河动力装备科技有限公司围绕商业运载火箭开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galactic-energy-4",
+          "documentId": "d-galactic-energy-4",
+          "fileName": "Demo模拟资料_星河动力_外部动态.md",
+          "excerpt": "【Demo 模拟】北京星河动力装备科技有限公司围绕商业运载火箭开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-galactic-energy-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】北京星河动力装备科技有限公司主营商业运载火箭。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-galactic-energy-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galactic-energy-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】北京星河动力装备科技有限公司具备商业运载火箭。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-galactic-energy-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galactic-energy-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】北京星河动力装备科技有限公司服务于商业运载火箭。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-galactic-energy-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galactic-energy-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】北京星河动力装备科技有限公司位于产业链商业运载火箭相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-galactic-energy-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    },
+    {
+      "id": "c-galaxy-history",
+      "standardName": "银河航天科技历史主体示范公司",
+      "aliases": [
+        "银河科技"
+      ],
+      "description": "Demo 模拟企业：聚焦历史名称消歧样例。",
+      "cognitionStatus": "Demo 模拟",
+      "attentionStatus": "机构未关注",
+      "updatedAt": "2026-08-06T09:00:00.000Z",
+      "positions": [
+        {
+          "nodeId": "sat-platform",
+          "positionType": "primary",
+          "status": "confirmed",
+          "confidence": 0.88,
+          "source": "manual",
+          "sourceDate": "2026-08-06"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "e-galaxy-history-1",
+          "documentId": "d-galaxy-history-1",
+          "fileName": "Demo模拟资料_银河科技_BP.pdf",
+          "excerpt": "【Demo 模拟】银河航天科技历史主体示范公司围绕历史名称消歧样例开展业务。本条为第 1 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 2,
+          "sourceDate": "2026-04-10",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-history-2",
+          "documentId": "d-galaxy-history-2",
+          "fileName": "Demo模拟资料_银河科技_访谈纪要.docx",
+          "excerpt": "【Demo 模拟】银河航天科技历史主体示范公司围绕历史名称消歧样例开展业务。本条为第 2 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 3,
+          "sourceDate": "2026-05-11",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-history-3",
+          "documentId": "d-galaxy-history-3",
+          "fileName": "Demo模拟资料_银河科技_内部研究.pdf",
+          "excerpt": "【Demo 模拟】银河航天科技历史主体示范公司围绕历史名称消歧样例开展业务。本条为第 3 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 4,
+          "sourceDate": "2026-06-12",
+          "visibility": "organization"
+        },
+        {
+          "id": "e-galaxy-history-4",
+          "documentId": "d-galaxy-history-4",
+          "fileName": "Demo模拟资料_银河科技_外部动态.md",
+          "excerpt": "【Demo 模拟】银河航天科技历史主体示范公司围绕历史名称消歧样例开展业务。本条为第 4 份验收资料，用于验证检索、证据与权限链路。",
+          "page": 5,
+          "sourceDate": "2026-07-13",
+          "visibility": "organization"
+        }
+      ],
+      "claims": [
+        {
+          "id": "cl-galaxy-history-1",
+          "category": "主营产品",
+          "text": "【Demo 模拟】银河航天科技历史主体示范公司主营历史名称消歧样例。",
+          "type": "company_statement",
+          "status": "confirmed",
+          "confidence": 0.82,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-history-1"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-history-2",
+          "category": "技术能力",
+          "text": "【Demo 模拟】银河航天科技历史主体示范公司具备历史名称消歧样例。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.85,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-history-2"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-history-3",
+          "category": "客户场景",
+          "text": "【Demo 模拟】银河航天科技历史主体示范公司服务于历史名称消歧样例。",
+          "type": "verified_fact",
+          "status": "confirmed",
+          "confidence": 0.8799999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-history-3"
+          ],
+          "visibility": "organization"
+        },
+        {
+          "id": "cl-galaxy-history-4",
+          "category": "产业位置",
+          "text": "【Demo 模拟】银河航天科技历史主体示范公司位于产业链历史名称消歧样例相关环节。",
+          "type": "ai_inference",
+          "status": "candidate",
+          "confidence": 0.9099999999999999,
+          "version": 1,
+          "evidenceIds": [
+            "e-galaxy-history-4"
+          ],
+          "visibility": "organization"
+        }
+      ]
+    }
+  ],
+  "industryNodes": [
+    {
+      "id": "space",
+      "name": "商业航天",
+      "parentId": null,
+      "level": 0,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "foundation",
+      "name": "基础产业",
+      "parentId": "space",
+      "level": 1,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "satellite",
+      "name": "卫星研发及制造",
+      "parentId": "space",
+      "level": 1,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "launch",
+      "name": "运载火箭制造与发射",
+      "parentId": "space",
+      "level": 1,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "ground",
+      "name": "地面设备",
+      "parentId": "space",
+      "level": 1,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "service",
+      "name": "运营服务与应用",
+      "parentId": "space",
+      "level": 1,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "materials",
+      "name": "基础材料",
+      "parentId": "foundation",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "components",
+      "name": "电子元器件",
+      "parentId": "foundation",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "sat-platform",
+      "name": "卫星平台系统",
+      "parentId": "satellite",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "sat-payload",
+      "name": "有效载荷系统",
+      "parentId": "satellite",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "rocket-engine",
+      "name": "火箭推进系统",
+      "parentId": "launch",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "rocket-structure",
+      "name": "结构系统（箭体结构）",
+      "parentId": "launch",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "ground-station",
+      "name": "地面站",
+      "parentId": "ground",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "terminal",
+      "name": "终端设备",
+      "parentId": "ground",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "remote-sensing",
+      "name": "卫星遥感服务",
+      "parentId": "service",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "navigation",
+      "name": "卫星导航服务",
+      "parentId": "service",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "sat-comms",
+      "name": "卫星通信服务",
+      "parentId": "service",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    },
+    {
+      "id": "sat-internet",
+      "name": "卫星互联网",
+      "parentId": "service",
+      "level": 2,
+      "source": "【余香斋】【商业航天】图谱"
+    }
+  ],
+  "industryEdges": [
+    {
+      "id": "ie-1",
+      "fromNodeId": "materials",
+      "toNodeId": "sat-platform",
+      "relation": "upstream_of",
+      "label": "提供结构与功能材料",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-2",
+      "fromNodeId": "components",
+      "toNodeId": "sat-platform",
+      "relation": "upstream_of",
+      "label": "提供星载电子元器件",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-3",
+      "fromNodeId": "sat-payload",
+      "toNodeId": "sat-platform",
+      "relation": "supports",
+      "label": "集成通信与遥感载荷",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-4",
+      "fromNodeId": "sat-platform",
+      "toNodeId": "ground-station",
+      "relation": "serves",
+      "label": "在轨卫星连接地面测运控",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-5",
+      "fromNodeId": "sat-platform",
+      "toNodeId": "terminal",
+      "relation": "serves",
+      "label": "面向用户终端提供接入",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-6",
+      "fromNodeId": "sat-platform",
+      "toNodeId": "sat-internet",
+      "relation": "serves",
+      "label": "构成低轨通信网络基础设施",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-7",
+      "fromNodeId": "ground-station",
+      "toNodeId": "sat-internet",
+      "relation": "supports",
+      "label": "提供测控与网络运营支撑",
+      "source": "Demo 产业链规则"
+    },
+    {
+      "id": "ie-8",
+      "fromNodeId": "terminal",
+      "toNodeId": "sat-internet",
+      "relation": "supports",
+      "label": "连接行业与个人用户",
+      "source": "Demo 产业链规则"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t-demo",
+      "query": "帮我了解银河航天，并核验它在商业航天产业链中的位置",
+      "companyId": "c-galaxy",
+      "status": "待用户确认",
+      "createdBy": "u-investor",
+      "createdAt": "2026-08-06T08:00:00.000Z",
+      "steps": [
+        {
+          "name": "识别公司主体",
+          "status": "done",
+          "detail": "已匹配银河航天（北京）科技有限公司"
+        },
+        {
+          "name": "检索内部历史",
+          "status": "done",
+          "detail": "找到 3 份当前用户可见资料"
+        },
+        {
+          "name": "匹配产业链",
+          "status": "needs-review",
+          "detail": "1 个已确认位置，1 个图谱候选位置"
+        },
+        {
+          "name": "核验证据与冲突",
+          "status": "done",
+          "detail": "发现 1 条待核验企业表述"
+        },
+        {
+          "name": "生成公司认知包",
+          "status": "done",
+          "detail": "已生成 4 类知识陈述"
+        }
+      ]
+    }
+  ],
+  "audits": [
+    {
+      "id": "a1",
+      "actor": "知识管理员",
+      "action": "导入知识源",
+      "target": "商业航天图谱",
+      "at": "2026-08-06T07:10:00.000Z",
+      "detail": "导入五大一级板块及候选企业映射"
+    },
+    {
+      "id": "a2",
+      "actor": "陈晨",
+      "action": "发起研究",
+      "target": "银河航天",
+      "at": "2026-08-06T08:00:00.000Z",
+      "detail": "公司研究任务 t-demo"
+    },
+    {
+      "id": "a3",
+      "actor": "系统",
+      "action": "权限过滤",
+      "target": "研究任务 t-demo",
+      "at": "2026-08-06T08:01:00.000Z",
+      "detail": "过滤 0 条无权限候选"
+    }
+  ],
+  "documents": [
+    {
+      "id": "d-g1",
+      "fileName": "银河航天项目初筛记录.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-g1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-18T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-18T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-18T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-18T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-18T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-g2",
+      "fileName": "银河航天访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-g2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "project",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-25T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-25T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-25T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-25T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-25T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-g3",
+      "fileName": "陈晨个人判断.md",
+      "fileType": "md",
+      "fileHash": "seed-d-g3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "private",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-27T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-27T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-27T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-27T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-27T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-core-5",
+      "fileName": "Demo模拟资料_银河航天_核心事实5.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-core-5",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-core-6",
+      "fileName": "Demo模拟资料_银河航天_核心事实6.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-core-6",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-core-7",
+      "fileName": "Demo模拟资料_银河航天_核心事实7.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-core-7",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-core-8",
+      "fileName": "Demo模拟资料_银河航天_核心事实8.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-core-8",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-core-9",
+      "fileName": "Demo模拟资料_银河航天_核心事实9.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-core-9",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-core-10",
+      "fileName": "Demo模拟资料_银河航天_核心事实10.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-core-10",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-l1",
+      "fileName": "商业航天行业研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-l1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-30T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-30T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-30T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-30T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-30T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-2",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实2.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-3",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实3.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-4",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实4.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-5",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实5.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-5",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-6",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实6.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-6",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-7",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实7.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-7",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-8",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实8.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-8",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-9",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实9.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-9",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-landspace-core-10",
+      "fileName": "Demo模拟资料_蓝箭航天_核心事实10.md",
+      "fileType": "md",
+      "fileHash": "seed-d-landspace-core-10",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "蓝箭航天"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-map",
+      "fileName": "【余香斋】【商业航天】图谱.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-map",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2025-12-03T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2025-12-03T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2025-12-03T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2025-12-03T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2025-12-03T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-2",
+      "fileName": "Demo模拟资料_长光卫星_核心事实2.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-3",
+      "fileName": "Demo模拟资料_长光卫星_核心事实3.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-4",
+      "fileName": "Demo模拟资料_长光卫星_核心事实4.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-5",
+      "fileName": "Demo模拟资料_长光卫星_核心事实5.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-5",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-6",
+      "fileName": "Demo模拟资料_长光卫星_核心事实6.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-6",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-7",
+      "fileName": "Demo模拟资料_长光卫星_核心事实7.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-7",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-8",
+      "fileName": "Demo模拟资料_长光卫星_核心事实8.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-8",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-9",
+      "fileName": "Demo模拟资料_长光卫星_核心事实9.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-9",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-charming-core-10",
+      "fileName": "Demo模拟资料_长光卫星_核心事实10.md",
+      "fileType": "md",
+      "fileHash": "seed-d-charming-core-10",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "长光卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-ae1",
+      "fileName": "Demo模拟资料_星载元器件供应商访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-ae1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-ae2",
+      "fileName": "Demo模拟资料_关键元器件国产化研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-ae2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-20T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-20T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-20T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-20T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-20T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-2",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实2.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-3",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实3.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-4",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实4.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-5",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实5.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-5",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-6",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实6.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-6",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-7",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实7.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-7",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-8",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实8.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-8",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-9",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实9.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-9",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-aero-electronics-core-10",
+      "fileName": "Demo模拟资料_航天电子示范_核心事实10.md",
+      "fileType": "md",
+      "fileHash": "seed-d-aero-electronics-core-10",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "航天电子示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-sm1",
+      "fileName": "Demo模拟资料_卫星轻量化材料BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-sm1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-04T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-04T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-04T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-04T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-04T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-2",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实2.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-3",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实3.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-4",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实4.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-5",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实5.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-5",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-6",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实6.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-6",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-7",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实7.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-7",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-8",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实8.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-8",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-9",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实9.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-9",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-space-material-core-10",
+      "fileName": "Demo模拟资料_空天材料示范_核心事实10.md",
+      "fileType": "md",
+      "fileHash": "seed-d-space-material-core-10",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "空天材料示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-08-01T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-08-01T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-08-01T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-08-01T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-08-01T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-gn1",
+      "fileName": "Demo模拟资料_商业卫星测运控项目纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-gn1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星地测控示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-21T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-21T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-21T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-21T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-21T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-so1",
+      "fileName": "Demo模拟资料_低轨卫星互联网应用研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-so1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "低轨运营示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-16T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-16T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-16T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-16T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-16T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-so2",
+      "fileName": "Demo模拟资料_行业客户需求访谈.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-so2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "低轨运营示范"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-29T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-29T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-29T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-29T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-29T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-orbit-payload-1",
+      "fileName": "Demo模拟资料_寰宇载荷_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-orbit-payload-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "寰宇载荷"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-orbit-payload-2",
+      "fileName": "Demo模拟资料_寰宇载荷_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-orbit-payload-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "寰宇载荷"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-orbit-payload-3",
+      "fileName": "Demo模拟资料_寰宇载荷_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-orbit-payload-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "寰宇载荷"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-orbit-payload-4",
+      "fileName": "Demo模拟资料_寰宇载荷_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-orbit-payload-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "寰宇载荷"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-one-1",
+      "fileName": "Demo模拟资料_天链终端_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-terminal-one-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "天链终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-one-2",
+      "fileName": "Demo模拟资料_天链终端_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-terminal-one-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "天链终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-one-3",
+      "fileName": "Demo模拟资料_天链终端_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-terminal-one-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "天链终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-one-4",
+      "fileName": "Demo模拟资料_天链终端_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-terminal-one-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "天链终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-two-1",
+      "fileName": "Demo模拟资料_星通终端_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-terminal-two-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星通终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-two-2",
+      "fileName": "Demo模拟资料_星通终端_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-terminal-two-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星通终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-two-3",
+      "fileName": "Demo模拟资料_星通终端_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-terminal-two-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星通终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-terminal-two-4",
+      "fileName": "Demo模拟资料_星通终端_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-terminal-two-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星通终端"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-remote-one-1",
+      "fileName": "Demo模拟资料_云图遥感_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-remote-one-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "云图遥感"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-remote-one-2",
+      "fileName": "Demo模拟资料_云图遥感_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-remote-one-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "云图遥感"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-remote-one-3",
+      "fileName": "Demo模拟资料_云图遥感_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-remote-one-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "云图遥感"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-remote-one-4",
+      "fileName": "Demo模拟资料_云图遥感_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-remote-one-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "云图遥感"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-nav-one-1",
+      "fileName": "Demo模拟资料_北斗应用_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-nav-one-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "北斗应用"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-nav-one-2",
+      "fileName": "Demo模拟资料_北斗应用_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-nav-one-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "北斗应用"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-nav-one-3",
+      "fileName": "Demo模拟资料_北斗应用_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-nav-one-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "北斗应用"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-nav-one-4",
+      "fileName": "Demo模拟资料_北斗应用_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-nav-one-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "北斗应用"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-comms-one-1",
+      "fileName": "Demo模拟资料_星网通信_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-comms-one-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星网通信"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-comms-one-2",
+      "fileName": "Demo模拟资料_星网通信_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-comms-one-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星网通信"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-comms-one-3",
+      "fileName": "Demo模拟资料_星网通信_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-comms-one-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星网通信"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-comms-one-4",
+      "fileName": "Demo模拟资料_星网通信_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-comms-one-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星网通信"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-engine-one-1",
+      "fileName": "Demo模拟资料_深空动力_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-engine-one-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "深空动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-engine-one-2",
+      "fileName": "Demo模拟资料_深空动力_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-engine-one-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "深空动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-engine-one-3",
+      "fileName": "Demo模拟资料_深空动力_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-engine-one-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "深空动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-engine-one-4",
+      "fileName": "Demo模拟资料_深空动力_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-engine-one-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "深空动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-structure-one-1",
+      "fileName": "Demo模拟资料_箭体结构_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-structure-one-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "箭体结构"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-structure-one-2",
+      "fileName": "Demo模拟资料_箭体结构_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-structure-one-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "箭体结构"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-structure-one-3",
+      "fileName": "Demo模拟资料_箭体结构_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-structure-one-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "箭体结构"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-structure-one-4",
+      "fileName": "Demo模拟资料_箭体结构_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-structure-one-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "箭体结构"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-two-1",
+      "fileName": "Demo模拟资料_星舟卫星_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-platform-two-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-two-2",
+      "fileName": "Demo模拟资料_星舟卫星_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-platform-two-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-two-3",
+      "fileName": "Demo模拟资料_星舟卫星_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-platform-two-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-two-4",
+      "fileName": "Demo模拟资料_星舟卫星_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-platform-two-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟卫星"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-three-1",
+      "fileName": "Demo模拟资料_星舟科技_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-platform-three-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-three-2",
+      "fileName": "Demo模拟资料_星舟科技_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-platform-three-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-three-3",
+      "fileName": "Demo模拟资料_星舟科技_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-platform-three-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-three-4",
+      "fileName": "Demo模拟资料_星舟科技_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-platform-three-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-four-1",
+      "fileName": "Demo模拟资料_星舟科技_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-platform-four-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-four-2",
+      "fileName": "Demo模拟资料_星舟科技_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-platform-four-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-four-3",
+      "fileName": "Demo模拟资料_星舟科技_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-platform-four-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-platform-four-4",
+      "fileName": "Demo模拟资料_星舟科技_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-platform-four-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星舟科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galactic-energy-1",
+      "fileName": "Demo模拟资料_星河动力_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-galactic-energy-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星河动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galactic-energy-2",
+      "fileName": "Demo模拟资料_星河动力_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-galactic-energy-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星河动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galactic-energy-3",
+      "fileName": "Demo模拟资料_星河动力_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-galactic-energy-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星河动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galactic-energy-4",
+      "fileName": "Demo模拟资料_星河动力_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galactic-energy-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "星河动力"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-history-1",
+      "fileName": "Demo模拟资料_银河科技_BP.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-galaxy-history-1",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-04-10T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-04-10T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-04-10T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-04-10T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-04-10T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-history-2",
+      "fileName": "Demo模拟资料_银河科技_访谈纪要.docx",
+      "fileType": "docx",
+      "fileHash": "seed-d-galaxy-history-2",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-05-11T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-05-11T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-05-11T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-05-11T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-05-11T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-history-3",
+      "fileName": "Demo模拟资料_银河科技_内部研究.pdf",
+      "fileType": "pdf",
+      "fileHash": "seed-d-galaxy-history-3",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-06-12T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-06-12T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-06-12T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-06-12T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-06-12T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "d-galaxy-history-4",
+      "fileName": "Demo模拟资料_银河科技_外部动态.md",
+      "fileType": "md",
+      "fileHash": "seed-d-galaxy-history-4",
+      "size": 1024,
+      "status": "已索引",
+      "detectedCompanies": [
+        "银河科技"
+      ],
+      "visibility": "organization",
+      "uploadedBy": "u-admin",
+      "uploadedAt": "2026-07-13T09:00:00.000Z",
+      "statusTrace": [
+        {
+          "status": "待解析",
+          "at": "2026-07-13T08:59:57.000Z"
+        },
+        {
+          "status": "解析中",
+          "at": "2026-07-13T08:59:58.000Z"
+        },
+        {
+          "status": "已解析",
+          "at": "2026-07-13T08:59:59.000Z"
+        },
+        {
+          "status": "已索引",
+          "at": "2026-07-13T09:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "entityCandidates": [
+    {
+      "id": "ec-1",
+      "rawName": "长光",
+      "candidateCompanyIds": [
+        "c-charming"
+      ],
+      "reason": "名称过短，需要确认是否为长光卫星",
+      "status": "pending",
+      "createdAt": "2026-08-06T07:20:00.000Z"
+    }
+  ],
+  "settings": {
+    "externalModelsEnabled": false,
+    "knowledgeSource": "knowledge_sources/商业航天/【余香斋】【商业航天】图谱.pdf",
+    "sourceHash": "fc8f91e129a5a0b2008d2607bb909c1f6d71c0fc68fd776d1934aa7b5db63ef4"
+  }
+}
