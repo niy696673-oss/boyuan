@@ -98,6 +98,52 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post(
+    "/companies/:companyId/documents",
+    upload.single("file"),
+    async (req, res, next) => {
+      try {
+        if (!req.file) {
+          throw new PlatformInputError("multipart_file_required", "请选择文件");
+        }
+        const fileName = normalizeMultipartFileName(req.file.originalname);
+        if (/\.(?:csv|xlsx?)$/iu.test(fileName)) {
+          throw new PlatformInputError(
+            "company_list_not_available",
+            "公司名单请使用名单导入能力",
+          );
+        }
+        const result = await platform.ingestCompanyDocument(
+          String(req.params.companyId),
+          {
+            fileName,
+            mimeType: req.file.mimetype,
+            sourceChannel: "web",
+            content: Readable.from([req.file.buffer]),
+          },
+        );
+        res.status(201).json(result);
+      } catch (error) {
+        handlePlatformError(error, res, next);
+      }
+    },
+  );
+
+  router.put("/companies/:companyId/watch", async (req, res, next) => {
+    try {
+      const input = companyWatchInput(req.body);
+      res.json(
+        await platform.setCompanyWatched(
+          String(req.params.companyId),
+          input.watched,
+          input.expectedVersion,
+        ),
+      );
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.get("/review-queue", async (_req, res, next) => {
     try {
       const candidates = (await platform.listCandidates()).filter(
@@ -249,6 +295,27 @@ function companyResearchInput(body: unknown) {
       : {}),
     intent: input.intent,
     explicitWebSearch: input.explicitWebSearch,
+  };
+}
+
+function companyWatchInput(body: unknown) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const input = body as Record<string, unknown>;
+  if (typeof input.watched !== "boolean") {
+    throw new PlatformInputError("invalid_watch_state", "关注状态必须是布尔值");
+  }
+  if (
+    typeof input.expectedVersion !== "number" ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1
+  ) {
+    throw new PlatformInputError("invalid_version", "公司版本必须是正整数");
+  }
+  return {
+    watched: input.watched,
+    expectedVersion: input.expectedVersion,
   };
 }
 

@@ -460,6 +460,7 @@ export interface StartCompanyResearchInput {
 
 export interface PlatformModule {
   ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult>;
+  ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult>;
   quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult>;
   listConversations(): Promise<ConversationSummary[]>;

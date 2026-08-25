@@ -59,6 +59,8 @@ describe("全局待确认数量", () => {
     const companyClient: CompanyDirectoryClient = {
       list: vi.fn(),
       get: vi.fn(),
+      uploadDocument: vi.fn(),
+      setWatched: vi.fn(),
     };
     const reviewClient: ReviewQueueClient = {
       list: vi.fn().mockResolvedValue({ items: [], total: 0 }),

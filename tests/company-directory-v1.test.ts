@@ -108,6 +108,67 @@ describe("研究平台 v1 公司目录接缝", () => {
     expect(response.status).toBe(404);
     expect(response.body).toMatchObject({ error: "not_found" });
   });
+
+  it("从公司详情上传时始终绑定当前公司，并在处理后刷新材料与候选数量", async () => {
+    const { app, platform } = await fixture();
+    const companyId = await seedConfirmedCompany(app, platform);
+
+    const uploaded = await request(app)
+      .post(`/api/v1/companies/${companyId}/documents`)
+      .attach(
+        "file",
+        Buffer.from("松涛科技有限公司\n本轮融资金额为 2 亿元。"),
+        "松涛科技 BP.txt",
+      );
+
+    expect(uploaded.status).toBe(201);
+    expect(uploaded.body.conversation.company.companyId).toBe(companyId);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const detail = await request(app).get(`/api/v1/companies/${companyId}`);
+    const directory = await request(app).get("/api/v1/companies");
+    expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({
+      companyId,
+      materialCount: 2,
+      materials: expect.arrayContaining([
+        expect.objectContaining({ fileName: "松涛科技 BP.txt" }),
+      ]),
+    });
+    expect(detail.body.pendingCandidateCount).toBeGreaterThan(0);
+    expect(directory.body.total).toBe(1);
+  });
+
+  it("关注状态使用公司版本写入 SQLite，并在重启后保留", async () => {
+    const { app, dataRoot, platform, store } = await fixture();
+    const companyId = await seedConfirmedCompany(app, platform);
+    const before = await request(app).get(`/api/v1/companies/${companyId}`);
+
+    const watched = await request(app)
+      .put(`/api/v1/companies/${companyId}/watch`)
+      .send({ watched: true, expectedVersion: before.body.version });
+
+    expect(watched.status).toBe(200);
+    expect(watched.body.profile.watched).toBe(true);
+    expect(watched.body.version).toBe(before.body.version + 1);
+
+    platform.close();
+    modules.splice(modules.indexOf(platform), 1);
+    const reopened = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+    });
+    modules.push(reopened);
+    const restarted = createApp(store, createDemoServices(store), {
+      researchPlatform: reopened,
+    });
+    const afterRestart = await request(restarted).get(
+      `/api/v1/companies/${companyId}`,
+    );
+    expect(afterRestart.body.profile.watched).toBe(true);
+  });
 });
 
 async function seedConfirmedCompany(

@@ -12,6 +12,7 @@ import type {
 import type { Claim, Company, Evidence } from "../../types";
 
 export interface CompanyView extends Company {
+  version: number;
   materialCount: number;
   knowledgeCount: number;
   pendingCandidateCount: number;
@@ -81,9 +82,10 @@ export function companyDetailView(detail: CompanyDetailResponse): CompanyView {
 function baseView(
   item: Omit<CompanyDirectoryItem, "knowledgeCount"> &
     Partial<Pick<CompanyDirectoryItem, "knowledgeCount">>,
-): Omit<Company, "claims" | "evidence"> {
+): Omit<Company, "claims" | "evidence"> & { version: number } {
   return {
     id: item.companyId,
+    version: item.version,
     standardName: item.canonicalName,
     aliases: item.aliases.map((alias) => alias.alias),
     description: item.profile.summary.value || "基础档案，等待补充已确认认知。",

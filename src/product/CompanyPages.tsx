@@ -149,6 +149,7 @@ export function CompanyDetailPage({ data, reload, companyClient = defaultCompany
   const [company, setCompany] = useState<CompanyView | null>(null);
   const [directory, setDirectory] = useState<CompanyView[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "not-found" | "error">("loading");
+  const actionController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -170,17 +171,71 @@ export function CompanyDetailPage({ data, reload, companyClient = defaultCompany
     return () => controller.abort();
   }, [companyClient, id]);
 
+  useEffect(() => () => actionController.current?.abort(), []);
+
+  const refreshDirectory = async (signal?: AbortSignal) => {
+    const response = await companyClient.list(signal);
+    setDirectory(response.items.map(companyDirectoryView));
+  };
+
+  const uploadCompanyMaterial = async (file: File) => {
+    if (!id) return "上传失败";
+    actionController.current?.abort();
+    const controller = new AbortController();
+    actionController.current = controller;
+    const result = await companyClient.uploadDocument(id, file, controller.signal);
+    let detail = await companyClient.get(id, controller.signal);
+    setCompany(companyDetailView(detail));
+
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const material = detail.materials.find(
+        (item) => item.conversationId === result.conversation.conversationId,
+      );
+      if (material && isTerminalMaterialStatus(material.status)) {
+        await refreshDirectory(controller.signal);
+        reload();
+        return material.status === "failed" ? "材料处理失败，请稍后重试" : "材料处理完成，档案数量已刷新";
+      }
+      await abortableDelay(500, controller.signal);
+      detail = await companyClient.get(id, controller.signal);
+      setCompany(companyDetailView(detail));
+    }
+
+    await refreshDirectory(controller.signal);
+    reload();
+    return "材料已上传，后台仍在处理中";
+  };
+
+  const updateWatched = async (watched: boolean) => {
+    if (!id || !company) return;
+    actionController.current?.abort();
+    const controller = new AbortController();
+    actionController.current = controller;
+    const detail = await companyClient.setWatched(
+      id,
+      { watched, expectedVersion: company.version },
+      controller.signal,
+    );
+    setCompany(companyDetailView(detail));
+    await refreshDirectory(controller.signal);
+    reload();
+  };
+
   if (state === "loading") return <CompanyLoadState title="正在加载公司档案…" />;
   if (state === "not-found") return <CompanyLoadState title="找不到这家公司" description="该公司可能不存在，或已经被合并。" />;
   if (state === "error" || !company) return <CompanyLoadState title="公司档案加载失败" />;
-  return <CompanyDetailContent data={data} reload={reload} company={company} directory={directory} />;
+  return <CompanyDetailContent data={data} company={company} directory={directory} onUpload={uploadCompanyMaterial} onWatch={updateWatched} />;
 }
 
-function CompanyDetailContent({ data, reload: _reload, company, directory }: { data: Bootstrap; reload: () => void; company: CompanyView; directory: CompanyView[] }) {
+function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: { data: Bootstrap; company: CompanyView; directory: CompanyView[]; onUpload: (file: File) => Promise<string>; onWatch: (watched: boolean) => Promise<void> }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") === "relations" ? "产业关系" : "概览");
   const [feedbackIndex, setFeedbackIndex] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [watching, setWatching] = useState(false);
+  const [actionNotice, setActionNotice] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   const confirmed = company.claims.filter((claim) => claim.status === "confirmed");
   const pending = company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status));
   const conflicts = company.claims.filter((claim) => claim.status === "disputed");
@@ -198,6 +253,33 @@ function CompanyDetailContent({ data, reload: _reload, company, directory }: { d
     setSearchParams(next, { replace: true });
   };
 
+  const uploadFile = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    setActionNotice(`正在处理 ${file.name}…`);
+    try {
+      setActionNotice(await onUpload(file));
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setActionNotice(error instanceof Error ? error.message : "材料上传失败");
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
+
+  const toggleWatched = async () => {
+    setWatching(true);
+    setActionNotice("");
+    try {
+      await onWatch(company.attentionStatus === "未关注");
+      setActionNotice(company.attentionStatus === "未关注" ? "已关注公司" : "已取消关注");
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setActionNotice(error instanceof Error ? error.message : "关注状态更新失败");
+    } finally {
+      setWatching(false);
+    }
+  };
+
   return (
     <div className="by-company-detail-page">
       <CompanyDirectory companies={directory} activeId={company.id} />
@@ -208,7 +290,9 @@ function CompanyDetailContent({ data, reload: _reload, company, directory }: { d
             <div><h1>{companyName}</h1><p>{company.englishName || company.standardName}<span />标准名称：{company.standardName}</p><div>{company.industryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div></div>
           </div>
           <p>{company.description}</p>
-          <div className="by-company-actions"><button onClick={() => navigate("/")}><Sparkles />发起研究</button><button><Upload />上传材料</button><button><Star />{company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
+          <div className="by-company-actions"><button onClick={() => navigate("/")}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
+          <input ref={fileInput} hidden type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
+          {actionNotice && <p role="status">{actionNotice}</p>}
           <dl><div><dt>归档状态</dt><dd><Check />已自动归档</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
         </header>
 
@@ -236,7 +320,7 @@ function CompanyDetailContent({ data, reload: _reload, company, directory }: { d
             </aside>
           </div>
         )}
-        {tab === "材料" && <CompanyMaterials company={company} />}
+        {tab === "材料" && <CompanyMaterials company={company} uploading={uploading} onUpload={() => fileInput.current?.click()} />}
         {tab === "已确认知识" && <CompanyClaims claims={confirmed} title="已确认知识" />}
         {tab === "待确认" && <CompanyClaims claims={pending} title="待确认候选知识" />}
         {tab === "研究记录" && <CompanyResearch company={company} />}
@@ -296,8 +380,8 @@ function SupportList({ title, action, rows }: { title: string; action?: string; 
   return <section className="by-support-list"><header><h2>{title}</h2>{action && <button>{action}<ChevronRight /></button>}</header>{rows.map((row, index) => <button key={`${row.title}-${index}`}><span>{row.icon}</span><div><strong>{row.title}</strong><small>{row.meta}</small></div><ChevronRight /></button>)}</section>;
 }
 
-function CompanyMaterials({ company }: { company: CompanyView }) {
-  return <section className="by-tab-panel"><header><div><h2>公司材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary"><Upload />上传材料</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className="success">已归档</span></button>)}</div></section>;
+function CompanyMaterials({ company, uploading, onUpload }: { company: CompanyView; uploading: boolean; onUpload: () => void }) {
+  return <section className="by-tab-panel"><header><div><h2>公司材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "failed" ? "warning" : "success"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
 }
 
 function CompanyClaims({ claims, title }: { claims: Claim[]; title: string }) {
@@ -348,6 +432,31 @@ function platformTaskStatus(status: CompanyView["researchRecords"][number]["stat
   if (status === "failed") return "执行失败";
   if (status === "pending_confirmation" || status === "waiting") return "待用户确认";
   return "生成中";
+}
+
+function materialStatusLabel(status: CompanyView["materials"][number]["status"]) {
+  if (status === "completed") return "已归档";
+  if (status === "failed") return "处理失败";
+  if (status === "pending_confirmation") return "待确认";
+  return "处理中";
+}
+
+function isTerminalMaterialStatus(status: CompanyView["materials"][number]["status"]) {
+  return status === "completed" || status === "failed" || status === "pending_confirmation";
+}
+
+function abortableDelay(durationMs: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = window.setTimeout(resolve, durationMs);
+    signal.addEventListener("abort", () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
 }
 
 function relativeDate(value: string) {

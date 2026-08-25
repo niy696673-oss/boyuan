@@ -89,6 +89,8 @@ function companyClient(): CompanyDirectoryClient {
   return {
     list: vi.fn().mockResolvedValue({ items: [{ ...item, knowledgeCount: 0 }], total: 1 }),
     get: vi.fn().mockResolvedValue({ ...item, knowledge: [], materials: [], pendingCandidates: [], researchRecords: [], relations: [], industryPlacements: [] }),
+    uploadDocument: vi.fn(),
+    setWatched: vi.fn(),
   };
 }
 
