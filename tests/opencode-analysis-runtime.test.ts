@@ -31,9 +31,7 @@ describe("OpenCode BP 分析接缝", () => {
       directory: "/workspace/boyuan",
       model: { providerId: "openai", modelId: "gpt-5.6-sol" },
       variant: "xhigh",
-      skillName: "boyuan-bp-deep-analysis",
-      sequentialThinkingTool: "sequential-thinking_sequentialthinking",
-      requiredMcpServer: "sequential-thinking",
+      requiredCapabilities: requiredCapabilities(),
       fetcher: async (request, init = {}) => {
         const url = new URL(String(request));
         requests.push({ url, init });
@@ -132,8 +130,7 @@ describe("OpenCode BP 分析接缝", () => {
     const adapter = createOpenCodeAnalysisAdapter({
       baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
       directory: "/workspace/boyuan",
-      skillName: "boyuan-bp-deep-analysis",
-      requiredMcpServer: "sequential-thinking",
+      requiredCapabilities: requiredCapabilities(),
       fetcher: async (request, init = {}) => {
         const url = new URL(String(request));
         requests.push(`${init.method} ${url.pathname}`);
@@ -155,8 +152,7 @@ describe("OpenCode BP 分析接缝", () => {
     const adapter = createOpenCodeAnalysisAdapter({
       baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
       directory: "/workspace/boyuan",
-      skillName: "boyuan-bp-deep-analysis",
-      requiredMcpServer: "sequential-thinking",
+      requiredCapabilities: requiredCapabilities(),
       fetcher: async (request) => {
         const url = new URL(String(request));
         if (url.pathname.endsWith("/skill")) {
@@ -274,4 +270,12 @@ function jsonResponse(value: unknown): Response {
     status: 200,
     headers: { "content-type": "application/json" },
   });
+}
+
+function requiredCapabilities() {
+  return {
+    skillName: "boyuan-bp-deep-analysis",
+    mcpServer: "sequential-thinking",
+    mcpTool: "sequential-thinking_sequentialthinking",
+  };
 }

@@ -23,21 +23,16 @@ export function createRuntimeAnalysisAdapter(
   }
 
   const baseUrlValue = required(environment, "BOYUAN_OPENCODE_BASE_URL");
-  const username = optional(environment, "BOYUAN_OPENCODE_USERNAME");
-  const password = optional(environment, "BOYUAN_OPENCODE_PASSWORD");
-  if ((username === undefined) !== (password === undefined)) {
-    throw new Error(
-      "BOYUAN_OPENCODE_USERNAME and BOYUAN_OPENCODE_PASSWORD must be configured together",
-    );
-  }
-
-  const providerId = optional(environment, "BOYUAN_DEEP_OPENCODE_PROVIDER_ID");
-  const modelId = optional(environment, "BOYUAN_DEEP_OPENCODE_MODEL_ID");
-  if ((providerId === undefined) !== (modelId === undefined)) {
-    throw new Error(
-      "BOYUAN_DEEP_OPENCODE_PROVIDER_ID and BOYUAN_DEEP_OPENCODE_MODEL_ID must be configured together",
-    );
-  }
+  const credentials = optionalPair(
+    environment,
+    "BOYUAN_OPENCODE_USERNAME",
+    "BOYUAN_OPENCODE_PASSWORD",
+  );
+  const model = optionalPair(
+    environment,
+    "BOYUAN_DEEP_OPENCODE_PROVIDER_ID",
+    "BOYUAN_DEEP_OPENCODE_MODEL_ID",
+  );
   const timeoutMs = optionalPositiveInteger(
     environment,
     "BOYUAN_OPENCODE_TIMEOUT_MS",
@@ -60,21 +55,36 @@ export function createRuntimeAnalysisAdapter(
     baseUrl,
     directory:
       optional(environment, "BOYUAN_OPENCODE_DIRECTORY") ?? options.directory,
-    ...(username !== undefined && password !== undefined
-      ? { username, password }
+    ...(credentials
+      ? { username: credentials.first, password: credentials.second }
       : {}),
-    ...(providerId !== undefined && modelId !== undefined
-      ? { model: { providerId, modelId } }
+    ...(model
+      ? { model: { providerId: model.first, modelId: model.second } }
       : {}),
     ...(optional(environment, "BOYUAN_DEEP_OPENCODE_VARIANT")
       ? { variant: optional(environment, "BOYUAN_DEEP_OPENCODE_VARIANT") }
       : {}),
-    skillName: "boyuan-bp-deep-analysis",
-    sequentialThinkingTool: "sequential-thinking_sequentialthinking",
-    requiredMcpServer: "sequential-thinking",
+    requiredCapabilities: {
+      skillName: "boyuan-bp-deep-analysis",
+      mcpServer: "sequential-thinking",
+      mcpTool: "sequential-thinking_sequentialthinking",
+    },
     timeoutMs,
     ...(options.fetcher ? { fetcher: options.fetcher } : {}),
   });
+}
+
+function optionalPair(
+  environment: RuntimeAnalysisEnvironment,
+  firstKey: string,
+  secondKey: string,
+): { first: string; second: string } | undefined {
+  const first = optional(environment, firstKey);
+  const second = optional(environment, secondKey);
+  if ((first === undefined) !== (second === undefined)) {
+    throw new Error(`${firstKey} and ${secondKey} must be configured together`);
+  }
+  return first !== undefined && second !== undefined ? { first, second } : undefined;
 }
 
 function optionalPositiveInteger(
