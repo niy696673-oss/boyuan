@@ -11,8 +11,7 @@ import {
 
 export interface OpenCodeAnalysisOptions {
   baseUrl: URL;
-  username?: string;
-  password?: string;
+  credentials?: { username: string; password: string };
   directory: string;
   model?: { providerId: string; modelId: string };
   variant?: string;
@@ -57,8 +56,8 @@ interface OpenCodeMcpStatus { status?: string }
 export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions): MaterialAnalysisPort {
   const fetcher = options.fetcher ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? 600_000;
-  const authorization = options.username !== undefined && options.password !== undefined
-    ? `Basic ${Buffer.from(`${options.username}:${options.password}`).toString('base64')}`
+  const authorization = options.credentials
+    ? `Basic ${Buffer.from(`${options.credentials.username}:${options.credentials.password}`).toString('base64')}`
     : undefined;
   const request = async <T>(path: string, init: RequestInit): Promise<T> => {
     const url = endpointUrl(options.baseUrl, path);

@@ -27,11 +27,13 @@ export function createRuntimeAnalysisAdapter(
     environment,
     "BOYUAN_OPENCODE_USERNAME",
     "BOYUAN_OPENCODE_PASSWORD",
+    (username, password) => ({ username, password }),
   );
   const model = optionalPair(
     environment,
     "BOYUAN_DEEP_OPENCODE_PROVIDER_ID",
     "BOYUAN_DEEP_OPENCODE_MODEL_ID",
+    (providerId, modelId) => ({ providerId, modelId }),
   );
   const timeoutMs = optionalPositiveInteger(
     environment,
@@ -55,12 +57,8 @@ export function createRuntimeAnalysisAdapter(
     baseUrl,
     directory:
       optional(environment, "BOYUAN_OPENCODE_DIRECTORY") ?? options.directory,
-    ...(credentials
-      ? { username: credentials.first, password: credentials.second }
-      : {}),
-    ...(model
-      ? { model: { providerId: model.first, modelId: model.second } }
-      : {}),
+    ...(credentials ? { credentials } : {}),
+    ...(model ? { model } : {}),
     ...(optional(environment, "BOYUAN_DEEP_OPENCODE_VARIANT")
       ? { variant: optional(environment, "BOYUAN_DEEP_OPENCODE_VARIANT") }
       : {}),
@@ -74,17 +72,18 @@ export function createRuntimeAnalysisAdapter(
   });
 }
 
-function optionalPair(
+function optionalPair<T>(
   environment: RuntimeAnalysisEnvironment,
   firstKey: string,
   secondKey: string,
-): { first: string; second: string } | undefined {
+  map: (first: string, second: string) => T,
+): T | undefined {
   const first = optional(environment, firstKey);
   const second = optional(environment, secondKey);
   if ((first === undefined) !== (second === undefined)) {
     throw new Error(`${firstKey} and ${secondKey} must be configured together`);
   }
-  return first !== undefined && second !== undefined ? { first, second } : undefined;
+  return first !== undefined && second !== undefined ? map(first, second) : undefined;
 }
 
 function optionalPositiveInteger(
