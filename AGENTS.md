@@ -18,3 +18,17 @@
 
 - 只修改当前任务需要的代码，避免顺带重构、重命名或格式化无关文件。
 - PR 中说明主要改动、跨边界修改和验证结果。
+
+## Agent skills
+
+### Issue tracker
+
+需求、规格和开发任务使用 GitHub Issues 管理。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用 Matt Pocock skills 默认的五类 triage 标签。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+本仓库采用单一上下文，领域术语记录在根目录 `CONTEXT.md`，架构决策记录在 `docs/adr/`。详见 `docs/agents/domain.md`。
