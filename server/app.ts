@@ -672,7 +672,7 @@ export function createApp(
         const supportedClaim = company.claims.find(
           (claim) =>
             claim.id === explicitClaimId ||
-            text.includes(claim.text.replace(/^【Demo 模拟】/, "")),
+            text.includes(claim.text),
         );
         const updateText = text.match(/(?:^|\n)更新[:：]\s*(.+)/)?.[1]?.trim();
         const conflictText = text

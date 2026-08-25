@@ -68,7 +68,7 @@ export function CompaniesPage({ data }: { data: Bootstrap }) {
         if (sort === "材料数量") return b.evidence.length - a.evidence.length;
 
         // Keep incomplete auto-created shells available without letting them
-        // dominate the default demo view ahead of researched companies.
+        // dominate the default view ahead of researched companies.
         const aIsResearched = Number(a.evidence.length > 0 || a.claims.length > 0);
         const bIsResearched = Number(b.evidence.length > 0 || b.claims.length > 0);
         return bIsResearched - aIsResearched || +new Date(b.updatedAt) - +new Date(a.updatedAt);
@@ -109,6 +109,7 @@ export function CompaniesPage({ data }: { data: Bootstrap }) {
         </div>
         <div className={`by-company-grid ${view}`}>
           {companies.map((company) => <CompanyCard company={company} data={data} key={company.id} onOpen={() => navigate(`/companies/${company.id}`)} />)}
+          {!companies.length && <section className="by-catalog-empty"><Building2 /><h2>还没有公司档案</h2><p>上传材料、导入公司名单，或从工作台发起研究后，公司会在这里持续沉淀。</p><button className="primary" onClick={() => navigate("/companies/import")}><ListChecks />导入公司名单</button></section>}
         </div>
       </section>
     </div>
@@ -131,8 +132,13 @@ function CompanyCard({ company, data, onOpen }: { company: Company; data: Bootst
 
 export function CompanyDetailPage({ data, reload }: { data: Bootstrap; reload: () => void }) {
   const { id } = useParams();
-  const navigate = useNavigate();
   const company = data.companies.find((item) => item.id === id) || data.companies[0];
+  if (!company) return <section className="by-empty-page"><Building2 /><h1>还没有公司档案</h1><p>请先上传材料、导入公司名单，或从工作台发起公司研究。</p><Link to="/companies">返回公司</Link></section>;
+  return <CompanyDetailContent data={data} reload={reload} company={company} />;
+}
+
+function CompanyDetailContent({ data, reload, company }: { data: Bootstrap; reload: () => void; company: Company }) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("概览");
   const [context, setContext] = useState<IndustryContext | null>(null);
   const [feedbackIndex, setFeedbackIndex] = useState(0);
@@ -161,7 +167,7 @@ export function CompanyDetailPage({ data, reload }: { data: Bootstrap; reload: (
         <header className="by-company-hero">
           <div className="by-company-title-line">
             <span className="by-company-inline-image"><CompanyMark company={company} /></span>
-            <div><h1>{companyName}</h1><p>{company.englishName || "GalaxySpace"}<span />别名：{company.standardName}</p><div>{company.positions.slice(0, 3).map((position) => <span key={position.nodeId}>{data.industryNodes.find((node) => node.id === position.nodeId)?.name}</span>)}</div></div>
+            <div><h1>{companyName}</h1><p>{company.englishName || company.standardName}<span />标准名称：{company.standardName}</p><div>{company.positions.slice(0, 3).map((position) => <span key={position.nodeId}>{data.industryNodes.find((node) => node.id === position.nodeId)?.name}</span>)}</div></div>
           </div>
           <p>{company.description}</p>
           <div className="by-company-actions"><button onClick={() => navigate("/")}><Sparkles />发起研究</button><button><Upload />上传材料</button><button onClick={updateAttention}><Star />{company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>

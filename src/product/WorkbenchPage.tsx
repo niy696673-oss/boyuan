@@ -54,7 +54,7 @@ export function WorkbenchPage({
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [activeStep, setActiveStep] = useState(7);
+  const [activeStep, setActiveStep] = useState(0);
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [conversationFilter, setConversationFilter] = useState<"全部" | ContextType>("全部");
 
@@ -260,15 +260,15 @@ function ConversationRail({
       </div>
       <div className="by-conversation-list">
         <span>最近对话</span>
-        {visibleTasks.map((task, index) => {
+        {visibleTasks.map((task) => {
           const company = data.companies.find((item) => item.id === task.companyId);
           const pending = company?.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status)).length || 0;
           return (
             <button className={activeTaskId === task.id ? "active" : ""} key={task.id} onClick={() => onOpen(task)}>
               <FileText />
               <span>
-                <strong>{index === 0 && company ? `${company.aliases[0] || company.standardName}商业计划书｜${company.aliases[0] || company.standardName}` : task.query}</strong>
-                <small><em>飞书</em>{relativeTime(task.createdAt)}</small>
+                <strong>{task.query}</strong>
+                <small><em>工作台</em>{relativeTime(task.createdAt)}</small>
               </span>
               <StatusMark status={task.status} count={pending} />
             </button>
@@ -289,9 +289,9 @@ function QuickActions({
 }) {
   const actions = [
     { icon: FileStack, title: "分析一份材料", detail: "提炼要点、核验事实", action: onUpload },
-    { icon: Building2, title: "研究一家公司", detail: "复用材料与历史认知", action: () => onFill("公司", "帮我了解银河航天") },
+    { icon: Building2, title: "研究一家公司", detail: "复用材料与历史认知", action: () => onFill("公司", "请输入公司名称和希望了解的问题") },
     { icon: ListChecks, title: "处理公司名单", detail: "批量识别与建立档案", action: () => onFill("材料", "识别并处理这份公司名单") },
-    { icon: Globe2, title: "研究一个行业", detail: "材料、公司与产业位置", action: () => onFill("行业", "梳理商业航天行业") },
+    { icon: Globe2, title: "研究一个行业", detail: "材料、公司与产业位置", action: () => onFill("行业", "请输入行业名称和希望研究的范围") },
   ];
   return (
     <div className="by-quick-actions" aria-label="快捷研究任务">
@@ -311,15 +311,19 @@ function RecentTasks({ data, onOpen }: { data: Bootstrap; onOpen: (task: Researc
     <section className="by-recent-tasks">
       <header><h2>近期任务</h2><button>查看全部<ChevronRight /></button></header>
       <div>
-        {rows.map((task, index) => (
-          <button key={task.id} onClick={() => onOpen(task)}>
-            <span className="by-task-kind">{index % 3 === 0 ? <FileText /> : index % 3 === 1 ? <Building2 /> : <Globe2 />}</span>
-            <span><strong>{task.query}</strong><small>飞书 · {relativeTime(task.createdAt)}</small></span>
-            <span className="by-task-progress"><i style={{ width: `${index === 0 ? 65 : 100}%` }} />{index === 0 ? "处理中 65%" : task.status}</span>
-            <StatusMark status={task.status} count={index === 0 ? 6 : index === 1 ? 5 : 0} />
+        {rows.map((task) => {
+          const company = data.companies.find((item) => item.id === task.companyId);
+          const pending = company?.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status)).length || 0;
+          const progress = task.steps.length ? Math.round(task.steps.filter((step) => step.status === "done").length / task.steps.length * 100) : 0;
+          return <button key={task.id} onClick={() => onOpen(task)}>
+            <span className="by-task-kind">{task.companyId ? <Building2 /> : <FileText />}</span>
+            <span><strong>{task.query}</strong><small>工作台 · {relativeTime(task.createdAt)}</small></span>
+            <span className="by-task-progress"><i style={{ width: `${progress}%` }} />{task.status}</span>
+            <StatusMark status={task.status} count={pending} />
             <ChevronRight />
-          </button>
-        ))}
+          </button>;
+        })}
+        {!rows.length && <p className="by-inline-empty">暂无研究任务，从上方输入问题或上传材料开始。</p>}
       </div>
     </section>
   );
@@ -354,6 +358,11 @@ function ActiveConversation({
 }) {
   const { company, task } = research;
   const evidence = company.evidence;
+  const companyName = company.aliases[0] || company.standardName;
+  const primaryEvidence = evidence[0];
+  const primaryFileName = primaryEvidence?.fileName || `${companyName}研究材料`;
+  const industryName = company.positions.map((position) => data.industryNodes.find((node) => node.id === position.nodeId)?.name).find(Boolean);
+  const externalClaims = company.claims.filter((claim) => claim.type === "external_view");
   const pendingCount = company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status)).length;
   return (
     <section className="by-active-conversation">
@@ -361,8 +370,8 @@ function ActiveConversation({
         <header className="by-context-bar">
           <span className="by-file-mark"><FileText /></span>
           <div>
-            <h1>{company.aliases[0] || company.standardName}商业计划书.pdf <em>BP</em></h1>
-            <p>来源：<strong>飞书</strong><span />接收时间：今天 10:24<span />公司：{company.aliases[0] || company.standardName}<span />行业：商业航天</p>
+            <h1>{primaryFileName}</h1>
+            <p>来源：<strong>{primaryEvidence ? "机构材料" : "研究任务"}</strong><span />创建时间：{new Date(task.createdAt).toLocaleString("zh-CN")}<span />公司：{companyName}{industryName && <><span />行业：{industryName}</>}</p>
           </div>
           <span className="by-archive-state"><Check />已自动归档</span>
           <button><ExternalLink />打开原文</button>
@@ -370,19 +379,19 @@ function ActiveConversation({
         </header>
 
         <div className="by-conversation-stream">
-          <TimelineItem icon={<FileText />} title="原始材料" state="已保存 · 10:24">
+          <TimelineItem icon={<FileText />} title="原始材料" state={primaryEvidence ? "已保存" : "等待上传"}>
             <button className="by-file-row" onClick={() => evidence[0] && onEvidence(evidence[0])}>
-              <FileText /><span><strong>{company.aliases[0] || company.standardName}商业计划书.pdf</strong><small>18.4 MB · 原始证据</small></span><BookOpen />
+              <FileText /><span><strong>{primaryFileName}</strong><small>{primaryEvidence ? `${primaryEvidence.sourceDate} · 原始证据` : "尚未关联原始材料"}</small></span><BookOpen />
             </button>
           </TimelineItem>
-          <TimelineItem icon={<FileCheck2 />} title="文件解析" state="已完成 · 10:24">
-            <p className="by-process-line">共 88 页，已识别正文、表格与图表；材料分类为 BP。</p>
+          <TimelineItem icon={<FileCheck2 />} title="文件解析" state={primaryEvidence ? "已完成" : "等待材料"}>
+            <p className="by-process-line">{task.steps.find((step) => /检索|材料|解析/.test(step.name))?.detail || "上传材料后将自动解析正文、表格与图表。"}</p>
           </TimelineItem>
-          <TimelineItem icon={<Sparkles />} title="AI 分析" state="已完成 · 10:27" source="AI 候选">
+          <TimelineItem icon={<Sparkles />} title="AI 分析" state={task.answer ? "已完成" : "等待生成"} source="AI 候选">
             <article className="by-analysis-card">
               <section>
                 <h3>材料摘要</h3>
-                <p>{task.answer?.text || company.description} 当前分析围绕公司定位、产品技术、市场空间、商业模式、团队与融资展开，所有事实均可回到原始材料。</p>
+                <p>{task.answer?.text || company.description || "当前尚未形成分析摘要。补充材料后，系统将生成带有证据引用的候选内容。"}</p>
               </section>
               <section>
                 <h3>核心信息</h3>
@@ -392,20 +401,21 @@ function ActiveConversation({
                       <span>{claim.category}</span><p>{claim.text}</p><small><FileSearch />{claim.evidenceIds.length} 条证据</small>
                     </button>
                   ))}
+                  {!company.claims.length && <p className="by-inline-empty">暂无候选信息，所有结论必须在材料进入后基于证据生成。</p>}
                 </div>
               </section>
               <section>
                 <h3>风险与待验证</h3>
-                <ul><li>规模化交付进度仍需外部信息交叉验证</li><li>商业订单和客户付费转化需要持续跟踪</li></ul>
+                <ul>{company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status)).slice(0, 4).map((claim) => <li key={claim.id}>{claim.text}</li>)}{!pendingCount && <li>暂无待验证事项</li>}</ul>
               </section>
-              <button className="by-candidate-entry">形成 {pendingCount || 6} 条候选知识<ChevronRight /></button>
+              <button className="by-candidate-entry">{pendingCount} 条候选知识待确认<ChevronRight /></button>
             </article>
           </TimelineItem>
-          <TimelineItem icon={<Globe2 />} title="Web Search 核验" state="已完成 · 10:33" source="外部候选">
+          <TimelineItem icon={<Globe2 />} title="Web Search 核验" state={externalClaims.length ? "已完成" : "暂无外部候选"} source="外部候选">
             <article className="by-web-card">
-              <div><span>SpaceNews</span><p>银河航天完成新一轮融资，公开报道金额与材料表述存在差异。</p><time>2024-12-12</time><ExternalLink /></div>
-              <div><span>界面新闻</span><p>银河航天公布下一阶段卫星发射与产能规划。</p><time>2024-11-20</time><ExternalLink /></div>
-              <button><CircleAlert />发现 1 处冲突：融资金额与 BP 表述不一致<span>查看详情<ChevronRight /></span></button>
+              {externalClaims.map((claim) => <div key={claim.id}><span>外部来源</span><p>{claim.text}</p><time>{claim.eventTime || "待补充日期"}</time><ExternalLink /></div>)}
+              {!externalClaims.length && <p className="by-inline-empty">尚未执行外部信息核验，系统不会生成虚构来源。</p>}
+              {externalClaims.some((claim) => claim.status === "disputed") && <button><CircleAlert />发现外部信息与内部材料存在冲突<span>查看详情<ChevronRight /></span></button>}
             </article>
           </TimelineItem>
         </div>
@@ -456,34 +466,26 @@ function TaskRail({
   onStep: (step: number) => void;
   onReview: () => void;
 }) {
-  const steps = [
-    ["文件接收", "原始文件已安全保存", "10:24"],
-    ["文件解析", "88 页内容已结构化", "10:24"],
-    ["材料分类", "已识别为 BP", "10:24"],
-    ["公司识别", "匹配银河航天主体", "10:25"],
-    ["BP 归档", "已归入公司材料", "10:25"],
-    ["材料分析", "生成摘要与候选知识", "10:27"],
-    ["外部核验", "完成 2 个来源核验", "10:33"],
-    ["候选知识确认", `${pending || 6} 项等待人工判断`, "待处理"],
-  ];
+  const steps = task.steps.map((step) => ({ name: step.name, detail: step.detail, status: step.status }));
+  if (pending > 0 && !steps.some((step) => step.name.includes("确认"))) steps.push({ name: "候选知识确认", detail: `${pending} 项等待人工判断`, status: "needs-review" });
   return (
     <aside className="by-task-rail">
       <div className="by-task-rail-inner">
         <h2>当前任务进度</h2>
         <div className="by-step-accordion">
-          {steps.map(([name, detail, time], index) => (
-            <button className={`${activeStep === index ? "active" : ""} ${index === 7 ? "pending" : "done"}`} key={name} onClick={() => onStep(index)}>
-              <span>{index === 7 ? pending || 6 : <Check />}</span>
-              <strong>{name}</strong>
-              <time>{time}</time>
+          {steps.map((step, index) => (
+            <button className={`${activeStep === index ? "active" : ""} ${step.status === "done" ? "done" : "pending"}`} key={`${step.name}-${index}`} onClick={() => onStep(index)}>
+              <span>{step.status === "done" ? <Check /> : step.name.includes("确认") ? pending : <Clock3 />}</span>
+              <strong>{step.name}</strong>
+              <time>{step.status === "done" ? "已完成" : step.status === "running" ? "进行中" : "待处理"}</time>
               <ChevronDown />
-              {activeStep === index && <p>{detail}</p>}
+              {activeStep === index && <p>{step.detail}</p>}
             </button>
           ))}
         </div>
         <section className="by-task-review-card">
           <span>待处理事项</span>
-          <strong>{pending || 6} 项候选知识等待确认</strong>
+          <strong>{pending} 项候选知识等待确认</strong>
           <button onClick={onReview}>处理待确认</button>
         </section>
         <button className="by-task-detail"><ListChecks />查看执行详情</button>

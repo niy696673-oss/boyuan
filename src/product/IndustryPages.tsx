@@ -28,18 +28,20 @@ export function IndustriesPage({ data }: { data: Bootstrap }) {
   const roots = data.industryNodes.filter((node) => node.parentId === null || node.level === 0);
   const visibleRoots = roots.length ? roots : data.industryNodes.filter((node) => node.level === 1);
   const industries = visibleRoots.filter((node) => node.name.includes(query));
+  const unclassifiedMaterials = data.companies.flatMap((company) => company.evidence).filter((evidence) => !evidence.documentId).length;
+  const pendingPositions = data.companies.filter((company) => !company.positions.some((position) => position.status === "confirmed")).length;
   return (
     <div className="by-industry-index">
       <aside className="by-industry-sidebar">
         <header><span>行业目录</span><strong>{visibleRoots.length} 个一级行业</strong></header>
         <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索行业或产业节点" /></label>
         <nav>{visibleRoots.map((node) => <button key={node.id} onClick={() => navigate(`/industry/${node.id}`)}><span>{node.name}</span><em>{companiesForNode(data, node.id).length}</em><ChevronRight /></button>)}</nav>
-        <section><h3>待处理</h3><button><FileSearch />待分类材料<em>8</em></button><button><Network />位置待确认<em>12</em></button></section>
+        <section><h3>待处理</h3><button><FileSearch />待分类材料<em>{unclassifiedMaterials}</em></button><button><Network />位置待确认<em>{pendingPositions}</em></button></section>
       </aside>
       <section className="by-industry-main">
         <header className="by-page-heading"><div><span>行业知识入口</span><h1>行业</h1><p>一期以材料收集和检索为中心，产业链用于组织公司与知识。</p></div><div><button><Upload />上传行业材料</button><button className="primary"><Sparkles />发起行业研究</button></div></header>
         <div className="by-directory-toolbar"><span><Filter />按材料与公司活跃度浏览</span><select aria-label="行业排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近更新</option><option>材料数量</option><option>公司数量</option></select></div>
-        <div className="by-industry-cards">{industries.map((industry) => <IndustryCard key={industry.id} industry={industry} data={data} onOpen={() => navigate(`/industry/${industry.id}`)} />)}</div>
+        <div className="by-industry-cards">{industries.map((industry) => <IndustryCard key={industry.id} industry={industry} data={data} onOpen={() => navigate(`/industry/${industry.id}`)} />)}{!industries.length && <section className="by-catalog-empty"><Globe2 /><h2>还没有行业资料</h2><p>上传行业材料或发起行业研究后，可以在这里建立产业链骨架。</p><button className="primary"><Upload />上传行业材料</button></section>}</div>
         <section className="by-latest-materials"><header><div><h2>最新行业材料</h2><p>材料是行业研究的一期主要入口。</p></div><button>查看全部<ChevronRight /></button></header><div>{data.companies.flatMap((company) => company.evidence.map((evidence) => ({ evidence, company }))).slice(0, 6).map(({ evidence, company }) => <button key={evidence.id}><FileText /><span><strong>{evidence.fileName}</strong><small>{company.aliases[0] || company.standardName} · {evidence.sourceDate}</small></span><em>已分析</em><ChevronRight /></button>)}</div></section>
       </section>
     </div>
@@ -56,8 +58,13 @@ function IndustryCard({ industry, data, onOpen }: { industry: IndustryNode; data
 
 export function IndustryDetailPage({ data }: { data: Bootstrap }) {
   const { id } = useParams();
-  const navigate = useNavigate();
   const industry = data.industryNodes.find((node) => node.id === id) || data.industryNodes[0];
+  if (!industry) return <section className="by-empty-page"><Globe2 /><h1>还没有行业资料</h1><p>请先上传行业材料，或从工作台发起行业研究。</p><Link to="/industry">返回行业</Link></section>;
+  return <IndustryDetailContent data={data} industry={industry} />;
+}
+
+function IndustryDetailContent({ data, industry }: { data: Bootstrap; industry: IndustryNode }) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("概览");
   const descendants = useMemo(() => collectDescendants(data.industryNodes, industry.id), [data.industryNodes, industry.id]);
   const companies = data.companies.filter((company) => company.positions.some((position) => [industry.id, ...descendants.map((node) => node.id)].includes(position.nodeId)));

@@ -23,54 +23,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.join(root, "data");
 const dataFile = path.join(dataDir, "demo-store.json");
 
-const seededDocuments = (): DocumentRecord[] => {
-  const byId = new Map<string, DocumentRecord>();
-  for (const company of companies)
-    for (const evidence of company.evidence)
-      if (!byId.has(evidence.documentId))
-        byId.set(evidence.documentId, {
-          id: evidence.documentId,
-          fileName: evidence.fileName,
-          fileType: evidence.fileName.split(".").pop() || "md",
-          fileHash: `seed-${evidence.documentId}`,
-          size: 1024,
-          status: "已索引",
-          detectedCompanies: [company.aliases[0] || company.standardName],
-          visibility: evidence.visibility,
-          uploadedBy: "u-admin",
-          uploadedAt: `${evidence.sourceDate}T09:00:00.000Z`,
-          statusTrace: [
-            { status: "待解析", at: `${evidence.sourceDate}T08:59:57.000Z` },
-            { status: "解析中", at: `${evidence.sourceDate}T08:59:58.000Z` },
-            { status: "已解析", at: `${evidence.sourceDate}T08:59:59.000Z` },
-            { status: "已索引", at: `${evidence.sourceDate}T09:00:00.000Z` },
-          ],
-        });
-  let index = 1;
-  while (byId.size < 84) {
-    const id = `d-external-${index++}`;
-    byId.set(id, {
-      id,
-      fileName: `Demo模拟外部资料_${index}.md`,
-      fileType: "md",
-      fileHash: `seed-${id}`,
-      size: 768,
-      status: "已索引",
-      detectedCompanies: [],
-      visibility: "organization",
-      uploadedBy: "u-admin",
-      uploadedAt: "2026-08-01T09:00:00.000Z",
-      statusTrace: [
-        { status: "待解析", at: "2026-08-01T08:59:57.000Z" },
-        { status: "解析中", at: "2026-08-01T08:59:58.000Z" },
-        { status: "已解析", at: "2026-08-01T08:59:59.000Z" },
-        { status: "已索引", at: "2026-08-01T09:00:00.000Z" },
-      ],
-    });
-  }
-  return [...byId.values()];
-};
-
 export interface StoreData {
   users: User[];
   companies: Company[];
@@ -94,23 +46,12 @@ export const initialStoreData = (): StoreData => ({
   industryEdges: structuredClone(industryEdges),
   tasks: structuredClone(tasks),
   audits: structuredClone(audits),
-  documents: seededDocuments(),
-  entityCandidates: [
-    {
-      id: "ec-1",
-      rawName: "长光",
-      candidateCompanyIds: ["c-charming"],
-      reason: "名称过短，需要确认是否为长光卫星",
-      status: "pending",
-      createdAt: "2026-08-06T07:20:00.000Z",
-    },
-  ],
+  documents: [],
+  entityCandidates: [],
   settings: {
     externalModelsEnabled: false,
-    knowledgeSource:
-      "knowledge_sources/商业航天/【余香斋】【商业航天】图谱.pdf",
-    sourceHash:
-      "fc8f91e129a5a0b2008d2607bb909c1f6d71c0fc68fd776d1934aa7b5db63ef4",
+    knowledgeSource: "",
+    sourceHash: "",
   },
 });
 

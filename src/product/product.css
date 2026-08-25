@@ -357,6 +357,12 @@ svg { width: 18px; height: 18px; stroke-width: 1.8; }
 .by-directory-toolbar button, .by-directory-toolbar select { height: 30px; padding-inline: 9px; outline: 0; }
 .by-directory-toolbar button.active { color: var(--by-accent); background: var(--by-accent-soft); }
 .by-company-grid { display: grid; grid-auto-flow: dense; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 13px; margin-top: 18px; }
+.by-catalog-empty { grid-column: 1 / -1; display: grid; min-height: 300px; place-content: center; justify-items: center; padding: 36px; border: 1px dashed var(--by-line-strong); border-radius: 14px; color: var(--by-muted); background: #fff; text-align: center; }
+.by-catalog-empty > svg { width: 26px; height: 26px; margin-bottom: 12px; color: var(--by-accent); }
+.by-catalog-empty h2 { margin: 0; color: var(--by-ink); font-size: 18px; }
+.by-catalog-empty p { max-width: 42ch; margin: 8px 0 18px; font-size: 10px; line-height: 1.8; }
+.by-catalog-empty button { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: 0; border-radius: 8px; color: #fff; background: var(--by-accent); }
+.by-catalog-empty button svg { width: 13px; }
 .by-company-grid.rows { grid-template-columns: 1fr; }
 .by-company-card { display: flex; min-width: 0; min-height: 280px; flex-direction: column; padding: 17px; border: 1px solid var(--by-line); border-radius: 12px; background: #fff; outline: 0; transition: transform 220ms cubic-bezier(.2,.8,.2,1), border-color 220ms ease, box-shadow 220ms ease; }
 .by-company-card:hover, .by-company-card:focus { border-color: #b9cde4; box-shadow: 0 12px 30px rgba(16,39,71,.08); transform: translateY(-3px); }
