@@ -22,7 +22,6 @@ import {
   ListChecks,
   MapPin,
   Network,
-  Pencil,
   Plus,
   Search,
   ShieldCheck,
@@ -52,6 +51,9 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
   const navigate = useNavigate();
   const [directory, setDirectory] = useState<CompanyView[] | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [watchingCompanyId, setWatchingCompanyId] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
+  const actionController = useRef<AbortController | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CompanyFilter>("全部");
   const [sort, setSort] = useState("最近更新");
@@ -67,6 +69,44 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
       });
     return () => controller.abort();
   }, [companyClient]);
+
+  useEffect(() => () => actionController.current?.abort(), []);
+
+  const toggleWatched = async (company: CompanyView) => {
+    actionController.current?.abort();
+    const controller = new AbortController();
+    actionController.current = controller;
+    setWatchingCompanyId(company.id);
+    setActionNotice("");
+    try {
+      const detail = await companyClient.setWatched(
+        company.id,
+        {
+          watched: company.attentionStatus === "未关注",
+          expectedVersion: company.version,
+        },
+        controller.signal,
+      );
+      const updated = companyDetailView(detail);
+      setDirectory((current) =>
+        current?.map((item) => (item.id === updated.id ? updated : item)) ||
+        null,
+      );
+      setActionNotice(
+        updated.attentionStatus === "未关注"
+          ? `已取消关注${company.aliases[0] || company.standardName}`
+          : `已关注${company.aliases[0] || company.standardName}`,
+      );
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") {
+        setActionNotice(
+          error instanceof Error ? error.message : "关注状态更新失败",
+        );
+      }
+    } finally {
+      setWatchingCompanyId("");
+    }
+  };
 
   useGSAP(
     () => {
@@ -120,6 +160,7 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
           <div><span>机构公司主体</span><h1>公司</h1><p>浏览已接触、研究或由材料自动建档的长期公司主体。</p></div>
           <div><button onClick={() => navigate("/companies/import")}><ListChecks />导入名单</button><button className="primary"><Plus />新建公司</button></div>
         </header>
+        {actionNotice && <p role="status">{actionNotice}</p>}
         <div className="by-directory-toolbar">
           <span><Filter />当前显示 {companies.length} 家公司</span>
           <div>
@@ -129,7 +170,7 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
           </div>
         </div>
         <div className={`by-company-grid ${view}`}>
-          {companies.map((company) => <CompanyCard company={company} data={data} key={company.id} onOpen={() => navigate(`/companies/${company.id}`)} />)}
+          {companies.map((company) => <CompanyCard company={company} data={data} key={company.id} watching={watchingCompanyId === company.id} onWatch={() => void toggleWatched(company)} onOpen={() => navigate(`/companies/${company.id}`)} />)}
           {!companies.length && <section className="by-catalog-empty"><Building2 /><h2>还没有公司档案</h2><p>上传材料、导入公司名单，或从工作台发起研究后，公司会在这里持续沉淀。</p><button className="primary" onClick={() => navigate("/companies/import")}><ListChecks />导入公司名单</button></section>}
         </div>
       </section>
@@ -137,12 +178,12 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
   );
 }
 
-function CompanyCard({ company, data: _data, onOpen }: { company: CompanyView; data: Bootstrap; onOpen: () => void }) {
+function CompanyCard({ company, data: _data, watching, onWatch, onOpen }: { company: CompanyView; data: Bootstrap; watching: boolean; onWatch: () => void; onOpen: () => void }) {
   const pending = company.pendingCandidateCount;
   const positions = company.industryTags.slice(0, 2);
   return (
     <article className="by-company-card" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}>
-      <header><CompanyMark company={company} /><div><h2>{company.aliases[0] || company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label="关注公司"><Star /></button></header>
+      <header><CompanyMark company={company} /><div><h2>{company.aliases[0] || company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.aliases[0] || company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></header>
       <p className="by-company-description">{company.description || "基础档案，等待补充已确认认知。"}</p>
       <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
       <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
@@ -297,7 +338,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
             <div><h1>{companyName}</h1><p>{company.englishName || company.standardName}<span />标准名称：{company.standardName}</p><div>{company.industryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div></div>
           </div>
           <p>{company.description}</p>
-          <div className="by-company-actions"><button onClick={() => navigate("/")}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
+          <div className="by-company-actions"><button onClick={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
           <input ref={fileInput} hidden type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
           {actionNotice && <p role="status">{actionNotice}</p>}
           <dl><div><dt>归档状态</dt><dd><Check />已自动归档</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
@@ -330,7 +371,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
         {tab === "材料" && <CompanyMaterials company={company} uploading={uploading} onUpload={() => fileInput.current?.click()} />}
         {tab === "已确认知识" && <CompanyClaims claims={confirmed} title="已确认知识" />}
         {tab === "待确认" && <CompanyClaims claims={pending} title="待确认候选知识" />}
-        {tab === "研究记录" && <CompanyResearch company={company} />}
+        {tab === "研究记录" && <CompanyResearch company={company} onResearch={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)} />}
         {tab === "产业关系" && <IndustryLane company={company} expanded />}
       </section>
     </div>
@@ -395,8 +436,8 @@ function CompanyClaims({ claims, title }: { claims: Claim[]; title: string }) {
   return <section className="by-tab-panel"><header><div><h2>{title}</h2><p>每条陈述都保留来源、版本和处理记录。</p></div></header><div className="by-claim-table">{claims.length ? claims.map((claim) => <article key={claim.id}><header><span>{claim.category}</span><em className={claim.status}>{claim.status}</em></header><p>{claim.text}</p><footer><span><FileSearch />{claim.evidenceIds.length} 条证据</span><span>版本 {claim.version}</span><button>{claim.status === "confirmed" ? "查看证据" : "开始确认"}<ChevronRight /></button></footer></article>) : <div className="by-inline-empty">暂无符合条件的知识陈述</div>}</div></section>;
 }
 
-function CompanyResearch({ company }: { company: CompanyView }) {
-  return <section className="by-tab-panel"><header><div><h2>研究记录</h2><p>复用历史任务上下文，减少重复上传和解释。</p></div><button className="primary"><Sparkles />发起公司研究</button></header><div className="by-research-list">{company.researchRecords.map((record) => <button key={record.runId}><span><Sparkles /></span><div><strong>{record.intent}</strong><small>研究平台 · {relativeDate(record.updatedAt)}</small></div><em>{platformTaskStatus(record.status)}</em><ChevronRight /></button>)}</div></section>;
+function CompanyResearch({ company, onResearch }: { company: CompanyView; onResearch: () => void }) {
+  return <section className="by-tab-panel"><header><div><h2>研究记录</h2><p>复用历史任务上下文，减少重复上传和解释。</p></div><button className="primary" onClick={onResearch}><Sparkles />发起公司研究</button></header><div className="by-research-list">{company.researchRecords.map((record) => <button key={record.runId}><span><Sparkles /></span><div><strong>{record.intent}</strong><small>研究平台 · {relativeDate(record.updatedAt)}</small></div><em>{platformTaskStatus(record.status)}</em><ChevronRight /></button>)}</div></section>;
 }
 
 export function CompanyImportPage({ data: _data, reload, companyListClient = defaultCompanyListClient }: { data: Bootstrap; reload: () => void; companyListClient?: CompanyListClient }) {
@@ -404,8 +445,14 @@ export function CompanyImportPage({ data: _data, reload, companyListClient = def
   const inputRef = useRef<HTMLInputElement>(null);
   const actionController = useRef<AbortController | null>(null);
   const [result, setResult] = useState<CompanyListRecordV1 | null>(null);
+  const [companySelections, setCompanySelections] = useState<Record<string, string>>({});
+  const [nameCorrections, setNameCorrections] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const rowsToConfirm = useMemo(
+    () => resolveCompanyListRows(result?.rows || [], companySelections, nameCorrections),
+    [companySelections, nameCorrections, result],
+  );
   useEffect(() => () => actionController.current?.abort(), []);
   const importFile = async (file?: File) => {
     if (!file) return;
@@ -415,6 +462,8 @@ export function CompanyImportPage({ data: _data, reload, companyListClient = def
     setBusy(true);
     setNotice(`正在识别 ${file.name}…`);
     setResult(null);
+    setCompanySelections({});
+    setNameCorrections({});
     try {
       const uploaded = await companyListClient.upload(file, controller.signal);
       for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -442,9 +491,9 @@ export function CompanyImportPage({ data: _data, reload, companyListClient = def
   };
   const confirmRows = async () => {
     if (!result) return;
-    const rows = confirmableCompanyListRows(result.rows);
+    const rows = rowsToConfirm;
     if (!rows.length) {
-      setNotice("没有可自动确认的名单行；同名公司需要人工选择");
+      setNotice("请选择同名公司主体，或修正识别失败的公司名称");
       return;
     }
     actionController.current?.abort();
@@ -455,6 +504,8 @@ export function CompanyImportPage({ data: _data, reload, companyListClient = def
     try {
       const updated = await companyListClient.confirm(result.listId, rows, controller.signal);
       setResult(updated);
+      setCompanySelections({});
+      setNameCorrections({});
       setNotice(`已确认 ${rows.length} 家公司并写入档案`);
       reload();
     } catch (error) {
@@ -464,7 +515,31 @@ export function CompanyImportPage({ data: _data, reload, companyListClient = def
     }
   };
   return (
-    <section className="by-import-page"><header><button onClick={() => navigate("/companies")}><ArrowLeft />返回公司</button><div><span>公司名单处理</span><h1>批量识别并建立公司主体</h1><p>原始名单始终保留；系统会区分已有、新建、同名待确认和识别失败。</p></div></header><div className="by-import-drop"><ListChecks /><h2>{busy ? "正在处理名单…" : "上传公司名单"}</h2><p>支持 CSV 和 XLSX 文件。上传后可确认主体，再选择重点公司发起研究。</p><button className="primary" disabled={busy} onClick={() => inputRef.current?.click()}><Upload />选择文件</button><input ref={inputRef} hidden type="file" accept=".csv,.xlsx" onChange={(event) => void importFile(event.target.files?.[0])} /></div>{notice && <p role="status">{notice}</p>}{result && <div className="by-import-result"><header><h2>识别结果</h2><span>共 {result.rows.length} 行</span></header><div className="by-import-stats"><span><strong>{result.rows.filter((item) => item.matchStatus === "existing").length}</strong>已有公司</span><span><strong>{result.rows.filter((item) => item.matchStatus === "new").length}</strong>新建公司</span><span><strong>{result.rows.filter((item) => item.matchStatus === "ambiguous").length}</strong>同名待确认</span><span><strong>{result.rows.filter((item) => item.matchStatus === "failed").length}</strong>识别失败</span></div>{result.rows.map((item) => <div className="by-import-row" key={item.rowId}><input type="checkbox" aria-label={`选择 ${item.originalValue}`} checked={isAutoConfirmableCompanyListRow(item)} readOnly /><strong>{item.originalValue}</strong><span>{item.company?.canonicalName || item.options.map((option) => option.canonicalName).join(" / ") || item.normalizedName || "等待选择主体"}</span><em>{companyListRowStatus(item)}</em><button disabled={item.matchStatus !== "ambiguous"}><Pencil />{item.matchStatus === "ambiguous" ? "人工选择" : "无需处理"}</button></div>)}<button className="primary" disabled={busy || !confirmableCompanyListRows(result.rows).length} onClick={() => void confirmRows()}><Check />确认可识别公司并入库</button></div>}</section>
+    <section className="by-import-page"><header><button onClick={() => navigate("/companies")}><ArrowLeft />返回公司</button><div><span>公司名单处理</span><h1>批量识别并建立公司主体</h1><p>原始名单始终保留；系统会区分已有、新建、同名待确认和识别失败。</p></div></header><div className="by-import-drop"><ListChecks /><h2>{busy ? "正在处理名单…" : "上传公司名单"}</h2><p>支持 CSV 和 XLSX 文件。上传后可确认主体，再选择重点公司发起研究。</p><button className="primary" disabled={busy} onClick={() => inputRef.current?.click()}><Upload />选择文件</button><input ref={inputRef} hidden type="file" accept=".csv,.xlsx" onChange={(event) => void importFile(event.target.files?.[0])} /></div>{notice && <p role="status">{notice}</p>}{result && <div className="by-import-result"><header><h2>识别结果</h2><span>共 {result.rows.length} 行</span></header><div className="by-import-stats"><span><strong>{result.rows.filter((item) => item.matchStatus === "existing").length}</strong>已有公司</span><span><strong>{result.rows.filter((item) => item.matchStatus === "new").length}</strong>新建公司</span><span><strong>{result.rows.filter((item) => item.matchStatus === "ambiguous").length}</strong>同名待确认</span><span><strong>{result.rows.filter((item) => item.matchStatus === "failed").length}</strong>识别失败</span></div>{result.rows.map((item) => <CompanyImportRow row={item} busy={busy} selectedCompanyId={companySelections[item.rowId] || ""} correctedName={nameCorrections[item.rowId] || ""} key={item.rowId} onSelectCompany={(companyId) => setCompanySelections((current) => ({ ...current, [item.rowId]: companyId }))} onCorrectName={(name) => setNameCorrections((current) => ({ ...current, [item.rowId]: name }))} onResearch={(companyId) => navigate(`/?companyId=${encodeURIComponent(companyId)}`)} />)}<button className="primary" disabled={busy || !rowsToConfirm.length} onClick={() => void confirmRows()}><Check />确认可识别公司并入库</button></div>}</section>
+  );
+}
+
+function CompanyImportRow({ row, busy, selectedCompanyId, correctedName, onSelectCompany, onCorrectName, onResearch }: { row: CompanyListRowV1; busy: boolean; selectedCompanyId: string; correctedName: string; onSelectCompany: (companyId: string) => void; onCorrectName: (name: string) => void; onResearch: (companyId: string) => void }) {
+  const selected = row.confirmationStatus === "confirmed" || isAutoConfirmableCompanyListRow(row) || Boolean(selectedCompanyId || correctedName.trim());
+  return (
+    <div className="by-import-row">
+      <input type="checkbox" aria-label={`选择 ${row.originalValue}`} checked={selected} readOnly />
+      <strong>{row.originalValue}</strong>
+      <span>{row.company?.canonicalName || row.options.map((option) => option.canonicalName).join(" / ") || row.normalizedName || "等待选择主体"}</span>
+      <em>{companyListRowStatus(row)}</em>
+      {row.confirmationStatus === "confirmed" && row.company ? (
+        <button disabled={busy} onClick={() => onResearch(row.company!.companyId)}><Sparkles />发起研究</button>
+      ) : row.matchStatus === "ambiguous" ? (
+        <select aria-label={`选择 ${row.originalValue} 的公司主体`} disabled={busy} value={selectedCompanyId} onChange={(event) => onSelectCompany(event.target.value)}>
+          <option value="">选择公司主体</option>
+          {row.options.map((option) => <option value={option.companyId} key={option.companyId}>{option.canonicalName}</option>)}
+        </select>
+      ) : row.matchStatus === "failed" ? (
+        <input aria-label={`修正 ${row.originalValue} 的公司名称`} disabled={busy} value={correctedName} placeholder="输入正确公司全称" onChange={(event) => onCorrectName(event.target.value)} />
+      ) : (
+        <button disabled>无需处理</button>
+      )}
+    </div>
   );
 }
 
@@ -512,11 +587,15 @@ function abortableDelay(durationMs: number, signal: AbortSignal) {
       reject(new DOMException("Aborted", "AbortError"));
       return;
     }
-    const timer = window.setTimeout(resolve, durationMs);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       window.clearTimeout(timer);
       reject(new DOMException("Aborted", "AbortError"));
-    }, { once: true });
+    };
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, durationMs);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -526,6 +605,21 @@ function relativeDate(value: string) {
 
 function isAutoConfirmableCompanyListRow(row: CompanyListRowV1) {
   return row.confirmationStatus === "pending" && (row.matchStatus === "existing" || row.matchStatus === "new");
+}
+
+function resolveCompanyListRows(rows: CompanyListRowV1[], companySelections: Record<string, string>, nameCorrections: Record<string, string>) {
+  const resolved = confirmableCompanyListRows(rows);
+  for (const row of rows) {
+    if (row.confirmationStatus !== "pending") continue;
+    const companyId = companySelections[row.rowId];
+    const createName = nameCorrections[row.rowId]?.trim();
+    if (row.matchStatus === "ambiguous" && companyId) {
+      resolved.push({ rowId: row.rowId, expectedVersion: row.version, companyId });
+    } else if (row.matchStatus === "failed" && createName) {
+      resolved.push({ rowId: row.rowId, expectedVersion: row.version, createName });
+    }
+  }
+  return resolved;
 }
 
 function companyListRowStatus(row: CompanyListRowV1) {

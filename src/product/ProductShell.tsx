@@ -160,6 +160,7 @@ export function ProductShell({
               <WorkbenchPage
                 data={data}
                 reload={reload}
+                companyClient={companyClient}
                 persistentPendingCount={pendingCount}
               />
             }

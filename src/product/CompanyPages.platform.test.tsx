@@ -41,6 +41,31 @@ describe("持久公司目录页面", () => {
     expect(client.list).toHaveBeenCalledOnce();
   });
 
+  it("列表关注按钮直接写入 SQLite，并且不会打开公司详情", async () => {
+    const client = fakeClient();
+    const watched = companyDetail();
+    watched.version = 3;
+    watched.profile.watched = true;
+    vi.mocked(client.setWatched).mockResolvedValue(watched);
+
+    render(
+      <MemoryRouter>
+        <CompaniesPage data={bootstrap()} companyClient={client} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "关注云杉智能" }));
+
+    await waitFor(() => expect(client.setWatched).toHaveBeenCalledWith(
+      "company-1",
+      { watched: true, expectedVersion: 2 },
+      expect.any(AbortSignal),
+    ));
+    expect(await screen.findByRole("button", { name: "取消关注云杉智能" })).toBeTruthy();
+    expect(screen.getByText("已关注云杉智能")).toBeTruthy();
+    expect(screen.queryByText("公司档案加载失败")).toBeNull();
+  });
+
   it("详情展示正式知识、证据、材料和待确认数量", async () => {
     const client = fakeClient();
 

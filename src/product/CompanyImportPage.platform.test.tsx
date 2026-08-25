@@ -65,6 +65,83 @@ describe("持久公司名单导入页面", () => {
     expect(await screen.findByText("已确认 2 家公司并写入档案")).toBeTruthy();
     expect(reload).toHaveBeenCalledOnce();
   });
+
+  it("允许人工选择同名主体并修正识别失败的公司名称", async () => {
+    const list = companyList();
+    list.rows.push(
+      {
+        rowId: "row-3",
+        rowOrder: 3,
+        originalValue: "云杉科技",
+        normalizedName: "云杉科技",
+        matchStatus: "ambiguous",
+        confirmationStatus: "pending",
+        options: [
+          company("company-3", "北京云杉科技有限公司"),
+          company("company-4", "上海云杉科技有限公司"),
+        ],
+        evidence: { evidenceId: "evidence-3", sourceType: "material", quote: "云杉科技" },
+        version: 2,
+      },
+      {
+        rowId: "row-4",
+        rowOrder: 4,
+        originalValue: "???",
+        matchStatus: "failed",
+        confirmationStatus: "pending",
+        options: [],
+        evidence: { evidenceId: "evidence-4", sourceType: "material", quote: "???" },
+        errorCode: "company_name_invalid",
+        version: 1,
+      },
+    );
+    const client: CompanyListClient = {
+      upload: vi.fn().mockResolvedValue({
+        reusedDocument: false,
+        conversation: { conversationId: "conversation-list" },
+      }),
+      getConversation: vi.fn().mockResolvedValue({
+        conversationId: "conversation-list",
+        status: "pending_confirmation",
+        companyList: list,
+      }),
+      get: vi.fn(),
+      confirm: vi.fn().mockResolvedValue({ ...list, status: "completed" }),
+      startResearch: vi.fn(),
+    } as CompanyListClient;
+
+    render(
+      <MemoryRouter>
+        <CompanyImportPage
+          data={bootstrap()}
+          reload={vi.fn()}
+          companyListClient={client}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [new File(["公司名称\n云杉科技"], "公司名单.csv", { type: "text/csv" })] },
+    });
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "选择 云杉科技 的公司主体" }), {
+      target: { value: "company-4" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "修正 ??? 的公司名称" }), {
+      target: { value: "青松科技有限公司" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认可识别公司并入库" }));
+
+    await waitFor(() => expect(client.confirm).toHaveBeenCalledWith(
+      "list-1",
+      [
+        { rowId: "row-1", expectedVersion: 1, companyId: "company-1" },
+        { rowId: "row-2", expectedVersion: 1, createName: "松涛科技有限公司" },
+        { rowId: "row-3", expectedVersion: 2, companyId: "company-4" },
+        { rowId: "row-4", expectedVersion: 1, createName: "青松科技有限公司" },
+      ],
+      expect.any(AbortSignal),
+    ));
+  });
 });
 
 function companyList(): CompanyListRecordV1 {
