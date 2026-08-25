@@ -65,7 +65,15 @@ set -a && source .env && set +a && pnpm dev:worker
 
 ## 数据说明
 
-本地模式使用 `data/demo-store.json` 保存运行数据；该文件初始仅包含访问平台所需的角色账号，业务数组全部为空。生产模式不读写该文件，业务状态以 PostgreSQL 为准。运行 `pnpm seed` 会把本地业务数据恢复为空状态。
+本地模式使用 Git 忽略的 `data/runtime-store.json` 保存实际运行数据，导入的 BP 原文、主体与证据不会进入代码仓库。仓库内的 `data/demo-store.json` 仅作为空库基线，包含访问平台所需的角色账号，业务数组全部为空。生产模式不读写本地文件，业务状态以 PostgreSQL 为准。运行 `pnpm seed` 会把本地业务数据恢复为空状态。
+
+启动本地服务后，可将一个目录中的 PDF、DOCX、TXT、Markdown、CSV 或 PPTX 材料批量送入知识库：
+
+```bash
+pnpm import:knowledge -- "/absolute/path/to/bp-directory"
+```
+
+每次导入会在 `data/import-reports/` 生成本地报告。当前 PPTX 会明确记录为解析失败；扫描版或损坏的 PDF 需要先做 OCR 或修复，不会被静默标记为已索引。
 
 ## 验证
 

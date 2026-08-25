@@ -2,6 +2,8 @@
 .env.local
 .env.production
 data/objects/
+data/import-reports/
+data/runtime-store.json
 node_modules/
 dist/
 *.tsbuildinfo

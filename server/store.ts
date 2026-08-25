@@ -21,7 +21,9 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.join(root, "data");
-const dataFile = path.join(dataDir, "demo-store.json");
+// The live local knowledge base is intentionally separate from the tracked,
+// empty repository baseline so imported business material can never be pushed.
+const dataFile = path.join(dataDir, "runtime-store.json");
 
 export interface StoreData {
   users: User[];

@@ -7,8 +7,38 @@ import { Store } from "./store.js";
 import type { User } from "../src/types.js";
 import type { PlatformServices } from "./platform/contracts.js";
 import { createDemoServices } from "./platform/runtime.js";
+import { extractDocumentText } from "./platform/document-processor.js";
 
 type AuthenticatedRequest = express.Request & { authUser?: User };
+
+export function normalizeUploadedFileName(fileName: string) {
+  if (/[\u3400-\u9fff]/u.test(fileName)) return fileName;
+  const decoded = Buffer.from(fileName, "latin1").toString("utf8");
+  return decoded.includes("�") ? fileName : decoded;
+}
+
+export function inferCompanyNameFromFile(fileName: string, content = "") {
+  const base = fileName.replace(/\.[^.]+$/, "").replace(/\s*\(\d+\)\s*$/u, "");
+  const afterGroup = base.replace(/^(?:创业组|创新组)\d+\s*[+＋]\s*/u, "");
+  const cleaned = afterGroup
+    .replace(/^(?:毕友推荐|一苇推荐|势能推荐|青桐资本推荐)[-_—\s]*/u, "")
+    .replace(
+      /(?:商业计划书?|商业融资计划书|融资计划书|募集说明书|项目介绍|公司简介|路演|handout|Pre-NDA材料|BP|MP).*/iu,
+      "",
+    )
+    .replace(/(?:only\s+for|for)\s*博源资本/iu, "")
+    .replace(/(?:19|20)\d{2}(?:[-_.年]\d{1,2}){0,2}.*$/u, "")
+    .replace(/[@_—–-]+(?:博源资本|博源|青桐资本|芯湃推荐).*$/u, "")
+    .replace(/^[【\[]|[】\]]$/gu, "")
+    .replace(/[_—–-]+$/u, "")
+    .trim();
+  if (cleaned.length >= 3 && !/^(?:公司|项目|材料|介绍)$/u.test(cleaned))
+    return cleaned;
+  const legalEntity = content.match(
+    /([\u3400-\u9fffA-Za-z0-9·（）()]{2,36}(?:股份有限公司|有限责任公司|有限公司))/,
+  )?.[1];
+  return legalEntity?.replace(/^[^\u3400-\u9fffA-Za-z0-9]+/, "") || base.trim();
+}
 
 export function createApp(
   store = new Store(),
@@ -325,9 +355,9 @@ export function createApp(
       ...modelResult,
       success: true,
     });
-    const citations = [...modelResult.text.matchAll(/[\[【]证据\s*(\d+)[\]】]/g)].map(
-      (match) => Number(match[1]),
-    );
+    const citations = [
+      ...modelResult.text.matchAll(/[\[【]证据\s*(\d+)[\]】]/g),
+    ].map((match) => Number(match[1]));
     const validCitations = citations.filter(
       (index) => index > 0 && index <= hits.length,
     ).length;
@@ -562,6 +592,7 @@ export function createApp(
   });
   app.post("/api/upload", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "请选择文件" });
+    req.file.originalname = normalizeUploadedFileName(req.file.originalname);
     const user = getUser(req);
     const access = z
       .object({
@@ -591,6 +622,16 @@ export function createApp(
         .json({ ...existing, status: "重复文件", duplicate: true });
     }
     const supported = ["pdf", "docx", "txt", "md", "csv"];
+    let text = req.file.originalname;
+    let parseFailure = "";
+    if (services.mode === "demo" && supported.includes(ext)) {
+      try {
+        text = (await extractDocumentText(ext, req.file.buffer)).trim();
+        if (!text) parseFailure = "文档未提取到可索引文字";
+      } catch (error) {
+        parseFailure = error instanceof Error ? error.message : "文档解析失败";
+      }
+    }
     const objectKey = `documents/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext || "bin"}`;
     await services.storage.put(objectKey, req.file.buffer, {
       contentType: req.file.mimetype || "application/octet-stream",
@@ -599,14 +640,49 @@ export function createApp(
       visibility: access.visibility,
       projectId: access.projectId,
     });
-    const text = ["txt", "md", "csv"].includes(ext)
-      ? req.file.buffer.toString("utf8")
-      : req.file.originalname;
     const detectedCompanyRows = store.data.companies.filter((c) =>
       [c.standardName, ...c.aliases, c.englishName || ""].some(
         (n) => n && text.toLowerCase().includes(n.toLowerCase()),
       ),
     );
+    if (
+      services.mode === "demo" &&
+      supported.includes(ext) &&
+      !parseFailure &&
+      !detectedCompanyRows.length
+    ) {
+      const inferredName = inferCompanyNameFromFile(
+        req.file.originalname,
+        text,
+      );
+      let inferredCompany = store.data.companies.find((company) =>
+        [company.standardName, ...company.aliases].some(
+          (name) => name.toLowerCase() === inferredName.toLowerCase(),
+        ),
+      );
+      if (!inferredCompany) {
+        inferredCompany = {
+          id: randomUUID(),
+          standardName: inferredName,
+          aliases: [inferredName],
+          description: "由材料自动建立的待确认主体。",
+          cognitionStatus: "待识别",
+          attentionStatus: "机构未关注",
+          updatedAt: new Date().toISOString(),
+          positions: [],
+          claims: [],
+          evidence: [],
+        };
+        store.data.companies.push(inferredCompany);
+        store.audit(
+          user.name,
+          "从材料创建待识别主体",
+          inferredName,
+          req.file.originalname,
+        );
+      }
+      detectedCompanyRows.push(inferredCompany);
+    }
     const detectedCompanies = detectedCompanyRows.map(
       (c) => c.aliases[0] || c.standardName,
     );
@@ -619,13 +695,14 @@ export function createApp(
       size: req.file.size,
       status: (services.mode === "production"
         ? "待解析"
-        : supported.includes(ext)
+        : supported.includes(ext) && !parseFailure
           ? "已索引"
           : "解析失败") as "待解析" | "已索引" | "解析失败",
       failureReason:
-        services.mode === "production" || supported.includes(ext)
+        services.mode === "production" ||
+        (supported.includes(ext) && !parseFailure)
           ? undefined
-          : `暂不支持 .${ext || "未知"} 文件`,
+          : parseFailure || `暂不支持 .${ext || "未知"} 文件`,
       detectedCompanies,
       visibility: access.visibility,
       ownerId: access.visibility === "private" ? user.id : undefined,
@@ -636,7 +713,7 @@ export function createApp(
       statusTrace:
         services.mode === "production"
           ? [{ status: "待解析", at: now }]
-          : supported.includes(ext)
+          : supported.includes(ext) && !parseFailure
             ? [
                 { status: "待解析", at: now },
                 { status: "解析中", at: now },
@@ -654,14 +731,15 @@ export function createApp(
         detail: string;
       }>,
     };
-    if (services.mode === "demo" && supported.includes(ext))
+    if (services.mode === "demo" && supported.includes(ext) && !parseFailure)
       for (const company of detectedCompanyRows) {
         const evidenceId = randomUUID();
         company.evidence.push({
           id: evidenceId,
           documentId: record.id,
           fileName: record.fileName,
-          excerpt: text.slice(0, 360) || `文件名识别到 ${company.standardName}`,
+          excerpt:
+            text.slice(0, 12_000) || `文件名识别到 ${company.standardName}`,
           sourceDate: now.slice(0, 10),
           visibility: access.visibility,
           ownerId: access.visibility === "private" ? user.id : undefined,
@@ -670,9 +748,7 @@ export function createApp(
         });
         const explicitClaimId = text.match(/\[支持[:：]([^\]]+)\]/)?.[1];
         const supportedClaim = company.claims.find(
-          (claim) =>
-            claim.id === explicitClaimId ||
-            text.includes(claim.text),
+          (claim) => claim.id === explicitClaimId || text.includes(claim.text),
         );
         const updateText = text.match(/(?:^|\n)更新[:：]\s*(.+)/)?.[1]?.trim();
         const conflictText = text
@@ -790,7 +866,7 @@ export function createApp(
       record.failureReason || `${req.file.size} bytes，解析并建立索引`,
     );
     res
-      .status(supported.includes(ext) ? 201 : 422)
+      .status(supported.includes(ext) && !parseFailure ? 201 : 422)
       .json({ ...record, duplicate: false });
   });
   app.get("/api/documents/:id/download", async (req, res) => {

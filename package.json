@@ -16,7 +16,8 @@
     "infra:down": "docker compose down",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed": "tsx server/seed.ts"
+    "seed": "tsx server/seed.ts",
+    "import:knowledge": "tsx server/import-directory.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1105.0",

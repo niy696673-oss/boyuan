@@ -1,6 +1,10 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "../server/app.js";
+import {
+  createApp,
+  inferCompanyNameFromFile,
+  normalizeUploadedFileName,
+} from "../server/app.js";
 import { initialStoreData, Store } from "../server/store.js";
 
 describe("博源 AI 平台空库 API", () => {
@@ -17,6 +21,22 @@ describe("博源 AI 平台空库 API", () => {
     const response = await request(createApp(store)).get("/api/health");
     expect(response.status).toBe(200);
     expect(response.body.ok).toBe(true);
+  });
+
+  it("可以从 BP 文件名推断待确认主体名称", () => {
+    expect(inferCompanyNameFromFile("毕友推荐-星河科技.pdf")).toBe("星河科技");
+    expect(inferCompanyNameFromFile("云川半导体BP(1).pdf")).toBe("云川半导体");
+    expect(inferCompanyNameFromFile("创业组05+智能工厂管理系统.pdf")).toBe(
+      "智能工厂管理系统",
+    );
+  });
+
+  it("可以恢复 multipart 中被 Latin-1 解码的中文文件名", () => {
+    const garbled = Buffer.from("星河科技BP.pdf", "utf8").toString("latin1");
+    expect(normalizeUploadedFileName(garbled)).toBe("星河科技BP.pdf");
+    expect(normalizeUploadedFileName("ComputeNet-BP.pdf")).toBe(
+      "ComputeNet-BP.pdf",
+    );
   });
 
   it("首次进入时业务数据为空", async () => {
@@ -52,13 +72,16 @@ describe("博源 AI 平台空库 API", () => {
   it("空库导入名单时全部标记为新主体", async () => {
     const response = await request(createApp(store))
       .post("/api/company-list")
-      .attach("file", Buffer.from("待研究公司甲\n待研究公司乙"), "companies.csv");
+      .attach(
+        "file",
+        Buffer.from("待研究公司甲\n待研究公司乙"),
+        "companies.csv",
+      );
 
     expect(response.status).toBe(201);
-    expect(response.body.result.map((row: { status: string }) => row.status)).toEqual([
-      "new",
-      "new",
-    ]);
+    expect(
+      response.body.result.map((row: { status: string }) => row.status),
+    ).toEqual(["new", "new"]);
   });
 
   it("空库质量指标均从零开始", async () => {
@@ -100,7 +123,9 @@ describe("博源 AI 平台空库 API", () => {
   it("不存在的公司、任务和证据均返回明确错误", async () => {
     const app = createApp(store);
     const company = await request(app).get("/api/companies/not-found");
-    const task = await request(app).post("/api/tasks/not-found/complete").send({});
+    const task = await request(app)
+      .post("/api/tasks/not-found/complete")
+      .send({});
     const evidence = await request(app).get("/api/evidence/not-found/view");
 
     expect(company.status).toBe(404);
