@@ -1,0 +1,142 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import type { Bootstrap } from "../api";
+import type { ResearchPlatformClient } from "../capabilities/research/client";
+import type {
+  ConversationDetail,
+  ConversationSummary,
+} from "../capabilities/research/types";
+import { WorkbenchPage } from "./WorkbenchPage";
+
+vi.mock("@gsap/react", () => ({ useGSAP: () => undefined }));
+vi.mock("gsap", () => ({
+  default: { registerPlugin: vi.fn(), from: vi.fn() },
+}));
+vi.mock("gsap/ScrollTrigger", () => ({
+  ScrollTrigger: { create: vi.fn() },
+}));
+
+beforeAll(() => {
+  window.scrollTo = vi.fn();
+  HTMLElement.prototype.scrollTo = vi.fn();
+  window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+});
+
+describe("工作台研究平台接缝", () => {
+  it("展示持久对话并在打开后呈现真实任务步骤", async () => {
+    const detail = conversationDetail();
+    const summary: ConversationSummary = detail;
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([summary]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+        />
+      </MemoryRouter>,
+    );
+
+    const conversation = await screen.findByRole("button", {
+      name: /白杨智能 BP\.txt/,
+    });
+    fireEvent.click(conversation);
+
+    await waitFor(() =>
+      expect(client.getConversation).toHaveBeenCalledWith("conversation-1"),
+    );
+    expect(await screen.findByText("解析文件")).toBeTruthy();
+    expect(screen.getByText("生成候选知识")).toBeTruthy();
+    expect(screen.getByText("已由研究平台持久保存")).toBeTruthy();
+    expect(screen.getByText("1 条候选知识待确认")).toBeTruthy();
+  });
+});
+
+function emptyBootstrap(): Bootstrap {
+  const user = {
+    id: "u-investor",
+    name: "投资经理",
+    role: "investor" as const,
+    projectIds: [],
+  };
+  return {
+    user,
+    users: [user],
+    companies: [],
+    industryNodes: [],
+    industryEdges: [],
+    tasks: [],
+    settings: { externalModelsEnabled: false, knowledgeSource: "" },
+  };
+}
+
+function conversationDetail(): ConversationDetail {
+  return {
+    conversationId: "conversation-1",
+    title: "白杨智能 BP.txt",
+    type: "material",
+    sourceChannel: "web",
+    status: "completed",
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:01:00.000Z",
+    receiptCount: 1,
+    document: {
+      documentId: "document-1",
+      fileName: "白杨智能 BP.txt",
+      bytes: 128,
+      sha256: "fixture",
+      parseStatus: "parsed",
+      archiveStatus: "archived",
+      createdAt: "2026-08-26T00:00:00.000Z",
+    },
+    task: {
+      taskId: "task-1",
+      type: "material_analysis",
+      status: "completed",
+      currentStep: "generate_candidates",
+      createdAt: "2026-08-26T00:00:00.000Z",
+      updatedAt: "2026-08-26T00:01:00.000Z",
+      providerId: "deterministic-test",
+      modelId: "fixture-v1",
+      resultStatus: "validated",
+      steps: [
+        {
+          stepId: "step-1",
+          name: "parse_document",
+          position: 3,
+          status: "completed",
+          attempts: 1,
+        },
+        {
+          stepId: "step-2",
+          name: "generate_candidates",
+          position: 9,
+          status: "pending_confirmation",
+          attempts: 1,
+        },
+      ],
+    },
+    analysisSections: [],
+    candidates: [
+      {
+        candidateId: "candidate-1",
+        sectionKey: "company_and_project_stage",
+        knowledgeType: "company_summary",
+        statement: "公司专注企业智能化服务。",
+        status: "pending",
+        version: 1,
+        evidence: [],
+        createdAt: "2026-08-26T00:01:00.000Z",
+        updatedAt: "2026-08-26T00:01:00.000Z",
+      },
+    ],
+  };
+}
