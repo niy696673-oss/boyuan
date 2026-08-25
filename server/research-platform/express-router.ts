@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import express from "express";
 import multer from "multer";
 import type {
+  ConfirmCompanyListRowsInput,
   CompanyDetail,
   DecideCandidateInput,
   KnowledgeCandidateRecord,
@@ -48,6 +49,60 @@ export function createResearchPlatformV1Router(
         content: Readable.from([req.file.buffer]),
       });
       res.status(201).json(result);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post("/company-lists", upload.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) {
+        throw new PlatformInputError("multipart_file_required", "请选择文件");
+      }
+      const fileName = normalizeMultipartFileName(req.file.originalname);
+      if (!/\.(?:csv|xlsx)$/iu.test(fileName)) {
+        throw new PlatformInputError(
+          "company_list_file_required",
+          "公司名单仅支持 CSV 或 XLSX 文件",
+        );
+      }
+      const result = await platform.ingestDocument({
+        fileName,
+        mimeType: req.file.mimetype,
+        sourceChannel: "web",
+        purpose: "company_list",
+        content: Readable.from([req.file.buffer]),
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/company-lists/:listId", async (req, res, next) => {
+    try {
+      res.json(await platform.getCompanyList(String(req.params.listId)));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post("/company-lists/:listId/confirmations", async (req, res, next) => {
+    try {
+      const input = companyListConfirmationInput(String(req.params.listId), req.body);
+      res.json(await platform.confirmCompanyListRows(input));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post("/company-lists/:listId/research", async (req, res, next) => {
+    try {
+      const companyIds = companyListResearchInput(req.body);
+      res.json(await platform.startCompanyListResearch({
+        listId: String(req.params.listId),
+        companyIds,
+      }));
     } catch (error) {
       handlePlatformError(error, res, next);
     }
@@ -336,6 +391,55 @@ function companyWatchInput(body: unknown) {
     watched: input.watched,
     expectedVersion: input.expectedVersion,
   };
+}
+
+function companyListConfirmationInput(
+  listId: string,
+  body: unknown,
+): ConfirmCompanyListRowsInput {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const rows = (body as Record<string, unknown>).rows;
+  if (!Array.isArray(rows)) {
+    throw new PlatformInputError("invalid_company_list_rows", "请选择需要确认的名单行");
+  }
+  return {
+    listId,
+    rows: rows.map((row) => {
+      if (typeof row !== "object" || row === null || Array.isArray(row)) {
+        throw new PlatformInputError("invalid_company_list_row", "名单行格式无效");
+      }
+      const item = row as Record<string, unknown>;
+      if (typeof item.rowId !== "string") {
+        throw new PlatformInputError("invalid_company_list_row", "名单行 ID 无效");
+      }
+      if (
+        typeof item.expectedVersion !== "number" ||
+        !Number.isSafeInteger(item.expectedVersion) ||
+        item.expectedVersion < 1
+      ) {
+        throw new PlatformInputError("invalid_version", "名单行版本必须是正整数");
+      }
+      return {
+        rowId: item.rowId,
+        expectedVersion: item.expectedVersion,
+        ...(typeof item.companyId === "string" ? { companyId: item.companyId } : {}),
+        ...(typeof item.createName === "string" ? { createName: item.createName } : {}),
+      };
+    }),
+  };
+}
+
+function companyListResearchInput(body: unknown): string[] {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const companyIds = (body as Record<string, unknown>).companyIds;
+  if (!Array.isArray(companyIds) || companyIds.some((item) => typeof item !== "string")) {
+    throw new PlatformInputError("invalid_company_ids", "请选择需要研究的公司");
+  }
+  return companyIds as string[];
 }
 
 function normalizeMultipartFileName(fileName: string) {

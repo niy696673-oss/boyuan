@@ -244,3 +244,48 @@ export interface IndustryDetailResponseV1 extends IndustryDirectoryItemV1 {
   materials: IndustryMaterialV1[];
   companies: IndustryCompanyPlacementV1[];
 }
+
+export interface CompanyListCompanyV1 {
+  companyId: string;
+  canonicalName: string;
+  status: "active" | "provisional" | "merged";
+  aliases: Array<{ alias: string; type: string }>;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyListRowV1 {
+  rowId: string;
+  rowOrder: number;
+  originalValue: string;
+  normalizedName?: string;
+  matchStatus: "existing" | "new" | "ambiguous" | "failed";
+  confirmationStatus: "pending" | "confirmed";
+  options: CompanyListCompanyV1[];
+  company?: CompanyListCompanyV1;
+  evidence: ReviewEvidence;
+  errorCode?: string;
+  version: number;
+}
+
+export interface CompanyListRecordV1 {
+  listId: string;
+  conversationId: string;
+  documentId: string;
+  status:
+    | "processing"
+    | "pending_confirmation"
+    | "completed"
+    | "completed_with_errors";
+  rows: CompanyListRowV1[];
+  researchRequests: Array<{
+    requestId: string;
+    companyId: string;
+    status: "queued" | "running" | "completed" | "failed";
+    conversationId?: string;
+    createdAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}

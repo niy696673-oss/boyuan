@@ -32,13 +32,20 @@ import {
   UserRound,
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, type Bootstrap } from "../api";
+import type { Bootstrap } from "../api";
+import {
+  confirmableCompanyListRows,
+  createCompanyListClient,
+  type CompanyListClient,
+} from "../capabilities/company-lists/client";
 import { createCompanyDirectoryClient, type CompanyDirectoryClient } from "../capabilities/companies/client";
 import { companyDetailView, companyDirectoryView, type CompanyView } from "../capabilities/companies/view-model";
 import { ResearchPlatformApiError } from "../capabilities/platform-http";
 import type { Claim, Company } from "../types";
+import type { CompanyListRecordV1, CompanyListRowV1 } from "../../shared/research-platform-v1";
 
 const defaultCompanyClient = createCompanyDirectoryClient();
+const defaultCompanyListClient = createCompanyListClient();
 type CompanyFilter = "全部" | "已关注" | "有 BP" | "待确认" | "有冲突";
 
 export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { data: Bootstrap; companyClient?: CompanyDirectoryClient }) {
@@ -392,18 +399,72 @@ function CompanyResearch({ company }: { company: CompanyView }) {
   return <section className="by-tab-panel"><header><div><h2>研究记录</h2><p>复用历史任务上下文，减少重复上传和解释。</p></div><button className="primary"><Sparkles />发起公司研究</button></header><div className="by-research-list">{company.researchRecords.map((record) => <button key={record.runId}><span><Sparkles /></span><div><strong>{record.intent}</strong><small>研究平台 · {relativeDate(record.updatedAt)}</small></div><em>{platformTaskStatus(record.status)}</em><ChevronRight /></button>)}</div></section>;
 }
 
-export function CompanyImportPage({ data: _data, reload }: { data: Bootstrap; reload: () => void }) {
+export function CompanyImportPage({ data: _data, reload, companyListClient = defaultCompanyListClient }: { data: Bootstrap; reload: () => void; companyListClient?: CompanyListClient }) {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [result, setResult] = useState<Awaited<ReturnType<typeof api.importCompanyList>> | null>(null);
+  const actionController = useRef<AbortController | null>(null);
+  const [result, setResult] = useState<CompanyListRecordV1 | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  useEffect(() => () => actionController.current?.abort(), []);
   const importFile = async (file?: File) => {
     if (!file) return;
+    actionController.current?.abort();
+    const controller = new AbortController();
+    actionController.current = controller;
     setBusy(true);
-    try { setResult(await api.importCompanyList(file)); reload(); } finally { setBusy(false); }
+    setNotice(`正在识别 ${file.name}…`);
+    setResult(null);
+    try {
+      const uploaded = await companyListClient.upload(file, controller.signal);
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const conversation = await companyListClient.getConversation(
+          uploaded.conversation.conversationId,
+          controller.signal,
+        );
+        if (conversation.companyList) {
+          setResult(conversation.companyList);
+          setNotice("名单识别完成，请确认可建立的公司主体");
+          return;
+        }
+        if (conversation.status === "failed") {
+          throw new Error("名单识别失败，请检查文件内容");
+        }
+        await abortableDelay(500, controller.signal);
+      }
+      setNotice("名单已上传，后台仍在处理中");
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setNotice(error instanceof Error ? error.message : "名单导入失败");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+  const confirmRows = async () => {
+    if (!result) return;
+    const rows = confirmableCompanyListRows(result.rows);
+    if (!rows.length) {
+      setNotice("没有可自动确认的名单行；同名公司需要人工选择");
+      return;
+    }
+    actionController.current?.abort();
+    const controller = new AbortController();
+    actionController.current = controller;
+    setBusy(true);
+    setNotice("正在写入公司档案…");
+    try {
+      const updated = await companyListClient.confirm(result.listId, rows, controller.signal);
+      setResult(updated);
+      setNotice(`已确认 ${rows.length} 家公司并写入档案`);
+      reload();
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setNotice(error instanceof Error ? error.message : "名单确认失败");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
-    <section className="by-import-page"><header><button onClick={() => navigate("/companies")}><ArrowLeft />返回公司</button><div><span>公司名单处理</span><h1>批量识别并建立公司主体</h1><p>原始名单始终保留；系统会区分已有、新建、同名待确认和识别失败。</p></div></header><div className="by-import-drop"><ListChecks /><h2>{busy ? "正在识别名单…" : "上传公司名单"}</h2><p>支持 CSV 文件。上传后可逐行确认主体并选择重点公司发起研究。</p><button className="primary" onClick={() => inputRef.current?.click()}><Upload />选择文件</button><input ref={inputRef} hidden type="file" accept=".csv" onChange={(event) => void importFile(event.target.files?.[0])} /></div>{result && <div className="by-import-result"><header><h2>识别结果</h2><span>共 {result.total} 行</span></header><div className="by-import-stats"><span><strong>{result.result.filter((item) => item.status.includes("已有")).length}</strong>已有公司</span><span><strong>{result.result.filter((item) => item.status.includes("新建")).length}</strong>新建公司</span><span><strong>{result.result.filter((item) => item.status.includes("确认")).length}</strong>同名待确认</span><span><strong>{result.result.filter((item) => item.status.includes("失败")).length}</strong>识别失败</span></div>{result.result.map((item, index) => <div className="by-import-row" key={`${item.rawName}-${index}`}><input type="checkbox" aria-label={`选择 ${item.rawName}`} /><strong>{item.rawName}</strong><span>{item.companyName || "等待选择主体"}</span><em>{item.status}</em><button><Pencil />处理</button></div>)}</div>}</section>
+    <section className="by-import-page"><header><button onClick={() => navigate("/companies")}><ArrowLeft />返回公司</button><div><span>公司名单处理</span><h1>批量识别并建立公司主体</h1><p>原始名单始终保留；系统会区分已有、新建、同名待确认和识别失败。</p></div></header><div className="by-import-drop"><ListChecks /><h2>{busy ? "正在处理名单…" : "上传公司名单"}</h2><p>支持 CSV 和 XLSX 文件。上传后可确认主体，再选择重点公司发起研究。</p><button className="primary" disabled={busy} onClick={() => inputRef.current?.click()}><Upload />选择文件</button><input ref={inputRef} hidden type="file" accept=".csv,.xlsx" onChange={(event) => void importFile(event.target.files?.[0])} /></div>{notice && <p role="status">{notice}</p>}{result && <div className="by-import-result"><header><h2>识别结果</h2><span>共 {result.rows.length} 行</span></header><div className="by-import-stats"><span><strong>{result.rows.filter((item) => item.matchStatus === "existing").length}</strong>已有公司</span><span><strong>{result.rows.filter((item) => item.matchStatus === "new").length}</strong>新建公司</span><span><strong>{result.rows.filter((item) => item.matchStatus === "ambiguous").length}</strong>同名待确认</span><span><strong>{result.rows.filter((item) => item.matchStatus === "failed").length}</strong>识别失败</span></div>{result.rows.map((item) => <div className="by-import-row" key={item.rowId}><input type="checkbox" aria-label={`选择 ${item.originalValue}`} checked={isAutoConfirmableCompanyListRow(item)} readOnly /><strong>{item.originalValue}</strong><span>{item.company?.canonicalName || item.options.map((option) => option.canonicalName).join(" / ") || item.normalizedName || "等待选择主体"}</span><em>{companyListRowStatus(item)}</em><button disabled={item.matchStatus !== "ambiguous"}><Pencil />{item.matchStatus === "ambiguous" ? "人工选择" : "无需处理"}</button></div>)}<button className="primary" disabled={busy || !confirmableCompanyListRows(result.rows).length} onClick={() => void confirmRows()}><Check />确认可识别公司并入库</button></div>}</section>
   );
 }
 
@@ -461,4 +522,16 @@ function abortableDelay(durationMs: number, signal: AbortSignal) {
 
 function relativeDate(value: string) {
   return new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+function isAutoConfirmableCompanyListRow(row: CompanyListRowV1) {
+  return row.confirmationStatus === "pending" && (row.matchStatus === "existing" || row.matchStatus === "new");
+}
+
+function companyListRowStatus(row: CompanyListRowV1) {
+  if (row.confirmationStatus === "confirmed") return "已确认";
+  if (row.matchStatus === "existing") return "已有公司";
+  if (row.matchStatus === "new") return "待新建";
+  if (row.matchStatus === "ambiguous") return "同名待确认";
+  return "识别失败";
 }
