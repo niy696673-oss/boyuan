@@ -3,6 +3,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
@@ -11,6 +12,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 import { createDeterministicResearchAdapter } from "../server/research-platform/research/deterministic-research.js";
+import type { CompanyResearchInput } from "../server/research-platform/research/contracts.js";
 import { createDeterministicSearchAdapter } from "../server/research-platform/search/deterministic-search.js";
 import { initialStoreData, Store } from "../server/store.js";
 
@@ -80,6 +82,83 @@ describe("研究平台 v1 HTTP 接缝", () => {
         },
       ],
     });
+  });
+
+  it("不把争议知识作为正式知识发送给公司研究模型", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
+    roots.push(dataRoot);
+    const researchInputs: CompanyResearchInput[] = [];
+    const platform = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+      research: {
+        async analyze(input) {
+          researchInputs.push(input);
+          return {
+            providerId: "research-boundary-test",
+            modelId: "research-boundary-test",
+            sessionId: input.sessionId ?? `research-${input.taskId}`,
+            summary: "已完成正式知识边界测试。",
+            candidates: [],
+            rawText: "{}",
+          };
+        },
+      },
+      search: createDeterministicSearchAdapter(),
+    });
+    modules.push(platform);
+
+    const started = await platform.startCompanyResearch({
+      companyName: "白杨智能有限公司",
+      intent: "核验争议信息",
+      explicitWebSearch: false,
+    });
+    if (!started.company) throw new Error("research company missing");
+
+    const database = new DatabaseSync(
+      join(dataRoot, "database", "platform.sqlite"),
+    );
+    try {
+      const now = new Date().toISOString();
+      database
+        .prepare(`
+          INSERT INTO knowledge_candidates (
+            candidate_id, task_id, company_id, section_key, knowledge_type,
+            statement, status, version, high_impact, sensitive, created_at, updated_at
+          ) VALUES (?, ?, ?, 'seed', 'company_status', ?, 'confirmed', 1, 0, 0, ?, ?)
+        `)
+        .run(
+          "candidate-disputed-seed",
+          started.task.taskId,
+          started.company.companyId,
+          "这条记录只用于构造争议知识。",
+          now,
+          now,
+        );
+      database
+        .prepare(`
+          INSERT INTO knowledge (
+            knowledge_id, company_id, knowledge_type, statement, status,
+            version, source_candidate_id, created_at
+          ) VALUES (?, ?, 'company_status', ?, 'disputed', 1, ?, ?)
+        `)
+        .run(
+          "knowledge-disputed-seed",
+          started.company.companyId,
+          "这条争议记录不能发送给研究模型。",
+          "candidate-disputed-seed",
+          now,
+        );
+    } finally {
+      database.close();
+    }
+
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    expect(researchInputs).toHaveLength(1);
+    expect(researchInputs[0]?.existingKnowledge).toEqual([]);
   });
 
   it("把 Markdown 材料按纯文本解析", async () => {

@@ -1840,7 +1840,7 @@ class SqlitePlatformModule implements PlatformModule {
     if (run.summary) return 'completed';
     const existingKnowledge = this.#db.prepare(`
       SELECT knowledge_type, statement, value, status, created_at FROM knowledge
-      WHERE company_id = ? AND status IN ('current', 'disputed') ORDER BY created_at
+      WHERE company_id = ? AND status = 'current' ORDER BY created_at
     `).all(run.company_id) as unknown as Array<{
       knowledge_type: string; statement: string; value: string | null; status: string; created_at: string;
     }>;
