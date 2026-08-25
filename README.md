@@ -75,6 +75,22 @@ pnpm import:knowledge -- "/absolute/path/to/bp-directory"
 
 每次导入会在 `data/import-reports/` 生成本地报告。当前 PPTX 会明确记录为解析失败；扫描版或损坏的 PDF 需要先做 OCR 或修复，不会被静默标记为已索引。
 
+## OpenCode BP 深度分析
+
+项目默认使用确定性适配器，便于不依赖模型运行普通开发和测试。启用真实 BP 深度分析时，先启动 OpenCode，并让服务端读取以下配置：
+
+```bash
+export BOYUAN_ANALYSIS_ADAPTER=opencode
+export BOYUAN_OPENCODE_BASE_URL=http://127.0.0.1:4173/opencode-api/
+export BOYUAN_OPENCODE_TIMEOUT_MS=600000
+export BOYUAN_DEEP_OPENCODE_PROVIDER_ID=openai
+export BOYUAN_DEEP_OPENCODE_MODEL_ID=gpt-5.6-sol
+export BOYUAN_DEEP_OPENCODE_VARIANT=xhigh
+pnpm dev:server
+```
+
+这里的 `4173/opencode-api/` 是本机已有工作台提供的 OpenCode 代理，不需要把服务密码复制到本项目。若改为直连受保护的 OpenCode Server，再同时配置 `BOYUAN_OPENCODE_USERNAME` 和 `BOYUAN_OPENCODE_PASSWORD`。`BOYUAN_OPENCODE_TIMEOUT_MS` 默认 10 分钟，适配深度模型慢链路；超时会主动终止仍在运行的 OpenCode 会话。项目级 `boyuan-bp-deep-analysis` skill 位于 `.agents/skills`，Sequential Thinking MCP 位于 `opencode.json`；真实分析缺少任一调用都会失败，不会回退为演示结果。
+
 ## 验证
 
 ```bash

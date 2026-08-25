@@ -7,6 +7,8 @@
 - `platform-module.ts`：SQLite 业务内核和持久 `TaskStep`；
 - `platform-worker.ts`：同进程异步任务执行器；
 - `express-router.ts`：当前 Express 服务的 `/api/v1` 适配层；
-- `analysis/deterministic-analysis.ts`：第一阶段默认分析适配器。
+- `analysis/runtime-analysis.ts`：按环境显式选择确定性或 OpenCode 分析适配器；
+- `analysis/deterministic-analysis.ts`：未配置真实运行时时的开发测试适配器；
+- `analysis/opencode-analysis.ts`：真实 BP 深度分析适配器，要求调用项目 BP skill 与 Sequential Thinking MCP。
 
-真实 OpenCode、Exa 和飞书相关适配器随内核保留，但尚未在当前仓库运行时启用。当前阶段也没有把现有 RBAC 或生产基础设施接入该单用户业务内核。
+设置 `BOYUAN_ANALYSIS_ADAPTER=opencode` 与 `BOYUAN_OPENCODE_BASE_URL` 后启用真实 OpenCode。BP 原文分析禁止外部搜索；Exa 等外部搜索只属于后续调研链路。飞书相关适配器和现有 RBAC/生产基础设施尚未接入该单用户业务内核。

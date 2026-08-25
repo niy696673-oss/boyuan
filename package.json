@@ -20,6 +20,7 @@
     "import:knowledge": "tsx server/import-directory.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/server-sequential-thinking": "2026.7.4",
     "@aws-sdk/client-s3": "^3.1105.0",
     "@aws-sdk/s3-request-presigner": "^3.1105.0",
     "@gsap/react": "^2.1.2",

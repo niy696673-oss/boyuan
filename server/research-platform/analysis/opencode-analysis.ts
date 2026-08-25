@@ -11,13 +11,14 @@ import {
 
 export interface OpenCodeAnalysisOptions {
   baseUrl: URL;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
   directory: string;
   model?: { providerId: string; modelId: string };
   variant?: string;
   skillName?: string;
   sequentialThinkingTool?: string;
+  timeoutMs?: number;
   fetcher?: typeof fetch;
 }
 
@@ -47,14 +48,21 @@ interface OpenCodePart {
 
 export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions): MaterialAnalysisPort {
   const fetcher = options.fetcher ?? globalThis.fetch;
-  const authorization = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString('base64')}`;
+  const timeoutMs = options.timeoutMs ?? 600_000;
+  const authorization = options.username !== undefined && options.password !== undefined
+    ? `Basic ${Buffer.from(`${options.username}:${options.password}`).toString('base64')}`
+    : undefined;
   const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const url = new URL(path, options.baseUrl);
+    const url = endpointUrl(options.baseUrl, path);
     url.searchParams.set('directory', options.directory);
+    const headers = new Headers(init.headers);
+    headers.set('accept', 'application/json');
+    headers.set('content-type', 'application/json');
+    if (authorization) headers.set('authorization', authorization);
     const response = await fetcher(url, {
       ...init,
-      headers: { authorization, accept: 'application/json', 'content-type': 'application/json', ...init.headers },
-      signal: init.signal ?? AbortSignal.timeout(180_000),
+      headers,
+      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${response.status}`);
     return await response.json() as T;
@@ -75,9 +83,17 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
         },
         parts: [{ type: 'text', text: analysisPrompt(input, options.skillName, options.sequentialThinkingTool) }],
       };
-      const response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(sessionId)}/message`, {
-        method: 'POST', body: JSON.stringify(body),
-      });
+      let response: OpenCodeAssistantResponse;
+      try {
+        response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(sessionId)}/message`, {
+          method: 'POST', body: JSON.stringify(body),
+        });
+      } catch (error) {
+        await request<boolean>(`/session/${encodeURIComponent(sessionId)}/abort`, {
+          method: 'POST', signal: AbortSignal.timeout(10_000),
+        }).catch(() => undefined);
+        throw error;
+      }
       if (response.info.error) throw new AnalysisAdapterError('opencode_message_error', 'OpenCode analysis message failed');
       const messages = await request<OpenCodeSessionMessage[]>(`/session/${encodeURIComponent(sessionId)}/message?limit=100`, {
         method: 'GET',
@@ -114,6 +130,12 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
       };
     },
   };
+}
+
+function endpointUrl(baseUrl: URL, path: string): URL {
+  const normalizedBase = new URL(baseUrl);
+  if (!normalizedBase.pathname.endsWith('/')) normalizedBase.pathname += '/';
+  return new URL(path.replace(/^\/+/, ''), normalizedBase);
 }
 
 function systemInstruction(): string {
