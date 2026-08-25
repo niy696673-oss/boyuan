@@ -9,6 +9,7 @@ import type {
 export interface WorkbenchResearch {
   task: ResearchTask;
   platformConversationId: string;
+  platformStatus: ConversationStatus;
   materialFileName: string;
   pendingCandidateCount: number;
 }
@@ -18,6 +19,7 @@ export function toWorkbenchConversation(
 ): WorkbenchResearch {
   return {
     platformConversationId: conversation.conversationId,
+    platformStatus: conversation.status,
     materialFileName: conversation.document.fileName,
     pendingCandidateCount: 0,
     task: {

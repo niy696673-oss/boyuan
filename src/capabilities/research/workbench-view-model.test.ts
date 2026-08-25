@@ -82,6 +82,7 @@ describe("研究对话工作台视图模型", () => {
 
     expect(research).toMatchObject({
       platformConversationId: "conversation-1",
+      platformStatus: "completed",
       materialFileName: "白杨智能 BP.txt",
       pendingCandidateCount: 1,
       task: {

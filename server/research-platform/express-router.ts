@@ -22,8 +22,15 @@ export function createResearchPlatformV1Router(
       if (!req.file) {
         throw new PlatformInputError("multipart_file_required", "请选择文件");
       }
+      const fileName = normalizeMultipartFileName(req.file.originalname);
+      if (/\.(?:csv|xlsx?)$/iu.test(fileName)) {
+        throw new PlatformInputError(
+          "company_list_not_available",
+          "公司名单能力将在后续阶段接入",
+        );
+      }
       const result = await platform.ingestDocument({
-        fileName: normalizeMultipartFileName(req.file.originalname),
+        fileName,
         mimeType: req.file.mimetype,
         sourceChannel: "web",
         content: Readable.from([req.file.buffer]),

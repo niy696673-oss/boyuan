@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
@@ -57,6 +63,42 @@ describe("工作台研究平台接缝", () => {
     expect(screen.getByText("生成候选知识")).toBeTruthy();
     expect(screen.getByText("已由研究平台持久保存")).toBeTruthy();
     expect(screen.getByText("1 条候选知识待确认")).toBeTruthy();
+  });
+
+  it("同步会话栏的待确认终态，并停止继续轮询", async () => {
+    const detail = conversationDetail();
+    detail.status = "pending_confirmation";
+    detail.task.status = "pending_confirmation";
+    const summary: ConversationSummary = {
+      ...detail,
+      status: "processing",
+      task: { ...detail.task, status: "running" },
+    };
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([summary]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /白杨智能 BP\.txt/ }),
+    );
+
+    const rail = screen.getByRole("complementary", { name: "研究对话" });
+    await waitFor(() =>
+      expect(within(rail).getByText("待确认 1")).toBeTruthy(),
+    );
+    expect(client.getConversation).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -37,7 +37,10 @@ import {
   createResearchPlatformClient,
   type ResearchPlatformClient,
 } from "../capabilities/research/client";
-import type { ConversationSummary } from "../capabilities/research/types";
+import type {
+  ConversationDetail,
+  ConversationStatus,
+} from "../capabilities/research/types";
 import {
   toWorkbenchConversation,
   toWorkbenchResearch,
@@ -52,6 +55,7 @@ type ActiveResearch = {
   company?: Company;
   industry?: IndustryNode;
   platformConversationId?: string;
+  platformStatus?: ConversationStatus;
   materialFileName?: string;
   pendingCandidateCount?: number;
 } | null;
@@ -59,6 +63,11 @@ type ActiveResearch = {
 type ConversationRow = NonNullable<ActiveResearch>;
 
 const defaultResearchClient = createResearchPlatformClient();
+const terminalPlatformStatuses = new Set<ConversationStatus>([
+  "pending_confirmation",
+  "completed",
+  "failed",
+]);
 
 export function WorkbenchPage({
   data,
@@ -87,7 +96,7 @@ export function WorkbenchPage({
     "全部" | ContextType
   >("全部");
   const [platformConversations, setPlatformConversations] = useState<
-    ConversationSummary[]
+    ConversationRow[]
   >([]);
 
   const pending = data.companies.reduce(
@@ -102,9 +111,28 @@ export function WorkbenchPage({
   const loadPlatformConversations = useCallback(
     async (signal?: AbortSignal) => {
       const conversations = await researchClient.listConversations(signal);
-      setPlatformConversations(conversations);
+      setPlatformConversations(conversations.map(toWorkbenchConversation));
     },
     [researchClient],
+  );
+
+  const syncPlatformConversation = useCallback(
+    (conversation: ConversationDetail) => {
+      const next = toWorkbenchResearch(conversation);
+      setPlatformConversations((current) => {
+        const found = current.some(
+          (item) => item.platformConversationId === conversation.conversationId,
+        );
+        return found
+          ? current.map((item) =>
+              item.platformConversationId === conversation.conversationId
+                ? next
+                : item,
+            )
+          : [next, ...current];
+      });
+    },
+    [],
   );
 
   useEffect(() => {
@@ -121,14 +149,18 @@ export function WorkbenchPage({
     const conversationId = activeResearch?.platformConversationId;
     if (
       !conversationId ||
-      ["已完成", "执行失败"].includes(activeResearch.task.status)
+      (activeResearch.platformStatus &&
+        terminalPlatformStatuses.has(activeResearch.platformStatus))
     )
       return;
     let cancelled = false;
     const refresh = async () => {
       try {
         const detail = await researchClient.getConversation(conversationId);
-        if (!cancelled) setActiveResearch(toWorkbenchResearch(detail));
+        if (!cancelled) {
+          setActiveResearch(toWorkbenchResearch(detail));
+          syncPlatformConversation(detail);
+        }
       } catch (error) {
         if (!cancelled)
           setNotice(
@@ -144,13 +176,14 @@ export function WorkbenchPage({
     };
   }, [
     activeResearch?.platformConversationId,
-    activeResearch?.task.status,
+    activeResearch?.platformStatus,
     researchClient,
+    syncPlatformConversation,
   ]);
 
   const conversationRows = useMemo<ConversationRow[]>(
     () => [
-      ...platformConversations.map(toWorkbenchConversation),
+      ...platformConversations,
       ...data.tasks.map((task) => ({
         task,
         company: data.companies.find((item) => item.id === task.companyId),
@@ -219,9 +252,11 @@ export function WorkbenchPage({
       setBusy(true);
       setNotice("");
       try {
-        next = toWorkbenchResearch(
-          await researchClient.getConversation(research.platformConversationId),
+        const detail = await researchClient.getConversation(
+          research.platformConversationId,
         );
+        next = toWorkbenchResearch(detail);
+        syncPlatformConversation(detail);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "无法打开研究对话");
         return;
@@ -349,7 +384,7 @@ export function WorkbenchPage({
               hidden
               type="file"
               multiple
-              accept=".pdf,.docx,.txt,.md,.csv"
+              accept=".pdf,.docx,.txt,.md"
               onChange={(event) =>
                 void uploadFiles([...(event.target.files || [])])
               }
@@ -935,7 +970,7 @@ function ActiveConversation({
           hidden
           type="file"
           multiple
-          accept=".pdf,.docx,.txt,.md,.csv"
+          accept=".pdf,.docx,.txt,.md"
           onChange={(event) =>
             void onUploadFiles([...(event.target.files || [])])
           }
@@ -1282,6 +1317,12 @@ function StatusMark({
       <em className="by-status success">
         <Check />
         已完成
+      </em>
+    );
+  if (status === "待用户确认")
+    return (
+      <em className="by-status warning">
+        待确认{count > 0 ? ` ${count}` : ""}
       </em>
     );
   if (count > 0) return <em className="by-status warning">待确认 {count}</em>;

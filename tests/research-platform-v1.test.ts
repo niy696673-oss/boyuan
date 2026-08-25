@@ -23,6 +23,70 @@ afterEach(async () => {
 });
 
 describe("研究平台 v1 HTTP 接缝", () => {
+  it("把 Markdown 材料按纯文本解析", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
+    roots.push(dataRoot);
+    const platform = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+    });
+    modules.push(platform);
+    const store = new Store({
+      initialData: initialStoreData(),
+      persistToDisk: false,
+    });
+    const app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform,
+    });
+
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("# 白杨智能有限公司\n\n公司专注企业智能化服务。"),
+        { filename: "白杨智能 BP.md", contentType: "text/markdown" },
+      );
+
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    const detail = await request(app).get(
+      `/api/v1/conversations/${uploaded.body.conversation.conversationId}`,
+    );
+    expect(detail.body).toMatchObject({
+      status: "completed",
+      document: { fileName: "白杨智能 BP.md", parseStatus: "parsed" },
+    });
+  });
+
+  it("拒绝进入本阶段尚未接入 UI 的公司名单文件", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
+    roots.push(dataRoot);
+    const platform = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+    });
+    modules.push(platform);
+    const store = new Store({
+      initialData: initialStoreData(),
+      persistToDisk: false,
+    });
+    const app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform,
+    });
+
+    const response = await request(app)
+      .post("/api/v1/documents")
+      .attach("file", Buffer.from("公司名称\n白杨智能"), "公司名单.csv");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: "company_list_not_available",
+    });
+    expect((await request(app).get("/api/v1/conversations")).body).toEqual([]);
+  });
+
   it("上传材料后可通过对话 API 查看任务，并在服务重启后恢复", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
     roots.push(dataRoot);
