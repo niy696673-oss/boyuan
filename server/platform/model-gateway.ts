@@ -68,8 +68,6 @@ export class RoutedModelGateway implements ModelGateway {
     const context = request.context
       .map((hit, index) => `[证据${index + 1}] ${hit.fileName}\n${hit.excerpt}`)
       .join("\n\n");
-    if (this.config.PLATFORM_MODE === "demo")
-      return this.fallback(request, context, started);
     if (this.config.MODEL_ROUTE === "external_only") {
       if (!request.externalAllowed || !this.config.EXTERNAL_MODEL_API_KEY)
         return this.fallback(request, context, started);

@@ -5,9 +5,14 @@ import multer from "multer";
 import { z } from "zod";
 import { Store } from "./store.js";
 import type { User } from "../src/types.js";
-import type { PlatformServices } from "./platform/contracts.js";
+import type { PlatformServices, SearchHit } from "./platform/contracts.js";
 import { createDemoServices } from "./platform/runtime.js";
 import { extractDocumentText } from "./platform/document-processor.js";
+import {
+  buildIndustryGraph,
+  industryAnalysisPrompt,
+  mergeAssignments,
+} from "./industry-analysis.js";
 
 type AuthenticatedRequest = express.Request & { authUser?: User };
 
@@ -245,18 +250,168 @@ export function createApp(
       downstream: makeRelations(downstreamEdges, "downstream"),
     });
   });
+  app.post("/api/industries/analyze", async (req, res) => {
+    const user = getUser(req);
+    if (!["partner", "knowledge_admin", "system_admin"].includes(user.role))
+      return res
+        .status(403)
+        .json({ error: "仅合伙人或知识管理员可以更新正式产业链" });
+    const input = z
+      .object({ companyIds: z.array(z.string()).optional() })
+      .parse(req.body || {});
+    const selectedIds = new Set(input.companyIds || []);
+    const companies = store.data.companies.filter(
+      (company) =>
+        (!selectedIds.size || selectedIds.has(company.id)) &&
+        company.evidence.some((evidence) => store.canSee(user, evidence)),
+    );
+    if (!companies.length)
+      return res
+        .status(400)
+        .json({ error: "当前范围内没有可用于行业分析的 BP 证据" });
+
+    const context: SearchHit[] = companies.flatMap((company) => {
+      const evidence = company.evidence.find((item) =>
+        store.canSee(user, item),
+      );
+      if (!evidence) return [];
+      return [
+        {
+          id: evidence.id,
+          companyId: company.id,
+          documentId: evidence.documentId,
+          fileName: `${company.id} | ${company.standardName} | ${evidence.fileName}`,
+          excerpt: evidence.excerpt.slice(0, 1400),
+          visibility: evidence.visibility,
+          keywordScore: 1,
+          vectorScore: 1,
+          score: 1,
+        },
+      ];
+    });
+    let modelResult;
+    try {
+      modelResult = await services.models.generate({
+        taskId: randomUUID(),
+        prompt: industryAnalysisPrompt(companies),
+        context,
+        user,
+        externalAllowed:
+          store.data.settings.externalModelsEnabled &&
+          context.every((hit) => hit.visibility === "organization"),
+      });
+    } catch {
+      modelResult = undefined;
+    }
+    const assignments = mergeAssignments(companies, modelResult);
+    const provider = modelResult?.provider || "deterministic";
+    const model = modelResult?.model || "bp-evidence-classifier";
+    const graph = buildIndustryGraph(assignments, provider, model);
+    const generatedNodeIds = new Set(
+      store.data.industryNodes
+        .filter((node) => node.source === "bp_formal_analysis")
+        .map((node) => node.id),
+    );
+    store.data.industryNodes = [
+      ...store.data.industryNodes.filter(
+        (node) => node.source !== "bp_formal_analysis",
+      ),
+      ...graph.nodes,
+    ];
+    store.data.industryEdges = [
+      ...store.data.industryEdges.filter(
+        (edge) =>
+          !generatedNodeIds.has(edge.fromNodeId) &&
+          !generatedNodeIds.has(edge.toNodeId),
+      ),
+      ...graph.edges,
+    ];
+    const rootByName = new Map(
+      graph.nodes
+        .filter((node) => node.level === 0)
+        .map((node) => [node.name, node]),
+    );
+    const assignmentByCompany = new Map(
+      assignments.map((assignment) => [assignment.companyId, assignment]),
+    );
+    for (const company of companies) {
+      const assignment = assignmentByCompany.get(company.id);
+      if (!assignment) continue;
+      const root = rootByName.get(assignment.industry);
+      const stage = graph.nodes.find(
+        (node) => node.parentId === root?.id && node.name === assignment.stage,
+      );
+      if (!stage) continue;
+      company.positions = [
+        ...company.positions.filter(
+          (position) =>
+            !generatedNodeIds.has(position.nodeId) &&
+            !position.reason?.startsWith("BP正式分析："),
+        ),
+        {
+          nodeId: stage.id,
+          positionType: "primary",
+          status: "confirmed",
+          confidence: assignment.confidence,
+          source: "internal_evidence",
+          sourceDate: new Date().toISOString().slice(0, 10),
+          reason: `BP正式分析：${assignment.reason}`,
+          changedAt: new Date().toISOString(),
+        },
+      ];
+      company.cognitionStatus = "已建档";
+      company.updatedAt = new Date().toISOString();
+    }
+    store.audit(
+      user.name,
+      "更新正式行业与产业链",
+      `${companies.length} 家公司`,
+      `${provider}/${model}；生成 ${graph.nodes.length} 个节点、${graph.edges.length} 条产业关系`,
+    );
+    store.save();
+    res.json({
+      formal: true,
+      provider,
+      model,
+      usedConfiguredModel: provider !== "deterministic",
+      companies: assignments.length,
+      industries: graph.nodes.filter((node) => node.level === 0).length,
+      stages: graph.nodes.filter((node) => node.level === 1).length,
+      edges: graph.edges.length,
+    });
+  });
   app.post("/api/research", async (req, res) => {
     const input = z
-      .object({ query: z.string().min(2), companyId: z.string().optional() })
+      .object({
+        query: z.string().min(2),
+        contextType: z.enum(["材料", "公司", "行业"]).optional(),
+        companyId: z.string().optional(),
+        industryId: z.string().optional(),
+      })
       .parse(req.body);
     const user = getUser(req);
-    const matches = input.companyId
-      ? store.data.companies.filter((c) => c.id === input.companyId)
-      : store.data.companies.filter((c) =>
-          [c.standardName, ...c.aliases, c.englishName || ""].some(
-            (n) => n && input.query.toLowerCase().includes(n.toLowerCase()),
-          ),
-        );
+    const contextType =
+      input.contextType ||
+      (input.industryId ? "行业" : input.companyId ? "公司" : "材料");
+    if (contextType === "公司" && !input.companyId)
+      return res.status(400).json({ error: "请先从已有公司中选择研究对象" });
+    if (contextType === "行业" && !input.industryId)
+      return res.status(400).json({ error: "请先从已有行业中选择研究对象" });
+    const industry = input.industryId
+      ? store.data.industryNodes.find((node) => node.id === input.industryId)
+      : undefined;
+    if (input.industryId && !industry)
+      return res.status(404).json({ error: "指定行业不存在" });
+    const matches =
+      contextType === "行业"
+        ? []
+        : input.companyId
+          ? store.data.companies.filter((c) => c.id === input.companyId)
+          : store.data.companies.filter((c) =>
+              [c.standardName, ...c.aliases, c.englishName || ""].some(
+                (n) => n && input.query.toLowerCase().includes(n.toLowerCase()),
+              ),
+            );
     const strongestLength = Math.max(
       0,
       ...matches.flatMap((c) =>
@@ -274,7 +429,7 @@ export function createApp(
           input.query.toLowerCase().includes(n.toLowerCase()),
       ),
     );
-    if (!input.companyId && strongest.length > 1) {
+    if (contextType !== "行业" && !input.companyId && strongest.length > 1) {
       store.audit(
         user.name,
         "主体消歧",
@@ -294,7 +449,7 @@ export function createApp(
     let company = strongest[0];
     if (input.companyId && !company)
       return res.status(404).json({ error: "指定公司不存在" });
-    if (!company) {
+    if (contextType !== "行业" && !company) {
       const now = new Date().toISOString();
       company = {
         id: randomUUID(),
@@ -316,15 +471,68 @@ export function createApp(
         "未匹配现有主体，未自动串接其他公司",
       );
     }
-    const hasPosition = company.positions.some((p) => p.status !== "rejected");
+    const hasPosition = Boolean(
+      company?.positions.some((p) => p.status !== "rejected"),
+    );
     const taskId = randomUUID();
     const searchStarted = performance.now();
-    const hits = await services.search.search(
-      input.query,
-      user,
-      company.id,
-      12,
+    const descendantIds = new Set<string>();
+    if (industry) {
+      const collect = (parentId: string) => {
+        for (const node of store.data.industryNodes.filter(
+          (candidate) => candidate.parentId === parentId,
+        )) {
+          descendantIds.add(node.id);
+          collect(node.id);
+        }
+      };
+      descendantIds.add(industry.id);
+      collect(industry.id);
+    }
+    const industryCompanyIds = new Set(
+      industry
+        ? store.data.companies
+            .filter((candidate) =>
+              candidate.positions.some(
+                (position) =>
+                  descendantIds.has(position.nodeId) &&
+                  position.status !== "rejected",
+              ),
+            )
+            .map((candidate) => candidate.id)
+        : [],
     );
+    let hits = await services.search.search(
+      industry ? `${industry.name} ${input.query}` : input.query,
+      user,
+      company?.id,
+      industry ? 48 : 12,
+    );
+    if (industry)
+      hits = hits
+        .filter((hit) => industryCompanyIds.has(hit.companyId))
+        .slice(0, 16);
+    if (industry && !hits.length) {
+      hits = store.data.companies
+        .filter((candidate) => industryCompanyIds.has(candidate.id))
+        .flatMap((candidate) =>
+          candidate.evidence
+            .filter((evidence) => store.canSee(user, evidence))
+            .slice(0, 1)
+            .map((evidence) => ({
+              id: evidence.id,
+              companyId: candidate.id,
+              documentId: evidence.documentId,
+              fileName: evidence.fileName,
+              excerpt: evidence.excerpt,
+              visibility: evidence.visibility,
+              keywordScore: 0,
+              vectorScore: 0,
+              score: 0,
+            })),
+        )
+        .slice(0, 16);
+    }
     const searchLatencyMs = Math.round(performance.now() - searchStarted);
     services.telemetry.observeSearch({
       route:
@@ -373,15 +581,19 @@ export function createApp(
     const task = {
       id: taskId,
       query: input.query,
-      companyId: company.id,
+      companyId: company?.id,
+      industryId: industry?.id,
+      contextType,
       status: "待用户确认" as const,
       createdBy: user.id,
       createdAt: new Date().toISOString(),
       steps: [
         {
-          name: "识别公司主体",
+          name: contextType === "行业" ? "锁定行业范围" : "识别公司主体",
           status: "done" as const,
-          detail: `已匹配 ${company.standardName}`,
+          detail: industry
+            ? `已选择 ${industry.name} 及其 ${industryCompanyIds.size} 家关联公司`
+            : `已匹配 ${company?.standardName || "材料主体"}`,
         },
         {
           name: "权限过滤",
@@ -398,13 +610,16 @@ export function createApp(
         },
         {
           name: "匹配产业链",
-          status: "needs-review" as const,
-          detail: hasPosition
-            ? `${company.positions.filter((p) => p.status === "candidate").length} 个候选位置待确认`
-            : "尚无产业位置；需要人工选择或补充资料",
+          status: (industry || hasPosition ? "done" : "needs-review") as
+            "done" | "needs-review",
+          detail: industry
+            ? `已使用正式产业链范围：${industry.name}`
+            : hasPosition
+              ? `已使用 ${company?.positions.filter((p) => p.status === "confirmed").length || 0} 个正式产业位置`
+              : "尚无产业位置，需要补充材料或更新产业链",
         },
         {
-          name: "生成公司认知包",
+          name: industry ? "生成行业研究结果" : "生成公司认知包",
           status: (hits.length ? "done" : "needs-review") as
             "done" | "needs-review",
           detail: hits.length
@@ -425,16 +640,19 @@ export function createApp(
       },
     };
     store.data.tasks.unshift(task);
-    store.audit(user.name, "发起研究", company.standardName, input.query);
+    const targetName = industry?.name || company?.standardName || "材料研究";
+    store.audit(user.name, "发起研究", targetName, input.query);
     store.audit(
       user.name,
       "模型调用",
       task.id,
-      `${services.mode === "demo" ? "本地 Demo 推理；" : ""}${modelResult.provider}/${modelResult.model}；${modelResult.inputTokens} input tokens；${modelResult.outputTokens} output tokens；${modelResult.latencyMs}ms`,
+      `${services.mode === "demo" ? "演示环境；" : ""}${modelResult.provider}/${modelResult.model}；${modelResult.inputTokens} input tokens；${modelResult.outputTokens} output tokens；${modelResult.latencyMs}ms`,
     );
-    res
-      .status(201)
-      .json({ task, company: store.visibleCompany(company, user) });
+    res.status(201).json({
+      task,
+      company: company ? store.visibleCompany(company, user) : undefined,
+      industry,
+    });
   });
   app.post("/api/tasks/:id/complete", (req, res) => {
     const task = store.data.tasks.find((t) => t.id === req.params.id);

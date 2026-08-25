@@ -106,11 +106,30 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ status }),
     }),
-  research: (query: string, companyId?: string) =>
-    call<{ task: ResearchTask; company: Company }>("/api/research", {
-      method: "POST",
-      body: JSON.stringify({ query, companyId }),
-    }),
+  research: (input: {
+    query: string;
+    contextType: "材料" | "公司" | "行业";
+    companyId?: string;
+    industryId?: string;
+  }) =>
+    call<{ task: ResearchTask; company?: Company; industry?: IndustryNode }>(
+      "/api/research",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    ),
+  analyzeIndustries: () =>
+    call<{
+      formal: boolean;
+      provider: string;
+      model: string;
+      usedConfiguredModel: boolean;
+      companies: number;
+      industries: number;
+      stages: number;
+      edges: number;
+    }>("/api/industries/analyze", { method: "POST", body: "{}" }),
   completeTask: (id: string) =>
     call<ResearchTask>(`/api/tasks/${id}/complete`, {
       method: "POST",

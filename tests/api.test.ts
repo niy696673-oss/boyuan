@@ -6,6 +6,7 @@ import {
   normalizeUploadedFileName,
 } from "../server/app.js";
 import { initialStoreData, Store } from "../server/store.js";
+import { classifyCompanyFromEvidence } from "../server/industry-analysis.js";
 
 describe("博源 AI 平台空库 API", () => {
   let store: Store;
@@ -67,6 +68,49 @@ describe("博源 AI 平台空库 API", () => {
     expect(response.body.company.claims).toEqual([]);
     expect(response.body.company.evidence).toEqual([]);
     expect(store.data.tasks).toHaveLength(1);
+  });
+
+  it("公司与行业研究必须显式选择已有对象", async () => {
+    const app = createApp(store);
+    const company = await request(app)
+      .post("/api/research")
+      .send({ query: "分析竞争壁垒", contextType: "公司" });
+    const industry = await request(app)
+      .post("/api/research")
+      .send({ query: "分析产业链", contextType: "行业" });
+
+    expect(company.status).toBe(400);
+    expect(company.body.error).toContain("选择");
+    expect(industry.status).toBe(400);
+    expect(industry.body.error).toContain("选择");
+  });
+
+  it("可以根据 BP 证据形成正式产业位置", () => {
+    const assignment = classifyCompanyFromEvidence({
+      id: "company-chip",
+      standardName: "示例微电子",
+      aliases: ["示例微电子"],
+      description: "射频芯片设计公司",
+      cognitionStatus: "已建档",
+      attentionStatus: "机构未关注",
+      updatedAt: new Date().toISOString(),
+      positions: [],
+      claims: [],
+      evidence: [
+        {
+          id: "evidence-chip",
+          documentId: "document-chip",
+          fileName: "示例微电子BP.pdf",
+          excerpt: "公司专注射频芯片和集成电路设计，产品用于通信模组。",
+          sourceDate: "2026-08-25",
+          visibility: "organization",
+        },
+      ],
+    });
+
+    expect(assignment.industry).toBe("半导体与集成电路");
+    expect(assignment.stage).toBe("芯片设计");
+    expect(assignment.confidence).toBeGreaterThan(0.5);
   });
 
   it("空库导入名单时全部标记为新主体", async () => {

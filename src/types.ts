@@ -119,6 +119,10 @@ export interface IndustryNode {
   parentId: string | null;
   level: number;
   source: string;
+  status?: "candidate" | "confirmed";
+  confidence?: number;
+  description?: string;
+  updatedAt?: string;
 }
 
 export interface IndustryEdge {
@@ -134,6 +138,8 @@ export interface ResearchTask {
   id: string;
   query: string;
   companyId?: string;
+  industryId?: string;
+  contextType?: "材料" | "公司" | "行业";
   status: "识别中" | "检索中" | "生成中" | "待用户确认" | "已完成" | "执行失败";
   createdBy: string;
   createdAt: string;
@@ -143,7 +149,12 @@ export interface ResearchTask {
     detail: string;
   }>;
   retrieval?: { hitCount: number; topEvidenceIds: string[]; latencyMs: number };
-  answer?: { text: string; provider: string; model: string; citationCount: number };
+  answer?: {
+    text: string;
+    provider: string;
+    model: string;
+    citationCount: number;
+  };
 }
 
 export interface AuditEvent {

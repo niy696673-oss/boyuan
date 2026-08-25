@@ -71,7 +71,9 @@ export function ProductShell({
       </a>
       <header className="by-global-nav">
         <NavLink className="by-brand" to="/" aria-label="博源 AI 首页">
-          <span className="by-brand-symbol"><Sparkles /></span>
+          <span className="by-brand-symbol">
+            <Sparkles />
+          </span>
           <strong>博源 AI</strong>
         </NavLink>
 
@@ -139,15 +141,43 @@ export function ProductShell({
 
       <main className="by-main" id="by-main">
         <Routes>
-          <Route path="/" element={<WorkbenchPage data={data} reload={reload} />} />
+          <Route
+            path="/"
+            element={<WorkbenchPage data={data} reload={reload} />}
+          />
           <Route path="/companies" element={<CompaniesPage data={data} />} />
-          <Route path="/companies/import" element={<CompanyImportPage data={data} reload={reload} />} />
-          <Route path="/companies/:id" element={<CompanyDetailPage data={data} reload={reload} />} />
-          <Route path="/industry" element={<IndustriesPage data={data} />} />
-          <Route path="/industry/:id" element={<IndustryDetailPage data={data} />} />
-          <Route path="/confirmations" element={<ConfirmationPage data={data} reload={reload} />} />
-          <Route path="/tasks" element={<OperationsPage data={data} mode="tasks" reload={reload} />} />
-          <Route path="/admin" element={<OperationsPage data={data} mode="admin" reload={reload} />} />
+          <Route
+            path="/companies/import"
+            element={<CompanyImportPage data={data} reload={reload} />}
+          />
+          <Route
+            path="/companies/:id"
+            element={<CompanyDetailPage data={data} reload={reload} />}
+          />
+          <Route
+            path="/industry"
+            element={<IndustriesPage data={data} reload={reload} />}
+          />
+          <Route
+            path="/industry/:id"
+            element={<IndustryDetailPage data={data} />}
+          />
+          <Route
+            path="/confirmations"
+            element={<ConfirmationPage data={data} reload={reload} />}
+          />
+          <Route
+            path="/tasks"
+            element={
+              <OperationsPage data={data} mode="tasks" reload={reload} />
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <OperationsPage data={data} mode="admin" reload={reload} />
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
