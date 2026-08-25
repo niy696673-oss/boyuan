@@ -13,6 +13,8 @@ import {
   industryAnalysisPrompt,
   mergeAssignments,
 } from "./industry-analysis.js";
+import type { PlatformModule as ResearchPlatformModule } from "./research-platform/contracts.js";
+import { createResearchPlatformV1Router } from "./research-platform/express-router.js";
 
 type AuthenticatedRequest = express.Request & { authUser?: User };
 
@@ -48,6 +50,7 @@ export function inferCompanyNameFromFile(fileName: string, content = "") {
 export function createApp(
   store = new Store(),
   services: PlatformServices = createDemoServices(store),
+  options: { researchPlatform?: ResearchPlatformModule } = {},
 ): Express {
   const app = express();
   const upload = multer({
@@ -87,6 +90,12 @@ export function createApp(
       res.status(401).json({ error: "请先登录或刷新访问令牌" });
     }
   });
+  if (options.researchPlatform) {
+    app.use(
+      "/api/v1",
+      createResearchPlatformV1Router(options.researchPlatform),
+    );
+  }
   app.get("/api/metrics", async (req, res) => {
     if (getUser(req).role !== "system_admin")
       return res.status(403).json({ error: "仅系统管理员可查看运行指标" });

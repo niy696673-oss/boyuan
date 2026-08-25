@@ -4,6 +4,7 @@
 data/objects/
 data/import-reports/
 data/runtime-store.json
+data/research-platform/
 node_modules/
 dist/
 *.tsbuildinfo

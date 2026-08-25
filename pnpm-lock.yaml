@@ -32,6 +32,9 @@ importers:
       express:
         specifier: latest
         version: 5.2.1(supports-color@10.2.2)
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       gsap:
         specifier: ^3.15.0
         version: 3.15.0
@@ -74,6 +77,9 @@ importers:
       react-router-dom:
         specifier: latest
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      saxes:
+        specifier: ^6.0.0
+        version: 6.0.0
       vite:
         specifier: latest
         version: 8.2.1(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.23.11)
@@ -1271,6 +1277,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   finalhandler@2.1.1:
     resolution: {integrity: sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==}
@@ -3191,6 +3200,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fflate@0.8.3: {}
 
   finalhandler@2.1.1(supports-color@10.2.2):
     dependencies:

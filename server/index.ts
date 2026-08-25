@@ -6,14 +6,24 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./platform/config.js";
 import { createPlatformRuntime } from "./platform/runtime.js";
 import { createHttpLogger } from "./platform/telemetry.js";
+import { createDeterministicAnalysisAdapter } from "./research-platform/analysis/deterministic-analysis.js";
+import { createPlatformModule } from "./research-platform/platform-module.js";
+import { createPlatformWorker } from "./research-platform/platform-worker.js";
 
 const config = loadConfig();
 const port = config.PORT;
 const { store, services } = await createPlatformRuntime(config);
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const researchPlatform = createPlatformModule({
+  dataRoot:
+    process.env.BOYUAN_RESEARCH_DATA_ROOT ??
+    path.join(root, "data", "research-platform"),
+  analysis: createDeterministicAnalysisAdapter(),
+});
+const researchWorker = createPlatformWorker(researchPlatform);
 const app = express();
 app.use(createHttpLogger(config));
-app.use(createApp(store, services));
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+app.use(createApp(store, services, { researchPlatform }));
 const dist = path.join(root, "dist");
 if (fs.existsSync(dist)) {
   app.use(express.static(dist));
@@ -26,6 +36,8 @@ const server = app.listen(port, config.HOST, () =>
 );
 async function shutdown() {
   server.close();
+  researchWorker.stop();
+  researchPlatform.close();
   await store.flush();
   await services.close();
 }

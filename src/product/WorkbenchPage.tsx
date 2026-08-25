@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -33,6 +33,18 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, type Bootstrap } from "../api";
+import {
+  createResearchPlatformClient,
+  type ResearchPlatformClient,
+} from "../capabilities/research/client";
+import type {
+  ConversationDetail,
+  ConversationStatus,
+} from "../capabilities/research/types";
+import {
+  toWorkbenchConversation,
+  toWorkbenchResearch,
+} from "../capabilities/research/workbench-view-model";
 import type { Company, Evidence, IndustryNode, ResearchTask } from "../types";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -42,14 +54,29 @@ type ActiveResearch = {
   task: ResearchTask;
   company?: Company;
   industry?: IndustryNode;
+  platformConversationId?: string;
+  platformStatus?: ConversationStatus;
+  materialFileName?: string;
+  pendingCandidateCount?: number;
 } | null;
+
+type ConversationRow = NonNullable<ActiveResearch>;
+
+const defaultResearchClient = createResearchPlatformClient();
+const terminalPlatformStatuses = new Set<ConversationStatus>([
+  "pending_confirmation",
+  "completed",
+  "failed",
+]);
 
 export function WorkbenchPage({
   data,
   reload,
+  researchClient = defaultResearchClient,
 }: {
   data: Bootstrap;
   reload: () => void;
+  researchClient?: ResearchPlatformClient;
 }) {
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
@@ -68,6 +95,9 @@ export function WorkbenchPage({
   const [conversationFilter, setConversationFilter] = useState<
     "全部" | ContextType
   >("全部");
+  const [platformConversations, setPlatformConversations] = useState<
+    ConversationRow[]
+  >([]);
 
   const pending = data.companies.reduce(
     (sum, company) =>
@@ -76,6 +106,93 @@ export function WorkbenchPage({
         ["candidate", "disputed"].includes(claim.status),
       ).length,
     0,
+  );
+
+  const loadPlatformConversations = useCallback(
+    async (signal?: AbortSignal) => {
+      const conversations = await researchClient.listConversations(signal);
+      setPlatformConversations(conversations.map(toWorkbenchConversation));
+    },
+    [researchClient],
+  );
+
+  const syncPlatformConversation = useCallback(
+    (conversation: ConversationDetail) => {
+      const next = toWorkbenchResearch(conversation);
+      setPlatformConversations((current) => {
+        const found = current.some(
+          (item) => item.platformConversationId === conversation.conversationId,
+        );
+        return found
+          ? current.map((item) =>
+              item.platformConversationId === conversation.conversationId
+                ? next
+                : item,
+            )
+          : [next, ...current];
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPlatformConversations(controller.signal).catch((error) => {
+      if (!controller.signal.aborted) {
+        setNotice(error instanceof Error ? error.message : "无法读取研究对话");
+      }
+    });
+    return () => controller.abort();
+  }, [loadPlatformConversations]);
+
+  useEffect(() => {
+    const conversationId = activeResearch?.platformConversationId;
+    if (
+      !conversationId ||
+      (activeResearch.platformStatus &&
+        terminalPlatformStatuses.has(activeResearch.platformStatus))
+    )
+      return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const detail = await researchClient.getConversation(conversationId);
+        if (!cancelled) {
+          setActiveResearch(toWorkbenchResearch(detail));
+          syncPlatformConversation(detail);
+        }
+      } catch (error) {
+        if (!cancelled)
+          setNotice(
+            error instanceof Error ? error.message : "无法刷新任务状态",
+          );
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 1_200);
+    void refresh();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    activeResearch?.platformConversationId,
+    activeResearch?.platformStatus,
+    researchClient,
+    syncPlatformConversation,
+  ]);
+
+  const conversationRows = useMemo<ConversationRow[]>(
+    () => [
+      ...platformConversations,
+      ...data.tasks.map((task) => ({
+        task,
+        company: data.companies.find((item) => item.id === task.companyId),
+        industry: data.industryNodes.find(
+          (item) => item.id === task.industryId,
+        ),
+      })),
+    ],
+    [data.companies, data.industryNodes, data.tasks, platformConversations],
   );
 
   useEffect(() => {
@@ -129,12 +246,26 @@ export function WorkbenchPage({
     },
   );
 
-  const openTask = (task: ResearchTask) => {
-    const company = data.companies.find((item) => item.id === task.companyId);
-    const industry = data.industryNodes.find(
-      (item) => item.id === task.industryId,
-    );
-    setActiveResearch({ task, company, industry });
+  const openConversation = async (research: ConversationRow) => {
+    let next = research;
+    if (research.platformConversationId) {
+      setBusy(true);
+      setNotice("");
+      try {
+        const detail = await researchClient.getConversation(
+          research.platformConversationId,
+        );
+        next = toWorkbenchResearch(detail);
+        syncPlatformConversation(detail);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "无法打开研究对话");
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    const { task, company, industry } = next;
+    setActiveResearch(next);
     setContext(
       task.contextType || (industry ? "行业" : company ? "公司" : "材料"),
     );
@@ -181,7 +312,7 @@ export function WorkbenchPage({
     if (!files.length) return;
     setNotice(`已接收 ${files.length} 份材料，正在安全保存并创建对话`);
     const results = await Promise.allSettled(
-      files.map((file) => api.upload(file)),
+      files.map((file) => researchClient.uploadDocument(file)),
     );
     const success = results.filter(
       (result) => result.status === "fulfilled",
@@ -192,14 +323,20 @@ export function WorkbenchPage({
         ? `${success} 份已提交，${failed} 份失败，请检查格式后重试`
         : `${success} 份材料已保存，后台分析已开始`,
     );
+    const first = results.find((result) => result.status === "fulfilled");
+    if (first?.status === "fulfilled") {
+      setActiveResearch(toWorkbenchResearch(first.value.conversation));
+      setContext("材料");
+    }
     if (uploadRef.current) uploadRef.current.value = "";
-    reload();
+    await loadPlatformConversations();
   };
 
   return (
     <div className="by-workbench" ref={pageRef}>
       <ConversationRail
         data={data}
+        conversations={conversationRows}
         filter={conversationFilter}
         activeTaskId={activeResearch?.task.id}
         onFilter={setConversationFilter}
@@ -210,7 +347,7 @@ export function WorkbenchPage({
           setSelectedCompanyId("");
           setSelectedIndustryId("");
         }}
-        onOpen={openTask}
+        onOpen={(research) => void openConversation(research)}
       />
 
       {!activeResearch ? (
@@ -247,7 +384,7 @@ export function WorkbenchPage({
               hidden
               type="file"
               multiple
-              accept=".pdf,.docx,.txt,.md,.csv"
+              accept=".pdf,.docx,.txt,.md"
               onChange={(event) =>
                 void uploadFiles([...(event.target.files || [])])
               }
@@ -261,7 +398,20 @@ export function WorkbenchPage({
                 setNotice("");
               }}
             />
-            <RecentTasks data={data} onOpen={openTask} />
+            <RecentTasks
+              data={data}
+              onOpen={(task) =>
+                void openConversation({
+                  task,
+                  company: data.companies.find(
+                    (item) => item.id === task.companyId,
+                  ),
+                  industry: data.industryNodes.find(
+                    (item) => item.id === task.industryId,
+                  ),
+                })
+              }
+            />
             <div className="by-governance-note">
               <ShieldCheck />
               <span>
@@ -296,9 +446,11 @@ export function WorkbenchPage({
           <TaskRail
             task={activeResearch.task}
             pending={
+              activeResearch.pendingCandidateCount ??
               activeResearch.company?.claims.filter((claim) =>
                 ["candidate", "disputed"].includes(claim.status),
-              ).length || 0
+              ).length ??
+              0
             }
             activeStep={activeStep}
             onStep={setActiveStep}
@@ -319,6 +471,7 @@ export function WorkbenchPage({
 
 function ConversationRail({
   data,
+  conversations,
   filter,
   activeTaskId,
   onFilter,
@@ -326,13 +479,14 @@ function ConversationRail({
   onOpen,
 }: {
   data: Bootstrap;
+  conversations: ConversationRow[];
   filter: "全部" | ContextType;
   activeTaskId?: string;
   onFilter: (filter: "全部" | ContextType) => void;
   onNew: () => void;
-  onOpen: (task: ResearchTask) => void;
+  onOpen: (research: ConversationRow) => void;
 }) {
-  const visibleTasks = data.tasks.filter((task) => {
+  const visibleTasks = conversations.filter(({ task }) => {
     if (filter === "全部") return true;
     if (task.contextType) return task.contextType === filter;
     if (filter === "公司") return Boolean(task.companyId);
@@ -363,19 +517,22 @@ function ConversationRail({
       </div>
       <div className="by-conversation-list">
         <span>最近对话</span>
-        {visibleTasks.map((task) => {
+        {visibleTasks.map((research) => {
+          const { task } = research;
           const company = data.companies.find(
             (item) => item.id === task.companyId,
           );
           const pending =
+            research.pendingCandidateCount ??
             company?.claims.filter((claim) =>
               ["candidate", "disputed"].includes(claim.status),
-            ).length || 0;
+            ).length ??
+            0;
           return (
             <button
               className={activeTaskId === task.id ? "active" : ""}
-              key={task.id}
-              onClick={() => onOpen(task)}
+              key={research.platformConversationId || task.id}
+              onClick={() => onOpen(research)}
             >
               <FileText />
               <span>
@@ -579,6 +736,7 @@ function ActiveConversation({
   const primaryEvidence = evidence[0];
   const primaryFileName =
     primaryEvidence?.fileName ||
+    research.materialFileName ||
     `${industry?.name || companyName || "当前对象"}研究材料`;
   const industryName =
     industry?.name ||
@@ -591,9 +749,23 @@ function ActiveConversation({
   const externalClaims =
     company?.claims.filter((claim) => claim.type === "external_view") || [];
   const pendingCount =
+    research.pendingCandidateCount ??
     company?.claims.filter((claim) =>
       ["candidate", "disputed"].includes(claim.status),
-    ).length || 0;
+    ).length ??
+    0;
+  const platformMaterialStored = Boolean(
+    research.platformConversationId && research.materialFileName,
+  );
+  const parseStep = task.steps.find((step) => step.name === "解析文件");
+  const parseState =
+    parseStep?.status === "done"
+      ? "已完成"
+      : parseStep?.status === "running"
+        ? "处理中"
+        : parseStep?.status === "needs-review"
+          ? "需要处理"
+          : "等待处理";
   return (
     <section className="by-active-conversation">
       <div className="by-conversation-scroll">
@@ -639,7 +811,9 @@ function ActiveConversation({
           <TimelineItem
             icon={<FileText />}
             title="原始材料"
-            state={primaryEvidence ? "已保存" : "等待上传"}
+            state={
+              primaryEvidence || platformMaterialStored ? "已保存" : "等待上传"
+            }
           >
             <button
               className="by-file-row"
@@ -651,7 +825,9 @@ function ActiveConversation({
                 <small>
                   {primaryEvidence
                     ? `${primaryEvidence.sourceDate} · 原始证据`
-                    : "尚未关联原始材料"}
+                    : platformMaterialStored
+                      ? "已由研究平台持久保存"
+                      : "尚未关联原始材料"}
                 </small>
               </span>
               <BookOpen />
@@ -660,7 +836,9 @@ function ActiveConversation({
           <TimelineItem
             icon={<FileCheck2 />}
             title="文件解析"
-            state={primaryEvidence ? "已完成" : "等待材料"}
+            state={
+              parseStep ? parseState : primaryEvidence ? "已完成" : "等待材料"
+            }
           >
             <p className="by-process-line">
               {task.steps.find((step) => /检索|材料|解析/.test(step.name))
@@ -792,7 +970,7 @@ function ActiveConversation({
           hidden
           type="file"
           multiple
-          accept=".pdf,.docx,.txt,.md,.csv"
+          accept=".pdf,.docx,.txt,.md"
           onChange={(event) =>
             void onUploadFiles([...(event.target.files || [])])
           }
@@ -1139,6 +1317,12 @@ function StatusMark({
       <em className="by-status success">
         <Check />
         已完成
+      </em>
+    );
+  if (status === "待用户确认")
+    return (
+      <em className="by-status warning">
+        待确认{count > 0 ? ` ${count}` : ""}
       </em>
     );
   if (count > 0) return <em className="by-status warning">待确认 {count}</em>;
