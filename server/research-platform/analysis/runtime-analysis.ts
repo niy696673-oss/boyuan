@@ -71,6 +71,7 @@ export function createRuntimeAnalysisAdapter(
       : {}),
     skillName: "boyuan-bp-deep-analysis",
     sequentialThinkingTool: "sequential-thinking_sequentialthinking",
+    requiredMcpServer: "sequential-thinking",
     timeoutMs,
     ...(options.fetcher ? { fetcher: options.fetcher } : {}),
   });

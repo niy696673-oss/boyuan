@@ -33,9 +33,16 @@ describe("OpenCode BP 分析接缝", () => {
       variant: "xhigh",
       skillName: "boyuan-bp-deep-analysis",
       sequentialThinkingTool: "sequential-thinking_sequentialthinking",
+      requiredMcpServer: "sequential-thinking",
       fetcher: async (request, init = {}) => {
         const url = new URL(String(request));
         requests.push({ url, init });
+        if (url.pathname === "/opencode-api/skill" && init.method === "GET") {
+          return jsonResponse([{ name: "boyuan-bp-deep-analysis" }]);
+        }
+        if (url.pathname === "/opencode-api/mcp" && init.method === "GET") {
+          return jsonResponse({ "sequential-thinking": { status: "connected" } });
+        }
         if (
           url.pathname === "/opencode-api/session" &&
           init.method === "POST"
@@ -105,10 +112,66 @@ describe("OpenCode BP 分析接缝", () => {
     ]);
     expect(
       requests.map(({ url }) => url.searchParams.get("directory")),
-    ).toEqual(["/workspace/boyuan", "/workspace/boyuan", "/workspace/boyuan"]);
+    ).toEqual(Array.from({ length: 5 }, () => "/workspace/boyuan"));
     expect(new Headers(requests[0]?.init.headers).has("authorization")).toBe(
       false,
     );
+    const promptRequest = requests.find(
+      ({ url, init }) =>
+        url.pathname.endsWith("/message") && init.method === "POST",
+    );
+    expect(JSON.parse(String(promptRequest?.init.body)).tools).toEqual({
+      "*": false,
+      skill: true,
+      "sequential-thinking_sequentialthinking": true,
+    });
+  });
+
+  it("在创建会话前拒绝缺失的 BP skill", async () => {
+    const requests: string[] = [];
+    const adapter = createOpenCodeAnalysisAdapter({
+      baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
+      directory: "/workspace/boyuan",
+      skillName: "boyuan-bp-deep-analysis",
+      requiredMcpServer: "sequential-thinking",
+      fetcher: async (request, init = {}) => {
+        const url = new URL(String(request));
+        requests.push(`${init.method} ${url.pathname}`);
+        if (url.pathname.endsWith("/skill")) return jsonResponse([]);
+        if (url.pathname.endsWith("/mcp")) {
+          return jsonResponse({ "sequential-thinking": { status: "connected" } });
+        }
+        return new Response(null, { status: 404 });
+      },
+    });
+
+    await expect(adapter.analyze(input)).rejects.toMatchObject({
+      code: "opencode_required_skill_unavailable",
+    });
+    expect(requests).not.toContain("POST /opencode-api/session");
+  });
+
+  it("在创建会话前拒绝未连接的必需 MCP", async () => {
+    const adapter = createOpenCodeAnalysisAdapter({
+      baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
+      directory: "/workspace/boyuan",
+      skillName: "boyuan-bp-deep-analysis",
+      requiredMcpServer: "sequential-thinking",
+      fetcher: async (request) => {
+        const url = new URL(String(request));
+        if (url.pathname.endsWith("/skill")) {
+          return jsonResponse([{ name: "boyuan-bp-deep-analysis" }]);
+        }
+        if (url.pathname.endsWith("/mcp")) {
+          return jsonResponse({ "sequential-thinking": { status: "failed" } });
+        }
+        return new Response(null, { status: 404 });
+      },
+    });
+
+    await expect(adapter.analyze(input)).rejects.toMatchObject({
+      code: "opencode_required_mcp_unavailable",
+    });
   });
 
   it("分析超时后终止仍在运行的 OpenCode 会话", async () => {

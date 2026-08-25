@@ -18,6 +18,7 @@ export interface OpenCodeAnalysisOptions {
   variant?: string;
   skillName?: string;
   sequentialThinkingTool?: string;
+  requiredMcpServer?: string;
   timeoutMs?: number;
   fetcher?: typeof fetch;
 }
@@ -46,6 +47,9 @@ interface OpenCodePart {
   state?: { status?: string; input?: Record<string, unknown> };
 }
 
+interface OpenCodeSkill { name: string }
+interface OpenCodeMcpStatus { status?: string }
+
 export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions): MaterialAnalysisPort {
   const fetcher = options.fetcher ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? 600_000;
@@ -67,8 +71,29 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
     if (!response.ok) throw new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${response.status}`);
     return await response.json() as T;
   };
+  const assertRequiredCapabilities = async (): Promise<void> => {
+    const skills = options.skillName
+      ? await request<OpenCodeSkill[]>('/skill', { method: 'GET' })
+      : [];
+    if (options.skillName && !skills.some((skill) => skill.name === options.skillName)) {
+      throw new AnalysisAdapterError(
+        'opencode_required_skill_unavailable',
+        `OpenCode skill is unavailable: ${options.skillName}`,
+      );
+    }
+    const mcp = options.requiredMcpServer
+      ? await request<Record<string, OpenCodeMcpStatus>>('/mcp', { method: 'GET' })
+      : {};
+    if (options.requiredMcpServer && mcp[options.requiredMcpServer]?.status !== 'connected') {
+      throw new AnalysisAdapterError(
+        'opencode_required_mcp_unavailable',
+        `OpenCode MCP is not connected: ${options.requiredMcpServer}`,
+      );
+    }
+  };
   return {
     async analyze(input): Promise<MaterialAnalysisResult> {
+      await assertRequiredCapabilities();
       const sessionId = input.sessionId ?? (await request<OpenCodeSession>('/session', {
         method: 'POST', body: JSON.stringify({ title: `博源 BP 分析：${input.companyName}` }),
       })).id;
@@ -77,7 +102,7 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
         ...(options.variant ? { variant: options.variant } : {}),
         system: systemInstruction(),
         tools: {
-          bash: false, edit: false, write: false, webfetch: false, websearch: false,
+          '*': false,
           ...(options.skillName ? { skill: true } : {}),
           ...(options.sequentialThinkingTool ? { [options.sequentialThinkingTool]: true } : {}),
         },
