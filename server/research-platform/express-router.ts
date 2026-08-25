@@ -9,6 +9,7 @@ import type {
 } from "./contracts.js";
 import type {
   CompanyDirectoryResponse,
+  IndustryDirectoryResponseV1,
   ReviewDecisionResponse,
   ReviewQueueItem,
   ReviewQueueResponse,
@@ -139,6 +140,24 @@ export function createResearchPlatformV1Router(
           input.expectedVersion,
         ),
       );
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/industries", async (_req, res, next) => {
+    try {
+      const items = await platform.listIndustries();
+      const response = { items, total: items.length } satisfies IndustryDirectoryResponseV1;
+      res.json(response);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/industries/:industryId", async (req, res, next) => {
+    try {
+      res.json(await platform.getIndustry(String(req.params.industryId)));
     } catch (error) {
       handlePlatformError(error, res, next);
     }

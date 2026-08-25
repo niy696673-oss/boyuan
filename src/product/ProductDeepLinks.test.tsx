@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
 import type { CompanyDirectoryClient } from "../capabilities/companies/client";
+import type { IndustryDirectoryClient } from "../capabilities/industries/client";
 import { CompanyDetailPage } from "./CompanyPages";
 import { IndustryDetailPage } from "./IndustryPages";
 
@@ -49,21 +50,62 @@ describe("飞书卡片实体深链", () => {
     expect(document.querySelector(".by-industry-lane.expanded")).not.toBeNull();
   });
 
-  it("直接打开行业的产业链页签", () => {
+  it("直接打开行业的产业链页签", async () => {
     render(
       <MemoryRouter initialEntries={["/industry/industry-1?tab=chain"]}>
         <Routes>
           <Route
             path="/industry/:id"
-            element={<IndustryDetailPage data={bootstrap()} />}
+            element={<IndustryDetailPage data={bootstrap()} industryClient={industryClient()} />}
           />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /产业链/ }).className).toContain("active");
+    expect((await screen.findByRole("button", { name: /产业链/ })).className).toContain("active");
   });
 });
+
+function industryClient(): IndustryDirectoryClient {
+  return {
+    list: vi.fn(),
+    get: vi.fn().mockResolvedValue({
+      industryId: "industry-1",
+      name: "人工智能",
+      summary: "人工智能产业",
+      status: "active",
+      materialCount: 0,
+      companyCount: 1,
+      updatedAt: "2026-08-26T00:00:00.000Z",
+      nodes: [
+        {
+          nodeId: "stage-1",
+          stage: "midstream",
+          name: "算力调度",
+          position: 1,
+        },
+      ],
+      materials: [],
+      companies: [
+        {
+          company: {
+            companyId: "company-1",
+            canonicalName: "星河科技有限公司",
+            status: "active",
+            aliases: [{ alias: "星河科技", type: "short_name" }],
+            version: 1,
+            createdAt: "2026-08-26T00:00:00.000Z",
+            updatedAt: "2026-08-26T00:00:00.000Z",
+          },
+          nodeId: "stage-1",
+          nodeName: "算力调度",
+          positionLabel: "算力调度平台",
+          status: "confirmed",
+        },
+      ],
+    }),
+  };
+}
 
 function companyClient(): CompanyDirectoryClient {
   const item = {

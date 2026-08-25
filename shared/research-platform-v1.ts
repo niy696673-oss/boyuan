@@ -194,3 +194,53 @@ export interface CompanyDetailResponse
   relations: CompanyRelationV1[];
   industryPlacements: CompanyIndustryPlacementV1[];
 }
+
+export interface IndustryDirectoryItemV1 {
+  industryId: string;
+  name: string;
+  summary: string;
+  status: "draft" | "active";
+  materialCount: number;
+  companyCount: number;
+  updatedAt: string;
+}
+
+export interface IndustryDirectoryResponseV1 {
+  items: IndustryDirectoryItemV1[];
+  total: number;
+}
+
+export interface IndustryNodeV1 {
+  nodeId: string;
+  stage: "upstream" | "midstream" | "downstream";
+  name: string;
+  description?: string;
+  position: number;
+}
+
+export interface IndustryMaterialV1 extends CompanyMaterialV1 {
+  evidence?: ReviewEvidence;
+}
+
+export interface IndustryCompanyPlacementV1 {
+  company: {
+    companyId: string;
+    canonicalName: string;
+    status: "active" | "provisional" | "merged";
+    aliases: Array<{ alias: string; type: string }>;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  nodeId?: string;
+  nodeName?: string;
+  positionLabel: string;
+  status: "candidate" | "confirmed" | "conflicted";
+  evidence?: ReviewEvidence;
+}
+
+export interface IndustryDetailResponseV1 extends IndustryDirectoryItemV1 {
+  nodes: IndustryNodeV1[];
+  materials: IndustryMaterialV1[];
+  companies: IndustryCompanyPlacementV1[];
+}
