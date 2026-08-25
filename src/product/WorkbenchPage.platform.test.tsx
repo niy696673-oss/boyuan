@@ -32,6 +32,27 @@ beforeAll(() => {
 });
 
 describe("工作台研究平台接缝", () => {
+  it("首页治理入口展示持久审核队列数量", async () => {
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          persistentPendingCount={3}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("3 条待确认")).toBeTruthy();
+  });
+
   it("展示持久对话并在打开后呈现真实任务步骤", async () => {
     const detail = conversationDetail();
     const summary: ConversationSummary = detail;
