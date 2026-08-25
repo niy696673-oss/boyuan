@@ -59,7 +59,6 @@ export function ConfirmationPage({
     if (!selected) return;
     setDraft(selected.statement);
     setReason("");
-    setMode("review");
   }, [selected?.candidateId]);
 
   useGSAP(
