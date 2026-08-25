@@ -2213,10 +2213,15 @@ class SqlitePlatformModule implements PlatformModule {
       SELECT COUNT(*) AS count FROM knowledge_candidates
       WHERE company_id = ? AND status IN ('pending', 'conflicted')
     `).get(companyId) as { count: number };
+    const knowledge = this.#db.prepare(`
+      SELECT COUNT(*) AS count FROM knowledge
+      WHERE company_id = ? AND status != 'superseded'
+    `).get(companyId) as { count: number };
     return {
       ...company,
       profile: this.#companyProfile(companyId),
       materialCount: this.#companyMaterials(companyId).length,
+      knowledgeCount: knowledge.count,
       pendingCandidateCount: pending.count,
     };
   }

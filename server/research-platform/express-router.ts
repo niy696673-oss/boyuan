@@ -8,6 +8,7 @@ import type {
   PlatformModule,
 } from "./contracts.js";
 import type {
+  CompanyDirectoryResponse,
   ReviewDecisionResponse,
   ReviewQueueItem,
   ReviewQueueResponse,
@@ -62,6 +63,27 @@ export function createResearchPlatformV1Router(
   router.get("/conversations/:conversationId", async (req, res, next) => {
     try {
       res.json(await platform.getConversation(req.params.conversationId));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/companies", async (_req, res, next) => {
+    try {
+      const items = await platform.listCompanies();
+      const response = {
+        items,
+        total: items.length,
+      } satisfies CompanyDirectoryResponse;
+      res.json(response);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/companies/:companyId", async (req, res, next) => {
+    try {
+      res.json(await platform.getCompany(req.params.companyId));
     } catch (error) {
       handlePlatformError(error, res, next);
     }

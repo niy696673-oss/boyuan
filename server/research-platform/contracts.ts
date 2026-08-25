@@ -115,6 +115,7 @@ export interface CompanyProfile {
 export interface CompanyCardRecord extends CompanyRecord {
   profile: CompanyProfile;
   materialCount: number;
+  knowledgeCount: number;
   pendingCandidateCount: number;
 }
 
