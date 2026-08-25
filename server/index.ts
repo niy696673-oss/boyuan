@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./platform/config.js";
 import { createPlatformRuntime } from "./platform/runtime.js";
 import { createHttpLogger } from "./platform/telemetry.js";
-import { createDeterministicAnalysisAdapter } from "./research-platform/analysis/deterministic-analysis.js";
+import { createRuntimeAnalysisAdapter } from "./research-platform/analysis/runtime-analysis.js";
 import { createPlatformModule } from "./research-platform/platform-module.js";
 import { createPlatformWorker } from "./research-platform/platform-worker.js";
 
@@ -18,7 +18,7 @@ const researchPlatform = createPlatformModule({
   dataRoot:
     process.env.BOYUAN_RESEARCH_DATA_ROOT ??
     path.join(root, "data", "research-platform"),
-  analysis: createDeterministicAnalysisAdapter(),
+  analysis: createRuntimeAnalysisAdapter(process.env, { directory: root }),
 });
 const researchWorker = createPlatformWorker(researchPlatform);
 const app = express();

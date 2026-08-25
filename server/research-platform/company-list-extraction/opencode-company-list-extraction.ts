@@ -14,13 +14,15 @@ interface OpenCodeAssistantResponse {
 
 export function createOpenCodeCompanyListExtractionAdapter(options: OpenCodeAnalysisOptions): CompanyListExtractionPort {
   const fetcher = options.fetcher ?? globalThis.fetch;
-  const authorization = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString('base64')}`;
+  const authorization = options.credentials
+    ? `Basic ${Buffer.from(`${options.credentials.username}:${options.credentials.password}`).toString('base64')}`
+    : undefined;
   const request = async <T>(path: string, init: RequestInit): Promise<T> => {
     const url = new URL(path, options.baseUrl);
     url.searchParams.set('directory', options.directory);
     const response = await fetcher(url, {
       ...init,
-      headers: { authorization, accept: 'application/json', 'content-type': 'application/json', ...init.headers },
+      headers: { ...(authorization ? { authorization } : {}), accept: 'application/json', 'content-type': 'application/json', ...init.headers },
       signal: init.signal ?? AbortSignal.timeout(180_000),
     });
     if (!response.ok) throw new CompanyListExtractionError('company_list_ai_http_error', `OpenCode returned HTTP ${response.status}`);
