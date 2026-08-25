@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
+import type { CompanyDirectoryClient } from "../capabilities/companies/client";
 import { CompanyDetailPage } from "./CompanyPages";
 import { IndustryDetailPage } from "./IndustryPages";
 
@@ -38,13 +39,13 @@ describe("飞书卡片实体深链", () => {
         <Routes>
           <Route
             path="/companies/:id"
-            element={<CompanyDetailPage data={bootstrap()} reload={vi.fn()} />}
+            element={<CompanyDetailPage data={bootstrap()} reload={vi.fn()} companyClient={companyClient()} />}
           />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: "产业关系" }).className).toContain("active");
+    expect((await screen.findByRole("button", { name: "产业关系" })).className).toContain("active");
     expect(document.querySelector(".by-industry-lane.expanded")).not.toBeNull();
   });
 
@@ -63,6 +64,33 @@ describe("飞书卡片实体深链", () => {
     expect(screen.getByRole("button", { name: /产业链/ }).className).toContain("active");
   });
 });
+
+function companyClient(): CompanyDirectoryClient {
+  const item = {
+    companyId: "company-1",
+    canonicalName: "星河科技有限公司",
+    status: "active" as const,
+    aliases: [{ alias: "星河科技", type: "short_name" }],
+    version: 1,
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:00:00.000Z",
+    profile: {
+      summary: { value: "AI 算力调度平台", state: "confirmed" as const },
+      primaryIndustry: { state: "missing" as const },
+      industryPosition: { state: "missing" as const },
+      location: { state: "missing" as const },
+      foundedAt: { state: "missing" as const },
+      latestFunding: { state: "missing" as const },
+      watched: false,
+    },
+    materialCount: 0,
+    pendingCandidateCount: 0,
+  };
+  return {
+    list: vi.fn().mockResolvedValue({ items: [{ ...item, knowledgeCount: 0 }], total: 1 }),
+    get: vi.fn().mockResolvedValue({ ...item, knowledge: [], materials: [], pendingCandidates: [], researchRecords: [], relations: [], industryPlacements: [] }),
+  };
+}
 
 function bootstrap(): Bootstrap {
   const user = { id: "u-1", name: "投资经理", role: "investor" as const, projectIds: [] };

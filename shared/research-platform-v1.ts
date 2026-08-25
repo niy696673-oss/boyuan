@@ -88,3 +88,109 @@ export interface ReviewDecisionResponse {
   currentKnowledge: ReviewKnowledge[];
   remainingCount: number;
 }
+
+export type CompanyProfileFieldState =
+  | "confirmed"
+  | "pending"
+  | "conflicted"
+  | "missing";
+
+export interface CompanyProfileFieldV1 {
+  value?: string;
+  state: CompanyProfileFieldState;
+}
+
+export interface CompanyProfileV1 {
+  summary: CompanyProfileFieldV1;
+  primaryIndustry: CompanyProfileFieldV1;
+  industryPosition: CompanyProfileFieldV1;
+  location: CompanyProfileFieldV1;
+  foundedAt: CompanyProfileFieldV1;
+  latestFunding: CompanyProfileFieldV1;
+  watched: boolean;
+}
+
+export interface CompanyDirectoryItem {
+  companyId: string;
+  canonicalName: string;
+  status: "active" | "provisional" | "merged";
+  aliases: Array<{ alias: string; type: string }>;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  profile: CompanyProfileV1;
+  materialCount: number;
+  knowledgeCount: number;
+  pendingCandidateCount: number;
+}
+
+export interface CompanyDirectoryResponse {
+  items: CompanyDirectoryItem[];
+  total: number;
+}
+
+export type CompanyConversationStatusV1 =
+  | "processing"
+  | "waiting"
+  | "pending_confirmation"
+  | "completed"
+  | "failed";
+
+export type CompanySourceChannelV1 = "web" | "feishu";
+
+export interface CompanyMaterialV1 {
+  conversationId: string;
+  documentId: string;
+  fileName: string;
+  materialType?: string;
+  status: CompanyConversationStatusV1;
+  sourceChannel: CompanySourceChannelV1;
+  updatedAt: string;
+}
+
+export interface CompanyResearchRecordV1 {
+  conversationId: string;
+  runId: string;
+  intent: string;
+  status: CompanyConversationStatusV1;
+  triggerReason?:
+    | "user_requested"
+    | "information_missing"
+    | "possibly_outdated"
+    | "internal_conflict"
+    | "not_needed";
+  summary?: string;
+  updatedAt: string;
+}
+
+export interface CompanyRelationV1 {
+  relationId: string;
+  direction: "outgoing" | "incoming";
+  relationType: string;
+  status: "candidate" | "confirmed" | "conflicted";
+  company: Omit<
+    CompanyDirectoryItem,
+    "profile" | "materialCount" | "knowledgeCount" | "pendingCandidateCount"
+  >;
+  evidence?: ReviewEvidence;
+}
+
+export interface CompanyIndustryPlacementV1 {
+  industryId: string;
+  industryName: string;
+  nodeId?: string;
+  nodeName?: string;
+  positionLabel: string;
+  status: "candidate" | "confirmed" | "conflicted";
+  evidence?: ReviewEvidence;
+}
+
+export interface CompanyDetailResponse
+  extends Omit<CompanyDirectoryItem, "knowledgeCount"> {
+  knowledge: ReviewKnowledge[];
+  materials: CompanyMaterialV1[];
+  pendingCandidates: ReviewCandidate[];
+  researchRecords: CompanyResearchRecordV1[];
+  relations: CompanyRelationV1[];
+  industryPlacements: CompanyIndustryPlacementV1[];
+}

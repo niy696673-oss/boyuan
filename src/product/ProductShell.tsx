@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { setApiUser, type Bootstrap } from "../api";
+import type { CompanyDirectoryClient } from "../capabilities/companies/client";
 import {
   createReviewQueueClient,
   type ReviewQueueClient,
@@ -33,10 +34,12 @@ export function ProductShell({
   data,
   reload,
   reviewClient = defaultReviewClient,
+  companyClient,
 }: {
   data: Bootstrap;
   reload: () => void;
   reviewClient?: ReviewQueueClient;
+  companyClient?: CompanyDirectoryClient;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -161,14 +164,14 @@ export function ProductShell({
               />
             }
           />
-          <Route path="/companies" element={<CompaniesPage data={data} />} />
+          <Route path="/companies" element={<CompaniesPage data={data} companyClient={companyClient} />} />
           <Route
             path="/companies/import"
             element={<CompanyImportPage data={data} reload={reload} />}
           />
           <Route
             path="/companies/:id"
-            element={<CompanyDetailPage data={data} reload={reload} />}
+            element={<CompanyDetailPage data={data} reload={reload} companyClient={companyClient} />}
           />
           <Route
             path="/industry"
