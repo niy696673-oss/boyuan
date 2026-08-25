@@ -1,0 +1,6 @@
+interface:
+  display_name: "Meetings Router"
+  short_description: "Route FA, VC, and PE meeting workflows"
+  default_prompt: "Use $meetings-router to classify and coordinate this private-market meeting workflow."
+policy:
+  allow_implicit_invocation: true

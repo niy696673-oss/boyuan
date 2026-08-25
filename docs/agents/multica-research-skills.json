@@ -1,0 +1,452 @@
+{
+  "workspace": {
+    "id": "90aa3521-691b-4ba9-a644-48c7183a647c",
+    "name": "研图"
+  },
+  "agent": {
+    "id": "35a89fe3-0aae-4ddc-ae8f-66eaf9a19f3c",
+    "name": "项目资料管家"
+  },
+  "syncedAt": "2026-08-25T20:32:09Z",
+  "skills": [
+    {
+      "name": "analyze-comps",
+      "id": "15984189-5da1-47dc-beaf-aa9c8a52b792",
+      "updatedAt": "2026-08-19T11:03:37Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/financial-methods.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/validate_comps_manifest.py"
+      ]
+    },
+    {
+      "name": "analyze-earnings",
+      "id": "5e0079db-0ae4-4974-90b2-6cff50337002",
+      "updatedAt": "2026-08-19T11:03:38Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/financial-methods.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/validate_earnings_manifest.py"
+      ]
+    },
+    {
+      "name": "build-cim",
+      "id": "98aaeaa6-e872-4884-828a-7731b3f01de1",
+      "updatedAt": "2026-08-19T11:03:40Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "build-dcf-model",
+      "id": "1ae9a564-f7c6-42a6-8763-3100778763f3",
+      "updatedAt": "2026-08-19T11:03:41Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/financial-methods.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/validate_dcf_manifest.py"
+      ]
+    },
+    {
+      "name": "build-dd-checklist",
+      "id": "1acd55a1-8820-49ce-b567-44f92783915f",
+      "updatedAt": "2026-08-19T11:03:43Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/checklist-contract.md",
+        "references/global-contract.md",
+        "references/workstream-overlays.md"
+      ]
+    },
+    {
+      "name": "build-lbo-model",
+      "id": "252a407c-4d34-482e-9208-c221fccf07be",
+      "updatedAt": "2026-08-19T11:03:45Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/financial-methods.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/validate_lbo_manifest.py"
+      ]
+    },
+    {
+      "name": "build-pitch-deck",
+      "id": "f5690779-f342-4b21-9224-2b1809622b24",
+      "updatedAt": "2026-08-19T11:03:46Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "build-teaser",
+      "id": "42acbfd7-34d5-4a4a-8c7d-40c9c3866085",
+      "updatedAt": "2026-08-19T11:03:48Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "build-three-statement-model",
+      "id": "5c95756d-1f96-4d60-9fa4-fa2e9126b672",
+      "updatedAt": "2026-08-19T11:03:49Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/financial-methods.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/validate_three_statement_manifest.py"
+      ]
+    },
+    {
+      "name": "build-with-exa",
+      "id": "d00d047d-5ab7-4534-b6df-930f2976377f",
+      "updatedAt": "2026-08-21T20:30:48Z",
+      "origin": {
+        "owner": "exa-labs",
+        "path": "skills/build-with-exa",
+        "ref": "main",
+        "repo": "agent-skills",
+        "source_url": "https://github.com/exa-labs/agent-skills/tree/main/skills/build-with-exa",
+        "type": "github"
+      },
+      "files": [
+        "SKILL.md",
+        "references/agent.md",
+        "references/answer.md",
+        "references/common-mistakes.md",
+        "references/contents.md",
+        "references/context.md",
+        "references/http-requests.md",
+        "references/migrate-websets-to-agent.md",
+        "references/models-and-modes.md",
+        "references/monitors.md",
+        "references/openai-compat.md",
+        "references/prompting-and-patterns.md",
+        "references/sdks.md",
+        "references/search.md"
+      ]
+    },
+    {
+      "name": "capture-investment-meeting",
+      "id": "0c0a6f11-bbcc-4a6c-8efc-94abba34792c",
+      "updatedAt": "2026-08-19T11:03:51Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "dealflow-router",
+      "id": "bbe1a0b2-c9ae-4942-ab2b-fbe6b5b3b941",
+      "updatedAt": "2026-08-19T11:03:53Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/dealflow-handoffs.md",
+        "references/dealflow-recipes.md",
+        "references/global-contract.md"
+      ]
+    },
+    {
+      "name": "diagnose-bp",
+      "id": "c52c15c0-798b-4f0a-9491-e43af09edd50",
+      "updatedAt": "2026-08-19T11:03:54Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "diligence-router",
+      "id": "13072054-8fcd-4262-8310-05c899c58960",
+      "updatedAt": "2026-08-19T11:03:56Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/diligence-handoffs.md",
+        "references/diligence-recipes.md",
+        "references/global-contract.md"
+      ]
+    },
+    {
+      "name": "draft-dd-interview-questions",
+      "id": "b6343690-ef37-4f1b-a80e-b852ce9f622c",
+      "updatedAt": "2026-08-19T11:03:58Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/global-contract.md",
+        "references/question-contract.md",
+        "references/role-playbooks.md"
+      ]
+    },
+    {
+      "name": "evolve-private-markets-skills",
+      "id": "be5bf727-7b7d-4493-a443-1d37253d48d1",
+      "updatedAt": "2026-08-19T11:03:59Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "LICENSE-OPENAI-APACHE-2.0.txt",
+        "references/evaluation-and-release.md",
+        "references/evolution-contract.md",
+        "references/global-contract.md",
+        "references/project-memory-contract.md",
+        "scripts/validate_evolution_manifest.py"
+      ]
+    },
+    {
+      "name": "extract-risk-flags",
+      "id": "65a5109d-35f5-4faa-9235-6d4ba7c72244",
+      "updatedAt": "2026-08-19T11:04:02Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/global-contract.md",
+        "references/risk-register-contract.md",
+        "references/severity-governance.md"
+      ]
+    },
+    {
+      "name": "materials-router",
+      "id": "a2598657-83ba-45c0-a283-982657d15978",
+      "updatedAt": "2026-08-19T11:04:03Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/assemble_internal_memo.py"
+      ]
+    },
+    {
+      "name": "meetings-router",
+      "id": "f15915d9-6e10-4efa-835a-c1871a592e71",
+      "updatedAt": "2026-08-19T11:04:05Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "modeling-router",
+      "id": "a6c742b6-6001-4b52-9963-b3a510d2457d",
+      "updatedAt": "2026-08-19T11:04:07Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "monitor-catalysts",
+      "id": "181c19fd-4455-4866-8a5d-a18be593c79f",
+      "updatedAt": "2026-08-19T11:04:08Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/financial-methods.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md",
+        "scripts/validate_catalyst_ledger.py"
+      ]
+    },
+    {
+      "name": "monitoring-router",
+      "id": "e89e83b8-aef1-4a64-8c91-d8a39b20e8d2",
+      "updatedAt": "2026-08-19T11:04:10Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "prepare-investment-meeting",
+      "id": "7ba0e036-9b81-42b9-a4cd-8422b7c317ff",
+      "updatedAt": "2026-08-19T11:04:11Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "project-material-intake",
+      "id": "615bdc0d-fb09-4a85-8d28-2720e84ae725",
+      "updatedAt": "2026-08-19T16:12:03Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "references/analysis-contract.md",
+        "references/archive-issue-contract.md",
+        "references/document-taxonomy.md",
+        "references/nei-pevc.md"
+      ]
+    },
+    {
+      "name": "review-vdr-table",
+      "id": "5a8fbba1-45ea-4a32-a2fa-c8244e62351b",
+      "updatedAt": "2026-08-19T11:04:13Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/global-contract.md",
+        "references/tabular-safety.md",
+        "references/vdr-review-contract.md"
+      ]
+    },
+    {
+      "name": "rewrite-bp",
+      "id": "28f453c5-7742-4f22-a9de-39890144ecea",
+      "updatedAt": "2026-08-19T11:04:15Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/china-private-markets.md",
+        "references/global-contract.md",
+        "references/output-contract.md",
+        "references/workflow.md"
+      ]
+    },
+    {
+      "name": "screen-deal",
+      "id": "d30c8ba8-7b64-4da2-b055-16bca99ce97f",
+      "updatedAt": "2026-08-19T11:04:16Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/global-contract.md",
+        "references/screen-card-contract.md",
+        "references/screening-method.md"
+      ]
+    },
+    {
+      "name": "source-deals",
+      "id": "4470112a-a34d-4070-afc5-11dd8d455d1e",
+      "updatedAt": "2026-08-19T11:04:18Z",
+      "origin": null,
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "LICENSE-FELIX-FU.txt",
+        "references/global-contract.md",
+        "references/permission-and-contact-controls.md",
+        "references/sourcing-mode-contracts.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dealflow Router"
+  short_description: "Route sourcing, GP-fit, and deal-screening work"
+  default_prompt: "Use $dealflow-router to route this China private-market dealflow request."
+policy:
+  allow_implicit_invocation: true

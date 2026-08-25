@@ -1,0 +1,6 @@
+interface:
+  display_name: "Build DCF Model"
+  short_description: "Build evidence-linked private-market DCF models"
+  default_prompt: "Use $build-dcf-model to assess suitability and produce an auditable Simplified Chinese DCF package."
+policy:
+  allow_implicit_invocation: false

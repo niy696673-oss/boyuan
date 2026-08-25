@@ -1,0 +1,6 @@
+interface:
+  display_name: "Screen Deal"
+  short_description: "Screen private-market opportunities without replacing IC"
+  default_prompt: "Use $screen-deal to prepare a Simplified-Chinese private-market screen card."
+policy:
+  allow_implicit_invocation: false

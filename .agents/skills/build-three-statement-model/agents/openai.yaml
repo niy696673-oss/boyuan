@@ -1,0 +1,6 @@
+interface:
+  display_name: "Build Three-Statement Model"
+  short_description: "Build integrated private-company financial models"
+  default_prompt: "Use $build-three-statement-model to build an auditable integrated forecast with a Simplified Chinese readout."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Build CIM"
+  short_description: "Build a source-linked financing memorandum"
+  default_prompt: "Use $build-cim to draft a Chinese financing information memorandum from approved sources."
+policy:
+  allow_implicit_invocation: false

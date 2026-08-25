@@ -1,0 +1,6 @@
+interface:
+  display_name: "Materials Router"
+  short_description: "Route private-market materials workflows"
+  default_prompt: "Use $materials-router to select and coordinate the correct financing-material workflow."
+policy:
+  allow_implicit_invocation: true
