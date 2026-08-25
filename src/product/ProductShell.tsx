@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bell,
   Building2,
@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { setApiUser, type Bootstrap } from "../api";
+import {
+  createReviewQueueClient,
+  type ReviewQueueClient,
+} from "../capabilities/review/client";
 import { WorkbenchPage } from "./WorkbenchPage";
 import {
   CompaniesPage,
@@ -23,23 +27,29 @@ import { IndustriesPage, IndustryDetailPage } from "./IndustryPages";
 import { ConfirmationPage } from "./ConfirmationPage";
 import { OperationsPage } from "./OperationsPage";
 
+const defaultReviewClient = createReviewQueueClient();
+
 export function ProductShell({
   data,
   reload,
+  reviewClient = defaultReviewClient,
 }: {
   data: Bootstrap;
   reload: () => void;
+  reviewClient?: ReviewQueueClient;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const pendingCount = data.companies.reduce(
-    (sum, company) =>
-      sum +
-      company.claims.filter((claim) =>
-        ["candidate", "disputed"].includes(claim.status),
-      ).length,
-    0,
-  );
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void reviewClient
+      .list(controller.signal)
+      .then((queue) => setPendingCount(queue.total))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [reviewClient]);
 
   const navigation = (
     <>
@@ -143,7 +153,13 @@ export function ProductShell({
         <Routes>
           <Route
             path="/"
-            element={<WorkbenchPage data={data} reload={reload} />}
+            element={
+              <WorkbenchPage
+                data={data}
+                reload={reload}
+                persistentPendingCount={pendingCount}
+              />
+            }
           />
           <Route path="/companies" element={<CompaniesPage data={data} />} />
           <Route
@@ -164,7 +180,14 @@ export function ProductShell({
           />
           <Route
             path="/confirmations"
-            element={<ConfirmationPage data={data} reload={reload} />}
+            element={
+              <ConfirmationPage
+                data={data}
+                reload={reload}
+                reviewClient={reviewClient}
+                onQueueCountChange={setPendingCount}
+              />
+            }
           />
           <Route
             path="/tasks"

@@ -73,10 +73,12 @@ export function WorkbenchPage({
   data,
   reload,
   researchClient = defaultResearchClient,
+  persistentPendingCount,
 }: {
   data: Bootstrap;
   reload: () => void;
   researchClient?: ResearchPlatformClient;
+  persistentPendingCount?: number;
 }) {
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
@@ -99,14 +101,16 @@ export function WorkbenchPage({
     ConversationRow[]
   >([]);
 
-  const pending = data.companies.reduce(
-    (sum, company) =>
-      sum +
-      company.claims.filter((claim) =>
-        ["candidate", "disputed"].includes(claim.status),
-      ).length,
-    0,
-  );
+  const pending =
+    persistentPendingCount ??
+    data.companies.reduce(
+      (sum, company) =>
+        sum +
+        company.claims.filter((claim) =>
+          ["candidate", "disputed"].includes(claim.status),
+        ).length,
+      0,
+    );
 
   const loadPlatformConversations = useCallback(
     async (signal?: AbortSignal) => {
