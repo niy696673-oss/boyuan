@@ -450,6 +450,48 @@ export function createApp(
     }
     return res.status(404).json({ error: "知识不存在" });
   });
+  app.post("/api/claims/:id/review", (req, res) => {
+    const input = z
+      .object({
+        action: z.enum(["confirm", "reject"]),
+        text: z.string().min(2).optional(),
+        reason: z.string().min(2).optional(),
+      })
+      .parse(req.body);
+    const user = getUser(req);
+    for (const company of store.data.companies) {
+      const claim = company.claims.find((c) => c.id === req.params.id);
+      if (!claim) continue;
+      if (!store.canSee(user, claim))
+        return res.status(403).json({ error: "无权处理该候选知识" });
+      if (!["candidate", "disputed"].includes(claim.status))
+        return res.status(409).json({ error: "该候选知识已被处理" });
+      const before = claim.text;
+      claim.history ??= [];
+      claim.history.push({
+        text: claim.text,
+        status: claim.status,
+        version: claim.version,
+        changedAt: new Date().toISOString(),
+        changedBy: user.id,
+        reason:
+          input.reason ||
+          (input.action === "confirm" ? "人工确认入库" : "人工驳回"),
+      });
+      if (input.text && input.text !== claim.text) claim.text = input.text;
+      claim.status = input.action === "confirm" ? "confirmed" : "rejected";
+      claim.version += 1;
+      company.updatedAt = new Date().toISOString();
+      store.audit(
+        user.name,
+        input.action === "confirm" ? "确认候选知识" : "驳回候选知识",
+        claim.id,
+        `${before}${input.text && input.text !== before ? ` → ${input.text}` : ""}；原因：${input.reason || "未填写"}`,
+      );
+      return res.json(claim);
+    }
+    return res.status(404).json({ error: "知识不存在" });
+  });
   app.post("/api/claims/:id/rollback", (req, res) => {
     const user = getUser(req);
     for (const company of store.data.companies) {

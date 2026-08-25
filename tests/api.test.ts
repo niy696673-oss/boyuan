@@ -62,6 +62,27 @@ describe("博源投资 AI 工作台 API", () => {
     expect(store.data.audits[0].action).toBe("修正知识");
   });
 
+  it("待确认中心可确认或驳回候选知识并保留版本记录", async () => {
+    const app = createApp(store);
+    const confirmed = await request(app)
+      .post("/api/claims/cl-g4/review")
+      .set("x-user-id", "u-investor")
+      .send({ action: "confirm", reason: "已核验内部材料" });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.status).toBe("confirmed");
+    expect(confirmed.body.version).toBe(2);
+
+    const rejected = await request(app)
+      .post("/api/claims/cl-g3/review")
+      .set("x-user-id", "u-investor")
+      .send({ action: "reject", reason: "证据不足" });
+    expect(rejected.status).toBe(200);
+    expect(rejected.body.status).toBe("rejected");
+    expect(store.data.audits.map((row) => row.action)).toEqual(
+      expect.arrayContaining(["确认候选知识", "驳回候选知识"]),
+    );
+  });
+
   it("只有系统管理员可以切换外部模型", async () => {
     const app = createApp(store);
     const denied = await request(app)

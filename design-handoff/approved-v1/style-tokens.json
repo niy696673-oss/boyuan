@@ -1,0 +1,52 @@
+{
+  "font": {
+    "family": "Geist, Noto Sans SC, PingFang SC, system-ui, sans-serif",
+    "weights": { "regular": 400, "medium": 500, "semibold": 620, "bold": 700 },
+    "scale": {
+      "display": { "size": 40, "line_height": 48, "weight": 650, "letter_spacing": -1.4 },
+      "page_title": { "size": 28, "line_height": 36, "weight": 650, "letter_spacing": -0.7 },
+      "section_title": { "size": 17, "line_height": 24, "weight": 620 },
+      "body": { "size": 14, "line_height": 22, "weight": 400 },
+      "label": { "size": 12, "line_height": 18, "weight": 550 },
+      "meta": { "size": 11, "line_height": 16, "weight": 450 }
+    }
+  },
+  "colors": {
+    "canvas": "#F7F9FC",
+    "surface": "#FFFFFF",
+    "surface_subtle": "#F3F6FA",
+    "surface_selected": "#EDF4FF",
+    "text_primary": "#14243A",
+    "text_secondary": "#52647B",
+    "text_muted": "#8492A5",
+    "border": "#E1E6ED",
+    "border_strong": "#CDD5E1",
+    "navy": "#102747",
+    "accent": "#1468E8",
+    "accent_hover": "#0F56C5",
+    "accent_soft": "#EAF2FF",
+    "success": "#239769",
+    "success_soft": "#EAF7F1",
+    "warning": "#D98A0B",
+    "warning_soft": "#FFF5E4",
+    "danger": "#D84545",
+    "danger_soft": "#FFF0F0"
+  },
+  "spacing": { "1": 4, "2": 8, "3": 12, "4": 16, "5": 20, "6": 24, "8": 32, "10": 40, "12": 48 },
+  "radii": { "control": 8, "button": 9, "card": 12, "composer": 18, "avatar": 12 },
+  "borders": { "default": "1px solid #E1E6ED", "strong": "1px solid #CDD5E1", "focus": "0 0 0 3px rgba(20,104,232,0.12)" },
+  "shadows": {
+    "floating": "0 12px 34px rgba(16,39,71,0.10)",
+    "composer": "0 8px 26px rgba(16,39,71,0.08)",
+    "subtle": "0 1px 3px rgba(16,39,71,0.05)"
+  },
+  "icons": { "library": "lucide-react", "size_small": 14, "size_default": 18, "stroke_width": 1.8 },
+  "motion": {
+    "fast": "160ms",
+    "standard": "220ms",
+    "slow": "520ms",
+    "ease_out": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "gsap": ["ScrollTrigger pinning", "candidate card stacking"],
+    "reduced_motion": "remove transforms and pinning; preserve instant state changes"
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "boyuan-ai-workbench",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite\"",
@@ -9,8 +9,8 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:worker": "tsx watch server/worker.ts",
     "build": "tsc -b && vite build",
-    "start": "tsx server/index.ts",
-    "worker": "tsx server/worker.ts",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "worker": "NODE_ENV=production tsx server/worker.ts",
     "migrate": "tsx server/migrate.ts",
     "infra:up": "docker compose up -d postgres redis minio",
     "infra:down": "docker compose down",

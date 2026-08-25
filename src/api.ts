@@ -121,6 +121,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text, reason }),
     }),
+  reviewClaim: (
+    id: string,
+    action: "confirm" | "reject",
+    text?: string,
+    reason?: string,
+  ) =>
+    call(`/api/claims/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action, text, reason }),
+    }),
   rollbackClaim: (id: string) =>
     call(`/api/claims/${id}/rollback`, { method: "POST", body: "{}" }),
   changePosition: (companyId: string, nodeId: string, reason: string) =>

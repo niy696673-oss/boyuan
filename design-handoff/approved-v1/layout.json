@@ -1,0 +1,83 @@
+{
+  "version": "approved-v1",
+  "prototype_viewport": { "width": 1536, "height": 1024 },
+  "sources": {
+    "workbench_home": "prototypes/workbench-home.png",
+    "material_analysis": "prototypes/material-analysis.png",
+    "company_detail": "prototypes/company-detail.png"
+  },
+  "breakpoints": [
+    { "name": "mobile", "width": 390, "behavior": "top nav compacts, left rail becomes a drawer, right task rail becomes a sheet" },
+    { "name": "tablet", "width": 980, "behavior": "left rail remains, task rail becomes a sheet" },
+    { "name": "desktop", "width": 1536, "behavior": "full approved layout" }
+  ],
+  "shell": {
+    "top_navigation": {
+      "bounds": { "x": 0, "y": 0, "width": 1536, "height": 64 },
+      "layout": { "display": "grid", "columns": "200px 300px minmax(360px, 550px) 1fr", "align": "center", "gap": 20 },
+      "box_model": { "padding": "0 28px", "border_bottom": "1px solid #E4E8EE" }
+    },
+    "left_rail": {
+      "bounds": { "x": 0, "y": 64, "width": 340, "height": 960 },
+      "layout": { "display": "flex", "direction": "column" },
+      "box_model": { "padding": "22px 20px", "border_right": "1px solid #E4E8EE" }
+    }
+  },
+  "screens": {
+    "workbench_home": {
+      "main_bounds": { "x": 340, "y": 64, "width": 1196, "height": 960 },
+      "component_tree": ["welcome", "composer", "quick_actions", "recent_tasks"],
+      "components": {
+        "welcome": {
+          "bounds": { "x": 462, "y": 132, "width": 952, "height": 178 },
+          "computed_style": { "text_align": "center", "title_size": 40, "title_weight": 650, "title_line_height": 48 }
+        },
+        "composer": {
+          "bounds": { "x": 462, "y": 330, "width": 918, "height": 168 },
+          "box_model": { "padding": "20px 18px 14px", "border": "1px solid #CDD5E1", "radius": 18 },
+          "effects": { "shadow": "0 8px 26px rgba(18,39,68,0.08)" }
+        },
+        "quick_actions": {
+          "bounds": { "x": 462, "y": 530, "width": 918, "height": 96 },
+          "layout": { "display": "grid", "columns": 4, "gap": 18, "grid_auto_flow": "dense", "density_math": "1+1+1+1=4/4" }
+        },
+        "recent_tasks": {
+          "bounds": { "x": 462, "y": 680, "width": 918, "height": 246 },
+          "layout": { "display": "grid", "columns": "minmax(0,1fr)", "rows": 3, "gap": 0 }
+        }
+      }
+    },
+    "material_analysis": {
+      "center_bounds": { "x": 340, "y": 64, "width": 916, "height": 960 },
+      "task_rail_bounds": { "x": 1256, "y": 64, "width": 280, "height": 960 },
+      "component_tree": ["context_bar", "conversation_timeline", "analysis_card", "web_search_card", "composer", "task_accordion"],
+      "components": {
+        "context_bar": { "bounds": { "x": 355, "y": 82, "width": 883, "height": 72 }, "position": "sticky", "top": 0 },
+        "conversation_timeline": { "bounds": { "x": 355, "y": 170, "width": 883, "height": 720 }, "layout": { "display": "grid", "columns": "44px minmax(0,1fr)", "gap": 12 } },
+        "analysis_card": { "bounds": { "x": 400, "y": 326, "width": 838, "height": 402 }, "box_model": { "padding": 20, "border": "1px solid #DFE4EA", "radius": 10 } },
+        "web_search_card": { "bounds": { "x": 400, "y": 738, "width": 838, "height": 150 }, "box_model": { "padding": 16, "border": "1px solid #DFE4EA", "radius": 10 } },
+        "composer": { "bounds": { "x": 355, "y": 906, "width": 883, "height": 98 }, "position": "sticky", "bottom": 12 },
+        "task_accordion": { "bounds": { "x": 1268, "y": 126, "width": 248, "height": 462 }, "interaction": "horizontal accordion rows expand to reveal input, output and duration" }
+      }
+    },
+    "company_detail": {
+      "main_bounds": { "x": 340, "y": 64, "width": 1196, "height": 960 },
+      "component_tree": ["company_header", "warning_strip", "tabs", "knowledge_overview", "industry_lane", "supporting_column"],
+      "components": {
+        "company_header": { "bounds": { "x": 366, "y": 92, "width": 1144, "height": 168 }, "layout": { "display": "grid", "columns": "96px minmax(0,1fr) auto", "gap": 24 } },
+        "warning_strip": { "bounds": { "x": 366, "y": 260, "width": 1144, "height": 42 } },
+        "tabs": { "bounds": { "x": 366, "y": 320, "width": 760, "height": 44 } },
+        "overview_grid": { "bounds": { "x": 366, "y": 364, "width": 1144, "height": 638 }, "layout": { "display": "grid", "columns": "minmax(0,8fr) minmax(300px,4fr)", "gap": 16, "grid_auto_flow": "dense", "density_math": "8+4=12/12" } },
+        "knowledge_overview": { "bounds": { "x": 366, "y": 364, "width": 775, "height": 432 }, "layout": { "display": "grid", "rows": 4 } },
+        "industry_lane": { "bounds": { "x": 366, "y": 800, "width": 775, "height": 202 }, "interaction": "confirmed solid links, candidate dashed links" },
+        "supporting_column": { "bounds": { "x": 1157, "y": 364, "width": 353, "height": 638 }, "layout": { "display": "grid", "rows": "auto auto auto", "gap": 14 } }
+      }
+    }
+  },
+  "motion": {
+    "scroll_pinning": "pin material context bar and active task rail only while the conversation column scrolls",
+    "card_stacking": "candidate evidence cards stack with 12px offset during review, disabled for reduced motion",
+    "hover": "clickable rows translateY(-1px), inner icon scale 1.04, 220ms ease-out",
+    "tolerances": { "position_px": 4, "size_px": 4, "font_px": 1 }
+  }
+}

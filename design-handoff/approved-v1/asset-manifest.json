@@ -1,0 +1,8 @@
+{
+  "assets": [],
+  "strategy": "All approved prototype elements are code-native text, layout, icons, dividers, status marks, and relationship lines. No raster UI assets are required.",
+  "background": {
+    "implementation": "CSS colors and subtle radial ambient surface only",
+    "background_manifest_required": false
+  }
+}
