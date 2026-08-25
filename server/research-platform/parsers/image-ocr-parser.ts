@@ -1,15 +1,9 @@
-import { Buffer } from 'node:buffer';
 import { extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { OpenCodeAnalysisOptions } from '../analysis/opencode-analysis.js';
+import { createOpenCodeClient } from '../opencode/client.js';
 import type { ParseDocumentInput, ParsedDocument } from './contracts.js';
 import { DocumentParserError } from './contracts.js';
-
-interface OpenCodeSession { id: string }
-interface OpenCodeAssistantResponse {
-  info: { providerID: string; modelID: string; error?: unknown };
-  parts: Array<{ type: string; text?: string }>;
-}
 
 export type ImageOcr = (input: ParseDocumentInput) => Promise<ParsedDocument>;
 
@@ -25,26 +19,14 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 };
 
 export function createOpenCodeImageOcr(options: OpenCodeAnalysisOptions): ImageOcr {
-  const fetcher = options.fetcher ?? globalThis.fetch;
-  const authorization = options.credentials
-    ? `Basic ${Buffer.from(`${options.credentials.username}:${options.credentials.password}`).toString('base64')}`
-    : undefined;
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const url = new URL(path, options.baseUrl);
-    url.searchParams.set('directory', options.directory);
-    const response = await fetcher(url, {
-      ...init,
-      headers: { ...(authorization ? { authorization } : {}), accept: 'application/json', 'content-type': 'application/json', ...init.headers },
-      signal: init.signal ?? AbortSignal.timeout(180_000),
-    });
-    if (!response.ok) throw new DocumentParserError('image_ocr_http_error', `OpenCode returned HTTP ${response.status}`);
-    return await response.json() as T;
-  };
+  const client = createOpenCodeClient(
+    options,
+    (status) => new DocumentParserError('image_ocr_http_error', `OpenCode returned HTTP ${status}`),
+    180_000,
+  );
 
   return async (input) => {
-    const session = await request<OpenCodeSession>('/session', {
-      method: 'POST', body: JSON.stringify({ title: `博源图片识别：${input.fileName}` }),
-    });
+    const sessionId = await client.createSession(`博源图片识别：${input.fileName}`);
     const body = {
       ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
       ...(options.variant ? { variant: options.variant } : {}),
@@ -55,9 +37,7 @@ export function createOpenCodeImageOcr(options: OpenCodeAnalysisOptions): ImageO
         { type: 'text', text: JSON.stringify({ task: '将图片中的文字按视觉阅读顺序分行转录。表格的每个逻辑行尽量保持为一行。', outputSchema: { lines: ['第一行文字'] } }) },
       ],
     };
-    const response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(session.id)}/message`, {
-      method: 'POST', body: JSON.stringify(body),
-    });
+    const response = await client.sendMessage(sessionId, body);
     if (response.info.error) throw new DocumentParserError('image_ocr_message_error', 'OpenCode image OCR failed');
     const raw = response.parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim();
     return parseOcrResponse(raw);

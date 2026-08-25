@@ -1,51 +1,39 @@
-import { Buffer } from 'node:buffer';
 import { AnalysisAdapterError } from '../analysis/contracts.js';
+import {
+  createOpenCodeClient,
+  type OpenCodeAssistantResponse,
+  type OpenCodeConnectionOptions,
+} from '../opencode/client.js';
 import type { CompanyResearchInput, CompanyResearchPort, CompanyResearchResult } from './contracts.js';
 import { parseResearchJson } from './research-schema.js';
 
-export interface OpenCodeResearchOptions {
-  baseUrl: URL;
-  username: string;
-  password: string;
-  directory: string;
+export interface OpenCodeResearchOptions extends OpenCodeConnectionOptions {
   model?: { providerId: string; modelId: string };
-  fetcher?: typeof fetch;
-}
-
-interface OpenCodeSession { id: string }
-interface OpenCodeAssistantResponse {
-  info: { providerID: string; modelID: string; error?: unknown };
-  parts: Array<{ type: string; text?: string }>;
+  variant?: string;
 }
 
 export function createOpenCodeResearchAdapter(options: OpenCodeResearchOptions): CompanyResearchPort {
-  const fetcher = options.fetcher ?? globalThis.fetch;
-  const authorization = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString('base64')}`;
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const url = new URL(path, options.baseUrl);
-    url.searchParams.set('directory', options.directory);
-    const response = await fetcher(url, {
-      ...init,
-      headers: { authorization, accept: 'application/json', 'content-type': 'application/json', ...init.headers },
-      signal: init.signal ?? AbortSignal.timeout(180_000),
-    });
-    if (!response.ok) throw new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${response.status}`);
-    return await response.json() as T;
-  };
+  const client = createOpenCodeClient(
+    options,
+    (status) => new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${status}`),
+    600_000,
+  );
   return {
     async analyze(input): Promise<CompanyResearchResult> {
-      const sessionId = input.sessionId ?? (await request<OpenCodeSession>('/session', {
-        method: 'POST', body: JSON.stringify({ title: `博源公司研究：${input.companyName}` }),
-      })).id;
-      const response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(sessionId)}/message`, {
-        method: 'POST',
-        body: JSON.stringify({
+      const sessionId = input.sessionId ?? await client.createSession(`博源公司研究：${input.companyName}`);
+      let response: OpenCodeAssistantResponse;
+      try {
+        response = await client.sendMessage(sessionId, {
           ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
+          ...(options.variant ? { variant: options.variant } : {}),
           system: '你是博源 AI 平台的公司研究分析器。只使用输入的已确认知识和带 URL 公开来源；不使用工具，不把未确认内容写成事实。只输出 JSON。',
-          tools: { bash: false, edit: false, write: false, webfetch: false, websearch: false },
+          tools: { '*': false },
           parts: [{ type: 'text', text: researchPrompt(input) }],
-        }),
-      });
+        });
+      } catch (error) {
+        await client.abortSession(sessionId).catch(() => undefined);
+        throw error;
+      }
       if (response.info.error) throw new AnalysisAdapterError('opencode_message_error', 'OpenCode research message failed');
       const rawText = response.parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim();
       const parsed = parseResearchJson(rawText);

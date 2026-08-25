@@ -1,5 +1,9 @@
-import { Buffer } from 'node:buffer';
 import { parseAnalysisJson } from './analysis-schema.js';
+import {
+  createOpenCodeClient,
+  type OpenCodeAssistantResponse,
+  type OpenCodeConnectionOptions,
+} from '../opencode/client.js';
 import {
   AnalysisAdapterError,
   BP_SECTION_KEYS,
@@ -9,15 +13,10 @@ import {
   type MaterialAnalysisResult,
 } from './contracts.js';
 
-export interface OpenCodeAnalysisOptions {
-  baseUrl: URL;
-  credentials?: { username: string; password: string };
-  directory: string;
+export interface OpenCodeAnalysisOptions extends OpenCodeConnectionOptions {
   model?: { providerId: string; modelId: string };
   variant?: string;
   requiredCapabilities?: OpenCodeRequiredCapabilities;
-  timeoutMs?: number;
-  fetcher?: typeof fetch;
 }
 
 export interface OpenCodeRequiredCapabilities {
@@ -26,68 +25,22 @@ export interface OpenCodeRequiredCapabilities {
   mcpTool: string;
 }
 
-interface OpenCodeSession { id: string }
-interface OpenCodeAssistantResponse {
-  info: {
-    id?: string;
-    parentID?: string;
-    role?: string;
-    providerID: string;
-    modelID: string;
-    variant?: string;
-    error?: unknown;
-  };
-  parts: OpenCodePart[];
-}
-interface OpenCodeSessionMessage {
-  info: { parentID?: string; role?: string };
-  parts: OpenCodePart[];
-}
-interface OpenCodePart {
-  type: string;
-  text?: string;
-  tool?: string;
-  state?: { status?: string; input?: Record<string, unknown> };
-}
-
-interface OpenCodeSkill { name: string }
-interface OpenCodeMcpStatus { status?: string }
-
 export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions): MaterialAnalysisPort {
-  const fetcher = options.fetcher ?? globalThis.fetch;
-  const timeoutMs = options.timeoutMs ?? 600_000;
-  const authorization = options.credentials
-    ? `Basic ${Buffer.from(`${options.credentials.username}:${options.credentials.password}`).toString('base64')}`
-    : undefined;
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const url = endpointUrl(options.baseUrl, path);
-    url.searchParams.set('directory', options.directory);
-    const headers = new Headers(init.headers);
-    headers.set('accept', 'application/json');
-    headers.set('content-type', 'application/json');
-    if (authorization) headers.set('authorization', authorization);
-    const response = await fetcher(url, {
-      ...init,
-      headers,
-      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${response.status}`);
-    return await response.json() as T;
-  };
+  const client = createOpenCodeClient(
+    options,
+    (status) => new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${status}`),
+    600_000,
+  );
   const assertRequiredCapabilities = async (): Promise<void> => {
     const required = options.requiredCapabilities;
-    const skills = required
-      ? await request<OpenCodeSkill[]>('/skill', { method: 'GET' })
-      : [];
+    const skills = required ? await client.listSkills() : [];
     if (required && !skills.some((skill) => skill.name === required.skillName)) {
       throw new AnalysisAdapterError(
         'opencode_required_skill_unavailable',
         `OpenCode skill is unavailable: ${required.skillName}`,
       );
     }
-    const mcp = required
-      ? await request<Record<string, OpenCodeMcpStatus>>('/mcp', { method: 'GET' })
-      : {};
+    const mcp = required ? await client.mcpStatus() : {};
     if (required && mcp[required.mcpServer]?.status !== 'connected') {
       throw new AnalysisAdapterError(
         'opencode_required_mcp_unavailable',
@@ -99,9 +52,7 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
     async analyze(input): Promise<MaterialAnalysisResult> {
       await assertRequiredCapabilities();
       const required = options.requiredCapabilities;
-      const sessionId = input.sessionId ?? (await request<OpenCodeSession>('/session', {
-        method: 'POST', body: JSON.stringify({ title: `博源 BP 分析：${input.companyName}` }),
-      })).id;
+      const sessionId = input.sessionId ?? await client.createSession(`博源 BP 分析：${input.companyName}`);
       const body = {
         ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
         ...(options.variant ? { variant: options.variant } : {}),
@@ -114,19 +65,13 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
       };
       let response: OpenCodeAssistantResponse;
       try {
-        response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(sessionId)}/message`, {
-          method: 'POST', body: JSON.stringify(body),
-        });
+        response = await client.sendMessage(sessionId, body);
       } catch (error) {
-        await request<boolean>(`/session/${encodeURIComponent(sessionId)}/abort`, {
-          method: 'POST', signal: AbortSignal.timeout(10_000),
-        }).catch(() => undefined);
+        await client.abortSession(sessionId).catch(() => undefined);
         throw error;
       }
       if (response.info.error) throw new AnalysisAdapterError('opencode_message_error', 'OpenCode analysis message failed');
-      const messages = await request<OpenCodeSessionMessage[]>(`/session/${encodeURIComponent(sessionId)}/message?limit=100`, {
-        method: 'GET',
-      });
+      const messages = await client.listMessages(sessionId);
       const turnMessages = response.info.parentID
         ? messages.filter((message) => message.info.role === 'assistant' && message.info.parentID === response.info.parentID)
         : [response];
@@ -159,12 +104,6 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
       };
     },
   };
-}
-
-function endpointUrl(baseUrl: URL, path: string): URL {
-  const normalizedBase = new URL(baseUrl);
-  if (!normalizedBase.pathname.endsWith('/')) normalizedBase.pathname += '/';
-  return new URL(path.replace(/^\/+/, ''), normalizedBase);
 }
 
 function systemInstruction(): string {

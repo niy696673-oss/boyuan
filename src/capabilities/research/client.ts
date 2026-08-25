@@ -17,6 +17,15 @@ export interface ResearchPlatformClient {
     signal?: AbortSignal,
   ): Promise<ConversationDetail>;
   uploadDocument(file: File, signal?: AbortSignal): Promise<UploadResult>;
+  startCompanyResearch(
+    input: {
+      companyId?: string;
+      companyName?: string;
+      intent: string;
+      explicitWebSearch: boolean;
+    },
+    signal?: AbortSignal,
+  ): Promise<ConversationDetail>;
 }
 
 export function createResearchPlatformClient(
@@ -44,5 +53,16 @@ export function createResearchPlatformClient(
         signal,
       });
     },
+    startCompanyResearch: (input, signal) =>
+      requestPlatformJson<ConversationDetail>(
+        fetcher,
+        "/api/v1/company-research",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+          signal,
+        },
+      ),
   };
 }

@@ -49,6 +49,12 @@ const stepNames: Record<string, string> = {
   analyze_material: "AI 深度分析",
   web_search: "Web Search 核验",
   generate_candidates: "生成候选知识",
+  resolve_company: "确认公司主体",
+  load_company_knowledge: "加载正式知识",
+  plan_external_search: "规划外部核验",
+  execute_external_search: "执行 Exa 外部核验",
+  analyze_company: "AI 公司研究",
+  generate_research_candidates: "生成研究候选",
 };
 
 export function toWorkbenchResearch(

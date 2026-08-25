@@ -9,16 +9,21 @@ import { createHttpLogger } from "./platform/telemetry.js";
 import { createRuntimeAnalysisAdapter } from "./research-platform/analysis/runtime-analysis.js";
 import { createPlatformModule } from "./research-platform/platform-module.js";
 import { createPlatformWorker } from "./research-platform/platform-worker.js";
+import { createRuntimeResearchAdapters } from "./research-platform/research/runtime-research.js";
 
 const config = loadConfig();
 const port = config.PORT;
 const { store, services } = await createPlatformRuntime(config);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const researchAdapters = createRuntimeResearchAdapters(process.env, {
+  directory: root,
+});
 const researchPlatform = createPlatformModule({
   dataRoot:
     process.env.BOYUAN_RESEARCH_DATA_ROOT ??
     path.join(root, "data", "research-platform"),
   analysis: createRuntimeAnalysisAdapter(process.env, { directory: root }),
+  ...researchAdapters,
 });
 const researchWorker = createPlatformWorker(researchPlatform);
 const app = express();
