@@ -31,7 +31,7 @@ import {
   Upload,
   UserRound,
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Bootstrap, type IndustryContext } from "../api";
 import type { Claim, Company } from "../types";
 
@@ -139,7 +139,8 @@ export function CompanyDetailPage({ data, reload }: { data: Bootstrap; reload: (
 
 function CompanyDetailContent({ data, reload, company }: { data: Bootstrap; reload: () => void; company: Company }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("概览");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") === "relations" ? "产业关系" : "概览");
   const [context, setContext] = useState<IndustryContext | null>(null);
   const [feedbackIndex, setFeedbackIndex] = useState(0);
   const confirmed = company.claims.filter((claim) => claim.status === "confirmed");
@@ -154,6 +155,14 @@ function CompanyDetailContent({ data, reload, company }: { data: Bootstrap; relo
   const tabs = [
     ["概览", ""], ["材料", company.evidence.length], ["已确认知识", confirmed.length], ["待确认", pending.length], ["研究记录", data.tasks.filter((task) => task.companyId === company.id).length], ["产业关系", ""],
   ] as const;
+
+  const selectTab = (name: (typeof tabs)[number][0]) => {
+    setTab(name);
+    const next = new URLSearchParams(searchParams);
+    if (name === "产业关系") next.set("tab", "relations");
+    else next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
 
   const updateAttention = async () => {
     await api.attention(company.id, company.attentionStatus === "未关注" ? "持续跟踪" : "未关注");
@@ -174,9 +183,9 @@ function CompanyDetailContent({ data, reload, company }: { data: Bootstrap; relo
           <dl><div><dt>归档状态</dt><dd><Check />已自动归档</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
         </header>
 
-        {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning" onClick={() => setTab("待确认")}><AlertTriangle />{pending.length} 条待确认知识需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
+        {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning" onClick={() => selectTab("待确认")}><AlertTriangle />{pending.length} 条待确认知识需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
 
-        <nav className="by-detail-tabs">{tabs.map(([name, count]) => <button className={tab === name ? "active" : ""} key={name} onClick={() => setTab(name)}>{name}{count !== "" && <em>{count}</em>}</button>)}</nav>
+        <nav className="by-detail-tabs">{tabs.map(([name, count]) => <button className={tab === name ? "active" : ""} key={name} onClick={() => selectTab(name)}>{name}{count !== "" && <em>{count}</em>}</button>)}</nav>
 
         {tab === "概览" && (
           <div className="by-company-overview-grid">
