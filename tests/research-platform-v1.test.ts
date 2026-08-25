@@ -10,6 +10,8 @@ import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
+import { createDeterministicResearchAdapter } from "../server/research-platform/research/deterministic-research.js";
+import { createDeterministicSearchAdapter } from "../server/research-platform/search/deterministic-search.js";
 import { initialStoreData, Store } from "../server/store.js";
 
 const roots: string[] = [];
@@ -23,6 +25,63 @@ afterEach(async () => {
 });
 
 describe("研究平台 v1 HTTP 接缝", () => {
+  it("创建带公开来源的公司研究对话并持久化候选", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
+    roots.push(dataRoot);
+    const platform = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+      research: createDeterministicResearchAdapter(),
+      search: createDeterministicSearchAdapter(),
+    });
+    modules.push(platform);
+    const store = new Store({
+      initialData: initialStoreData(),
+      persistToDisk: false,
+    });
+    const app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform,
+    });
+
+    const started = await request(app).post("/api/v1/company-research").send({
+      companyName: "白杨智能有限公司",
+      intent: "核验最新业务与融资动态",
+      explicitWebSearch: true,
+    });
+
+    expect(started.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    const detail = await request(app).get(
+      `/api/v1/conversations/${encodeURIComponent(started.body.conversationId)}`,
+    );
+
+    expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({
+      type: "company",
+      status: "completed",
+      company: { canonicalName: "白杨智能有限公司" },
+      companyResearch: {
+        triggerReason: "user_requested",
+        sources: [
+          {
+            sourceType: "web",
+            site: "example.com",
+            accessStatus: "accessible",
+          },
+        ],
+      },
+      candidates: [
+        {
+          status: "pending",
+          sectionKey: "company_research",
+          evidence: [{ sourceType: "web", site: "example.com" }],
+        },
+      ],
+    });
+  });
+
   it("把 Markdown 材料按纯文本解析", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
     roots.push(dataRoot);

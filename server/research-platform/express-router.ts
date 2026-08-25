@@ -68,6 +68,15 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post("/company-research", async (req, res, next) => {
+    try {
+      const input = companyResearchInput(req.body);
+      res.status(201).json(await platform.startCompanyResearch(input));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.get("/companies", async (_req, res, next) => {
     try {
       const items = await platform.listCompanies();
@@ -202,6 +211,44 @@ function reviewDecisionInput(
     ...(typeof input.effectiveAt === "string"
       ? { effectiveAt: input.effectiveAt }
       : {}),
+  };
+}
+
+function companyResearchInput(body: unknown) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const input = body as Record<string, unknown>;
+  if (typeof input.intent !== "string") {
+    throw new PlatformInputError(
+      "invalid_research_intent",
+      "研究意图必须是字符串",
+    );
+  }
+  if (typeof input.explicitWebSearch !== "boolean") {
+    throw new PlatformInputError(
+      "invalid_search_preference",
+      "必须明确是否执行外部搜索",
+    );
+  }
+  if (
+    typeof input.companyId !== "string" &&
+    typeof input.companyName !== "string"
+  ) {
+    throw new PlatformInputError(
+      "research_company_required",
+      "请选择公司或提供公司名称",
+    );
+  }
+  return {
+    ...(typeof input.companyId === "string"
+      ? { companyId: input.companyId }
+      : {}),
+    ...(typeof input.companyName === "string"
+      ? { companyName: input.companyName }
+      : {}),
+    intent: input.intent,
+    explicitWebSearch: input.explicitWebSearch,
   };
 }
 

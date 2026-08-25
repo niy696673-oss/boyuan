@@ -91,6 +91,24 @@ pnpm dev:server
 
 这里的 `4173/opencode-api/` 是本机已有工作台提供的 OpenCode 代理，不需要把服务密码复制到本项目。若改为直连受保护的 OpenCode Server，再同时配置 `BOYUAN_OPENCODE_USERNAME` 和 `BOYUAN_OPENCODE_PASSWORD`。`BOYUAN_OPENCODE_TIMEOUT_MS` 默认 10 分钟，适配深度模型慢链路；超时会主动终止仍在运行的 OpenCode 会话。项目级 `boyuan-bp-deep-analysis` skill 位于 `.agents/skills`，Sequential Thinking MCP 位于 `opencode.json`；发起分析前会检查二者可用，单次 BP 会话默认禁用全部工具并只放行这两项。真实分析缺少任一调用都会失败，不会回退为演示结果。
 
+## 公司外部调研
+
+工作台的“公司”研究会创建 `/api/v1/company-research` 对话，先读取正式知识，再根据触发原因执行公开搜索，最后由研究适配器生成带 URL 证据的待确认候选。默认配置使用确定性研究与搜索适配器，便于无凭证开发；它不代表真实公开核验。
+
+启用真实公司调研时，复用上面的 OpenCode 地址、模型与超时配置，并增加：
+
+```bash
+export BOYUAN_RESEARCH_ADAPTER=opencode
+export BOYUAN_SEARCH_ADAPTER=exa
+export EXA_API_KEY=your-exa-key
+export NEI_MCP_AUTHORIZATION='Bearer your-nei-token'
+pnpm dev:server
+```
+
+Exa 只接收平台生成的公开查询，不接收 BP 正文。OpenCode 研究会话默认禁用全部工具，只分析正式知识和 Exa 返回的带 URL 来源；因此结果的来源和写库边界仍由平台控制。项目 OpenCode 另外配置了 `exa-websearch` 与 `nei-pevc` MCP，供人在工作台中发起通用调研和检索投研 Skill。NEI 已核验为 PE/VC Skill 与连接器目录，不是企业工商数据源，不能替代 Exa 或企查查类事实检索。
+
+仓库只保存 MCP endpoint 和环境变量占位。`EXA_API_KEY` 与包含 `Bearer` 前缀的 `NEI_MCP_AUTHORIZATION` 必须由启动 OpenCode 的本机环境提供，不得写入 `opencode.json` 或提交到 Git。
+
 ## 验证
 
 ```bash

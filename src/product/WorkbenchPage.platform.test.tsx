@@ -37,6 +37,7 @@ describe("工作台研究平台接缝", () => {
       listConversations: vi.fn().mockResolvedValue([]),
       getConversation: vi.fn(),
       uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
     };
 
     render(
@@ -53,6 +54,61 @@ describe("工作台研究平台接缝", () => {
     expect(await screen.findByText("3 条待确认")).toBeTruthy();
   });
 
+  it("公司研究通过 v1 接缝创建可恢复的外部调研对话", async () => {
+    const detail = conversationDetail();
+    detail.type = "company";
+    detail.title = "白杨智能有限公司公司研究";
+    detail.task.type = "company_research";
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn().mockResolvedValue(detail),
+    };
+    const data = emptyBootstrap();
+    data.companies = [
+      {
+        id: "legacy-company-1",
+        standardName: "白杨智能有限公司",
+        aliases: ["白杨智能"],
+        description: "",
+        cognitionStatus: "已建档",
+        attentionStatus: "机构未关注",
+        positions: [],
+        claims: [],
+        evidence: [],
+        updatedAt: "2026-08-26T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage data={data} reload={vi.fn()} researchClient={client} />
+      </MemoryRouter>,
+    );
+
+    const home = screen
+      .getByRole("heading", { name: "今天想研究什么？" })
+      .closest("section");
+    if (!home) throw new Error("workbench home missing");
+    fireEvent.click(within(home).getByRole("button", { name: "公司" }));
+    fireEvent.click(within(home).getByRole("button", { name: /选择已有公司/ }));
+    fireEvent.click(within(home).getByRole("button", { name: /白杨智能/ }));
+    fireEvent.change(within(home).getByRole("textbox", { name: "研究问题" }), {
+      target: { value: "核验最新业务与融资动态" },
+    });
+    fireEvent.click(within(home).getByRole("button", { name: "发送问题" }));
+
+    await waitFor(() =>
+      expect(client.startCompanyResearch).toHaveBeenCalledWith({
+        companyName: "白杨智能有限公司",
+        intent: "核验最新业务与融资动态",
+        explicitWebSearch: true,
+      }),
+    );
+    expect(await screen.findByText("生成候选知识")).toBeTruthy();
+  });
+
   it("展示持久对话并在打开后呈现真实任务步骤", async () => {
     const detail = conversationDetail();
     const summary: ConversationSummary = detail;
@@ -60,6 +116,7 @@ describe("工作台研究平台接缝", () => {
       listConversations: vi.fn().mockResolvedValue([summary]),
       getConversation: vi.fn().mockResolvedValue(detail),
       uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
     };
 
     render(
@@ -99,6 +156,7 @@ describe("工作台研究平台接缝", () => {
       listConversations: vi.fn().mockResolvedValue([summary]),
       getConversation: vi.fn().mockResolvedValue(detail),
       uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
     };
 
     render(

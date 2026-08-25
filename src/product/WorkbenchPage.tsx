@@ -292,10 +292,28 @@ export function WorkbenchPage({
     setBusy(true);
     setNotice("");
     try {
+      if (context === "公司") {
+        const company = data.companies.find(
+          (item) => item.id === selectedCompanyId,
+        );
+        if (!company) {
+          setNotice("选择的公司已不存在，请刷新后重试");
+          return;
+        }
+        const conversation = await researchClient.startCompanyResearch({
+          companyName: company.standardName,
+          intent: query.trim(),
+          explicitWebSearch: true,
+        });
+        setActiveResearch({ ...toWorkbenchResearch(conversation), company });
+        syncPlatformConversation(conversation);
+        setQuery("");
+        await loadPlatformConversations();
+        return;
+      }
       const result = await api.research({
         query: query.trim(),
         contextType: context,
-        companyId: context === "公司" ? selectedCompanyId : undefined,
         industryId: context === "行业" ? selectedIndustryId : undefined,
       });
       setActiveResearch(result);

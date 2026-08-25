@@ -1,23 +1,14 @@
-import { Buffer } from 'node:buffer';
+import {
+  createOpenCodeClient,
+  type OpenCodeConnectionOptions,
+} from '../opencode/client.js';
 import { QUICK_CARD_FIELDS } from './contracts.js';
 import type { QuickCardAnalysisPort, QuickCardFields } from './contracts.js';
 import { QuickCardAdapterError } from './contracts.js';
 
-export interface OpenCodeQuickCardOptions {
-  baseUrl: URL;
-  username: string;
-  password: string;
-  directory: string;
+export interface OpenCodeQuickCardOptions extends OpenCodeConnectionOptions {
   model: { providerId: string; modelId: string };
   variant: string;
-  timeoutMs?: number;
-  fetcher?: typeof fetch;
-}
-
-interface OpenCodeSession { id: string }
-interface OpenCodeAssistantResponse {
-  info: { providerID: string; modelID: string; variant?: string; error?: unknown };
-  parts: Array<{ type: string; text?: string }>;
 }
 
 const MAX_BLOCKS = 160;
@@ -30,33 +21,20 @@ const QUICK_DISABLED_TOOLS = [
 ] as const;
 
 export function createOpenCodeQuickCardAdapter(options: OpenCodeQuickCardOptions): QuickCardAnalysisPort {
-  const fetcher = options.fetcher ?? globalThis.fetch;
-  const authorization = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString('base64')}`;
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const url = new URL(path, options.baseUrl);
-    url.searchParams.set('directory', options.directory);
-    const response = await fetcher(url, {
-      ...init,
-      headers: { authorization, accept: 'application/json', 'content-type': 'application/json', ...init.headers },
-      signal: init.signal ?? AbortSignal.timeout(options.timeoutMs ?? 25_000),
-    });
-    if (!response.ok) throw new QuickCardAdapterError('quick_card_opencode_http_error', `OpenCode returned HTTP ${response.status}`);
-    return await response.json() as T;
-  };
+  const client = createOpenCodeClient(
+    options,
+    (status) => new QuickCardAdapterError('quick_card_opencode_http_error', `OpenCode returned HTTP ${status}`),
+    25_000,
+  );
   return {
     async analyze(input) {
-      const sessionId = (await request<OpenCodeSession>('/session', {
-        method: 'POST', body: JSON.stringify({ title: `博源 BP 快速卡：${input.fileName}` }),
-      })).id;
-      const response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(sessionId)}/message`, {
-        method: 'POST',
-        body: JSON.stringify({
+      const sessionId = await client.createSession(`博源 BP 快速卡：${input.fileName}`);
+      const response = await client.sendMessage(sessionId, {
           model: { providerID: options.model.providerId, modelID: options.model.modelId },
           variant: options.variant,
           system: '你是博源 AI 平台的快速材料提取器。只依据给定材料，缺失信息统一写“材料未披露”。不要调用任何工具。只输出 JSON 对象。',
           tools: Object.fromEntries(QUICK_DISABLED_TOOLS.map((tool) => [tool, false])),
           parts: [{ type: 'text', text: quickPrompt(input.fileName, input.blocks) }],
-        }),
       });
       if (response.info.error) throw new QuickCardAdapterError('quick_card_opencode_message_error', 'OpenCode quick-card message failed');
       const rawText = response.parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim();

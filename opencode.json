@@ -1,6 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "share": "disabled",
+  "instructions": [".opencode/instructions/boyuan-research-boundaries.md"],
   "mcp": {
     "sequential-thinking": {
       "type": "local",
@@ -10,6 +11,23 @@
       ],
       "enabled": true,
       "timeout": 10000
+    },
+    "exa-websearch": {
+      "type": "remote",
+      "url": "https://mcp.exa.ai/mcp?exaApiKey={env:EXA_API_KEY}",
+      "enabled": true,
+      "oauth": false,
+      "timeout": 30000
+    },
+    "nei-pevc": {
+      "type": "remote",
+      "url": "https://nei-pevc.com/api/mcp",
+      "headers": {
+        "Authorization": "{env:NEI_MCP_AUTHORIZATION}"
+      },
+      "enabled": true,
+      "oauth": false,
+      "timeout": 30000
     }
   },
   "permission": {

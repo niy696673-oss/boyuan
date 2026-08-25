@@ -11,4 +11,4 @@
 - `analysis/deterministic-analysis.ts`：未配置真实运行时时的开发测试适配器；
 - `analysis/opencode-analysis.ts`：真实 BP 深度分析适配器，要求调用项目 BP skill 与 Sequential Thinking MCP。
 
-设置 `BOYUAN_ANALYSIS_ADAPTER=opencode` 与 `BOYUAN_OPENCODE_BASE_URL` 后启用真实 OpenCode。BP 原文分析的单次会话默认禁用全部工具，只放行项目 BP skill 与 Sequential Thinking；Exa 等外部搜索只属于后续调研链路。飞书相关适配器和现有 RBAC/生产基础设施尚未接入该单用户业务内核。
+设置 `BOYUAN_ANALYSIS_ADAPTER=opencode` 与 `BOYUAN_OPENCODE_BASE_URL` 后启用真实 OpenCode。BP 原文分析的单次会话默认禁用全部工具，只放行项目 BP skill 与 Sequential Thinking。公司外部调研通过 `BOYUAN_RESEARCH_ADAPTER` 和 `BOYUAN_SEARCH_ADAPTER` 独立选择 OpenCode 与 Exa；OpenCode 研究会话不调用工具，只消费正式知识和带 URL 的搜索结果。项目级 OpenCode 还配置了 Exa 与 NEI MCP，供通用工作台任务使用；NEI 是投研 Skill/连接器目录，不作为公司事实搜索适配器。飞书相关适配器和现有 RBAC/生产基础设施尚未接入该单用户业务内核。

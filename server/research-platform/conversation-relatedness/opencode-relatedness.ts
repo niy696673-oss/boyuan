@@ -1,38 +1,20 @@
-import { Buffer } from 'node:buffer';
 import type { OpenCodeAnalysisOptions } from '../analysis/opencode-analysis.js';
+import { createOpenCodeClient } from '../opencode/client.js';
 import {
   ConversationRelatednessError,
   type ConversationRelatednessPort,
 } from './contracts.js';
 
-interface OpenCodeSession { id: string }
-interface OpenCodeAssistantResponse {
-  info: { providerID: string; modelID: string; error?: unknown };
-  parts: Array<{ type: string; text?: string }>;
-}
-
 export function createOpenCodeConversationRelatednessAdapter(options: OpenCodeAnalysisOptions): ConversationRelatednessPort {
-  const fetcher = options.fetcher ?? globalThis.fetch;
-  const authorization = options.credentials
-    ? `Basic ${Buffer.from(`${options.credentials.username}:${options.credentials.password}`).toString('base64')}`
-    : undefined;
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const url = new URL(path, options.baseUrl);
-    url.searchParams.set('directory', options.directory);
-    const response = await fetcher(url, {
-      ...init,
-      headers: { ...(authorization ? { authorization } : {}), accept: 'application/json', 'content-type': 'application/json', ...init.headers },
-      signal: init.signal ?? AbortSignal.timeout(180_000),
-    });
-    if (!response.ok) throw new ConversationRelatednessError('relatedness_http_error', `OpenCode returned HTTP ${response.status}`);
-    return await response.json() as T;
-  };
+  const client = createOpenCodeClient(
+    options,
+    (status) => new ConversationRelatednessError('relatedness_http_error', `OpenCode returned HTTP ${status}`),
+    180_000,
+  );
   return {
     async suggest(input) {
       if (input.candidates.length === 0) return { providerId: 'opencode', modelId: 'not_called', score: 0, reason: '没有历史候选对话' };
-      const session = await request<OpenCodeSession>('/session', {
-        method: 'POST', body: JSON.stringify({ title: `博源对话相关性：${input.title}` }),
-      });
+      const sessionId = await client.createSession(`博源对话相关性：${input.title}`);
       const body = {
         ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
         system: '你是博源 AI 平台的对话归并判断器。只判断材料是否围绕同一公司主体、项目、研究主题或业务内容；时间间隔不是硬规则。只输出 JSON。',
@@ -44,9 +26,7 @@ export function createOpenCodeConversationRelatednessAdapter(options: OpenCodeAn
           candidates: input.candidates.map((candidate) => ({ ...candidate, content: candidate.content.slice(0, 8_000) })),
         }) }],
       };
-      const response = await request<OpenCodeAssistantResponse>(`/session/${encodeURIComponent(session.id)}/message`, {
-        method: 'POST', body: JSON.stringify(body),
-      });
+      const response = await client.sendMessage(sessionId, body);
       if (response.info.error) throw new ConversationRelatednessError('relatedness_message_error', 'OpenCode relatedness check failed');
       const raw = response.parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim();
       return parseOutput(raw, response.info.providerID, response.info.modelID, new Set(input.candidates.map((candidate) => candidate.conversationId)));
