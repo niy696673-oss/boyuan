@@ -19,7 +19,7 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, ApiError, type Bootstrap } from "../api";
 import type { Company, IndustryNode } from "../types";
 
@@ -319,7 +319,8 @@ function IndustryDetailContent({
   industry: IndustryNode;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("概览");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") === "chain" ? "产业链" : "概览");
   const descendants = useMemo(
     () => collectDescendants(data.industryNodes, industry.id),
     [data.industryNodes, industry.id],
@@ -340,6 +341,13 @@ function IndustryDetailContent({
     ["产业链", descendants.length],
     ["公司", companies.length],
   ] as const;
+  const selectTab = (name: (typeof tabs)[number][0]) => {
+    setTab(name);
+    const next = new URLSearchParams(searchParams);
+    if (name === "产业链") next.set("tab", "chain");
+    else next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
   return (
     <div className="by-industry-detail">
       <header>
@@ -393,7 +401,7 @@ function IndustryDetailContent({
           <button
             className={tab === name ? "active" : ""}
             key={name}
-            onClick={() => setTab(name)}
+            onClick={() => selectTab(name)}
           >
             {name}
             {count !== "" && <em>{count}</em>}
@@ -406,7 +414,7 @@ function IndustryDetailContent({
           data={data}
           companies={companies}
           materials={materials}
-          onOpenTree={() => setTab("产业链")}
+          onOpenTree={() => selectTab("产业链")}
         />
       )}
       {tab === "材料" && <IndustryMaterials materials={materials} />}
