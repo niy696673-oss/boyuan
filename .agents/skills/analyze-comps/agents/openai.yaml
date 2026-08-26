@@ -1,0 +1,6 @@
+interface:
+  display_name: "Analyze Comps"
+  short_description: "Analyze one evidence-backed comparable set"
+  default_prompt: "Use $analyze-comps to run one comparable-analysis mode and produce a Simplified Chinese valuation package."
+policy:
+  allow_implicit_invocation: false

@@ -32,3 +32,10 @@
 ### Domain docs
 
 本仓库采用单一上下文，领域术语记录在根目录 `CONTEXT.md`，架构决策记录在 `docs/adr/`。详见 `docs/agents/domain.md`。
+
+### Private-market skills
+
+- Multica“研图”同步的投研与 BP Skills 位于 `.agents/skills`，来源清单见 `docs/agents/multica-research-skills.json`。
+- 请求含糊或跨多个产物时，先使用对应的 `*-router` 选择路径，再只加载完成任务所需的最小原子 Skill 和它明确要求的 References；不要一次加载全部业务 Skills。
+- 若原子 Skill 的 `agents/openai.yaml` 设置 `policy.allow_implicit_invocation: false`，仅在用户明确点名该 Skill，或 Router 已明确选择它后调用。
+- 工作台 BP 材料分析固定路由到 `boyuan-bp-deep-analysis` 和 Sequential Thinking，运行时只放行这两项。同步导入的投研 Skills 仅服务于明确路由的投研产物；`project-material-intake` 仅服务于 BotMux/Multica 收件闭环；Exa 服务于外部调研，NEI 服务于明确路由的投研或收件方法调用。

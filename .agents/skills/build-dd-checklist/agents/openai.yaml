@@ -1,0 +1,6 @@
+interface:
+  display_name: "Build DD Checklist"
+  short_description: "Build a scoped private-market diligence request list"
+  default_prompt: "Use $build-dd-checklist to create a scoped Simplified-Chinese diligence request list."
+policy:
+  allow_implicit_invocation: false

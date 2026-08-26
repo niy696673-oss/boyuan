@@ -1,0 +1,6 @@
+interface:
+  display_name: "Source Deals"
+  short_description: "Build permission-aware project or capital pipelines"
+  default_prompt: "Use $source-deals to build one permission-aware Simplified-Chinese sourcing pipeline."
+policy:
+  allow_implicit_invocation: false

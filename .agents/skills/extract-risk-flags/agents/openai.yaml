@@ -1,0 +1,6 @@
+interface:
+  display_name: "Extract Risk Flags"
+  short_description: "Extract evidence-backed risks with severity governance"
+  default_prompt: "Use $extract-risk-flags to create a Simplified-Chinese evidence-backed risk register."
+policy:
+  allow_implicit_invocation: false

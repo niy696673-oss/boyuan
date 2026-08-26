@@ -1,0 +1,6 @@
+interface:
+  display_name: "Capture Investment Meeting"
+  short_description: "Capture controlled investment meeting records"
+  default_prompt: "Use $capture-investment-meeting to turn this transcript into evidence-linked Chinese minutes and update proposals."
+policy:
+  allow_implicit_invocation: false

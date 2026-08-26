@@ -1,0 +1,6 @@
+interface:
+  display_name: "Analyze Earnings"
+  short_description: "Translate public earnings into private-market signals"
+  default_prompt: "Use $analyze-earnings to analyze released results and produce a source-backed Simplified Chinese private-market read-through."
+policy:
+  allow_implicit_invocation: false

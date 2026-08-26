@@ -10,11 +10,13 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
+import type { CompanyDirectoryClient } from "../capabilities/companies/client";
 import type { ResearchPlatformClient } from "../capabilities/research/client";
 import type {
   ConversationDetail,
   ConversationSummary,
 } from "../capabilities/research/types";
+import type { CompanyDirectoryItem } from "../../shared/research-platform-v1";
 import { WorkbenchPage } from "./WorkbenchPage";
 
 vi.mock("@gsap/react", () => ({ useGSAP: () => undefined }));
@@ -46,6 +48,7 @@ describe("工作台研究平台接缝", () => {
           data={emptyBootstrap()}
           reload={vi.fn()}
           researchClient={client}
+          companyClient={directoryClient()}
           persistentPendingCount={3}
         />
       </MemoryRouter>,
@@ -54,7 +57,7 @@ describe("工作台研究平台接缝", () => {
     expect(await screen.findByText("3 条待确认")).toBeTruthy();
   });
 
-  it("公司研究通过 v1 接缝创建可恢复的外部调研对话", async () => {
+  it("详情深链预选 SQLite 公司并通过 v1 接缝创建外部调研对话", async () => {
     const detail = conversationDetail();
     detail.type = "company";
     detail.title = "白杨智能有限公司公司研究";
@@ -65,25 +68,17 @@ describe("工作台研究平台接缝", () => {
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn().mockResolvedValue(detail),
     };
-    const data = emptyBootstrap();
-    data.companies = [
-      {
-        id: "legacy-company-1",
-        standardName: "白杨智能有限公司",
-        aliases: ["白杨智能"],
-        description: "",
-        cognitionStatus: "已建档",
-        attentionStatus: "机构未关注",
-        positions: [],
-        claims: [],
-        evidence: [],
-        updatedAt: "2026-08-26T00:00:00.000Z",
-      },
-    ];
 
     render(
-      <MemoryRouter>
-        <WorkbenchPage data={data} reload={vi.fn()} researchClient={client} />
+      <MemoryRouter initialEntries={["/?companyId=company-persistent-1"]}>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient([
+            directoryItem("company-persistent-1", "白杨智能有限公司", "白杨智能"),
+          ])}
+        />
       </MemoryRouter>,
     );
 
@@ -91,9 +86,7 @@ describe("工作台研究平台接缝", () => {
       .getByRole("heading", { name: "今天想研究什么？" })
       .closest("section");
     if (!home) throw new Error("workbench home missing");
-    fireEvent.click(within(home).getByRole("button", { name: "公司" }));
-    fireEvent.click(within(home).getByRole("button", { name: /选择已有公司/ }));
-    fireEvent.click(within(home).getByRole("button", { name: /白杨智能/ }));
+    expect(await within(home).findByRole("button", { name: /白杨智能/ })).toBeTruthy();
     fireEvent.change(within(home).getByRole("textbox", { name: "研究问题" }), {
       target: { value: "核验最新业务与融资动态" },
     });
@@ -101,7 +94,7 @@ describe("工作台研究平台接缝", () => {
 
     await waitFor(() =>
       expect(client.startCompanyResearch).toHaveBeenCalledWith({
-        companyName: "白杨智能有限公司",
+        companyId: "company-persistent-1",
         intent: "核验最新业务与融资动态",
         explicitWebSearch: true,
       }),
@@ -125,6 +118,7 @@ describe("工作台研究平台接缝", () => {
           data={emptyBootstrap()}
           reload={vi.fn()}
           researchClient={client}
+          companyClient={directoryClient()}
         />
       </MemoryRouter>,
     );
@@ -165,6 +159,7 @@ describe("工作台研究平台接缝", () => {
           data={emptyBootstrap()}
           reload={vi.fn()}
           researchClient={client}
+          companyClient={directoryClient()}
         />
       </MemoryRouter>,
     );
@@ -196,6 +191,39 @@ function emptyBootstrap(): Bootstrap {
     industryEdges: [],
     tasks: [],
     settings: { externalModelsEnabled: false, knowledgeSource: "" },
+  };
+}
+
+function directoryClient(items: CompanyDirectoryItem[] = []): CompanyDirectoryClient {
+  return {
+    list: vi.fn().mockResolvedValue({ items, total: items.length }),
+    get: vi.fn(),
+    uploadDocument: vi.fn(),
+    setWatched: vi.fn(),
+  };
+}
+
+function directoryItem(companyId: string, canonicalName: string, alias: string): CompanyDirectoryItem {
+  return {
+    companyId,
+    canonicalName,
+    status: "active",
+    aliases: [{ alias, type: "short_name" }],
+    version: 1,
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:00:00.000Z",
+    profile: {
+      summary: { state: "missing" },
+      primaryIndustry: { state: "missing" },
+      industryPosition: { state: "missing" },
+      location: { state: "missing" },
+      foundedAt: { state: "missing" },
+      latestFunding: { state: "missing" },
+      watched: false,
+    },
+    materialCount: 0,
+    knowledgeCount: 0,
+    pendingCandidateCount: 0,
   };
 }
 

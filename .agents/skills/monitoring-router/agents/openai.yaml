@@ -1,0 +1,6 @@
+interface:
+  display_name: "Monitoring Router"
+  short_description: "Route earnings and private-market catalyst signals"
+  default_prompt: "Use $monitoring-router to select the correct earnings or catalyst workflow and deliver a source-backed Simplified Chinese signal package."
+policy:
+  allow_implicit_invocation: true

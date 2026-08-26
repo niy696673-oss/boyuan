@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draft DD Interview Questions"
+  short_description: "Draft neutral, evidence-seeking diligence question trees"
+  default_prompt: "Use $draft-dd-interview-questions to draft a Simplified-Chinese diligence interview guide."
+policy:
+  allow_implicit_invocation: false

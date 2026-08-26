@@ -1,0 +1,6 @@
+interface:
+  display_name: "Prepare Investment Meeting"
+  short_description: "Prepare an FA, VC, or PE meeting brief"
+  default_prompt: "Use $prepare-investment-meeting to prepare an evidence-backed Chinese meeting brief and agenda."
+policy:
+  allow_implicit_invocation: false

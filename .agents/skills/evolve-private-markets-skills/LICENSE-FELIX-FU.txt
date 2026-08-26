@@ -1,0 +1,12 @@
+Felix Private Markets Skill Suite License
+Version 1.0, 2026-07-17
+
+Copyright (c) 2026 Felix Fu. All rights reserved.
+
+Permission is granted to Felix Fu and teams or individuals expressly authorized by Felix Fu to use, reproduce, and modify the original portions of this package for internal purposes.
+
+Without prior written permission from Felix Fu, no person may sell, sublicense, publicly redistribute, publish, or remove the Felix Fu attribution from the original portions of this package.
+
+Third-party components, code, templates, trademarks, and documentation remain governed by their respective licenses and notices. This license does not restrict rights granted by those third-party licenses and does not claim ownership of third-party material.
+
+THE ORIGINAL PORTIONS OF THIS PACKAGE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW, FELIX FU SHALL NOT BE LIABLE FOR ANY CLAIM, LOSS, OR OTHER LIABILITY ARISING FROM USE OF THE PACKAGE.

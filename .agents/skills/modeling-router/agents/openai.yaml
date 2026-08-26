@@ -1,0 +1,6 @@
+interface:
+  display_name: "Modeling Router"
+  short_description: "Route and QA private-market financial models"
+  default_prompt: "Use $modeling-router to select and coordinate the applicable modeling workflow and deliver an auditable Simplified Chinese result."
+policy:
+  allow_implicit_invocation: true

@@ -31,8 +31,13 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, type Bootstrap } from "../api";
+import {
+  createCompanyDirectoryClient,
+  type CompanyDirectoryClient,
+} from "../capabilities/companies/client";
+import { companyDirectoryView } from "../capabilities/companies/view-model";
 import {
   createResearchPlatformClient,
   type ResearchPlatformClient,
@@ -63,6 +68,7 @@ type ActiveResearch = {
 type ConversationRow = NonNullable<ActiveResearch>;
 
 const defaultResearchClient = createResearchPlatformClient();
+const defaultCompanyClient = createCompanyDirectoryClient();
 const terminalPlatformStatuses = new Set<ConversationStatus>([
   "pending_confirmation",
   "completed",
@@ -73,16 +79,20 @@ export function WorkbenchPage({
   data,
   reload,
   researchClient = defaultResearchClient,
+  companyClient = defaultCompanyClient,
   persistentPendingCount,
 }: {
   data: Bootstrap;
   reload: () => void;
   researchClient?: ResearchPlatformClient;
+  companyClient?: CompanyDirectoryClient;
   persistentPendingCount?: number;
 }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const pageRef = useRef<HTMLDivElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const appliedCompanyId = useRef<string | null>(null);
   const [activeResearch, setActiveResearch] = useState<ActiveResearch>(null);
   const [context, setContext] = useState<ContextType>("材料");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
@@ -100,10 +110,17 @@ export function WorkbenchPage({
   const [platformConversations, setPlatformConversations] = useState<
     ConversationRow[]
   >([]);
+  const [directoryCompanies, setDirectoryCompanies] = useState<Company[] | null>(
+    null,
+  );
+  const workbenchData = useMemo<Bootstrap>(
+    () => ({ ...data, companies: directoryCompanies || [] }),
+    [data, directoryCompanies],
+  );
 
   const pending =
     persistentPendingCount ??
-    data.companies.reduce(
+    workbenchData.companies.reduce(
       (sum, company) =>
         sum +
         company.claims.filter((claim) =>
@@ -111,6 +128,42 @@ export function WorkbenchPage({
         ).length,
       0,
     );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void companyClient
+      .list(controller.signal)
+      .then((response) =>
+        setDirectoryCompanies(response.items.map(companyDirectoryView)),
+      )
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setNotice(
+            error instanceof Error ? error.message : "无法读取公司目录",
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [companyClient]);
+
+  useEffect(() => {
+    const companyId = searchParams.get("companyId");
+    if (
+      !companyId ||
+      !directoryCompanies ||
+      appliedCompanyId.current === companyId
+    )
+      return;
+    appliedCompanyId.current = companyId;
+    if (!directoryCompanies.some((company) => company.id === companyId)) {
+      setNotice("链接中的公司已不存在，请重新选择");
+      return;
+    }
+    setActiveResearch(null);
+    setContext("公司");
+    setSelectedCompanyId(companyId);
+    setNotice("");
+  }, [directoryCompanies, searchParams]);
 
   const loadPlatformConversations = useCallback(
     async (signal?: AbortSignal) => {
@@ -188,15 +241,17 @@ export function WorkbenchPage({
   const conversationRows = useMemo<ConversationRow[]>(
     () => [
       ...platformConversations,
-      ...data.tasks.map((task) => ({
+      ...workbenchData.tasks.map((task) => ({
         task,
-        company: data.companies.find((item) => item.id === task.companyId),
-        industry: data.industryNodes.find(
+        company: workbenchData.companies.find(
+          (item) => item.id === task.companyId,
+        ),
+        industry: workbenchData.industryNodes.find(
           (item) => item.id === task.industryId,
         ),
       })),
     ],
-    [data.companies, data.industryNodes, data.tasks, platformConversations],
+    [platformConversations, workbenchData],
   );
 
   useEffect(() => {
@@ -293,7 +348,7 @@ export function WorkbenchPage({
     setNotice("");
     try {
       if (context === "公司") {
-        const company = data.companies.find(
+        const company = workbenchData.companies.find(
           (item) => item.id === selectedCompanyId,
         );
         if (!company) {
@@ -301,7 +356,7 @@ export function WorkbenchPage({
           return;
         }
         const conversation = await researchClient.startCompanyResearch({
-          companyName: company.standardName,
+          companyId: company.id,
           intent: query.trim(),
           explicitWebSearch: true,
         });
@@ -357,7 +412,7 @@ export function WorkbenchPage({
   return (
     <div className="by-workbench" ref={pageRef}>
       <ConversationRail
-        data={data}
+        data={workbenchData}
         conversations={conversationRows}
         filter={conversationFilter}
         activeTaskId={activeResearch?.task.id}
@@ -384,7 +439,7 @@ export function WorkbenchPage({
               会调用你有权访问的机构知识，并保留完整来源。
             </p>
             <ResearchComposer
-              data={data}
+              data={workbenchData}
               context={context}
               selectedCompanyId={selectedCompanyId}
               selectedIndustryId={selectedIndustryId}
@@ -412,7 +467,7 @@ export function WorkbenchPage({
               }
             />
             <QuickActions
-              companyCount={data.companies.length}
+              companyCount={workbenchData.companies.length}
               onUpload={() => uploadRef.current?.click()}
               onFill={(nextContext, prompt) => {
                 setContext(nextContext);
@@ -421,14 +476,14 @@ export function WorkbenchPage({
               }}
             />
             <RecentTasks
-              data={data}
+              data={workbenchData}
               onOpen={(task) =>
                 void openConversation({
                   task,
-                  company: data.companies.find(
+                  company: workbenchData.companies.find(
                     (item) => item.id === task.companyId,
                   ),
-                  industry: data.industryNodes.find(
+                  industry: workbenchData.industryNodes.find(
                     (item) => item.id === task.industryId,
                   ),
                 })
@@ -449,7 +504,7 @@ export function WorkbenchPage({
         <>
           <ActiveConversation
             research={activeResearch}
-            data={data}
+            data={workbenchData}
             context={context}
             selectedCompanyId={selectedCompanyId}
             selectedIndustryId={selectedIndustryId}

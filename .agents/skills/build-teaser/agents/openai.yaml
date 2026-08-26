@@ -1,0 +1,6 @@
+interface:
+  display_name: "Build Teaser"
+  short_description: "Build a blind or named financing teaser"
+  default_prompt: "Use $build-teaser to produce a disclosure-controlled Chinese financing teaser."
+policy:
+  allow_implicit_invocation: false

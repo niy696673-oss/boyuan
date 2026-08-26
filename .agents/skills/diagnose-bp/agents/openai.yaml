@@ -1,0 +1,6 @@
+interface:
+  display_name: "Diagnose BP"
+  short_description: "Diagnose private-market financing materials"
+  default_prompt: "Use $diagnose-bp to diagnose this BP and return an evidence-linked Chinese remediation plan."
+policy:
+  allow_implicit_invocation: false

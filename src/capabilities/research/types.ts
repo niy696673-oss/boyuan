@@ -123,6 +123,7 @@ export interface ConversationDetail extends ConversationSummary {
   company?: PlatformCompany;
   analysisSections: AnalysisSection[];
   candidates: KnowledgeCandidate[];
+  companyList?: import("../../../shared/research-platform-v1").CompanyListRecordV1;
 }
 
 export interface UploadResult {

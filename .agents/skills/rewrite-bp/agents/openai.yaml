@@ -1,0 +1,6 @@
+interface:
+  display_name: "Rewrite BP"
+  short_description: "Rewrite a BP with claim and change controls"
+  default_prompt: "Use $rewrite-bp to rewrite this BP for the specified Chinese private-market audience."
+policy:
+  allow_implicit_invocation: false

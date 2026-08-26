@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review VDR Table"
+  short_description: "Review VDR coverage, versions, gaps, and conflicts"
+  default_prompt: "Use $review-vdr-table to review this VDR inventory and produce Simplified-Chinese exception tables."
+policy:
+  allow_implicit_invocation: false

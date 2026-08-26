@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
@@ -41,6 +41,31 @@ describe("持久公司目录页面", () => {
     expect(client.list).toHaveBeenCalledOnce();
   });
 
+  it("列表关注按钮直接写入 SQLite，并且不会打开公司详情", async () => {
+    const client = fakeClient();
+    const watched = companyDetail();
+    watched.version = 3;
+    watched.profile.watched = true;
+    vi.mocked(client.setWatched).mockResolvedValue(watched);
+
+    render(
+      <MemoryRouter>
+        <CompaniesPage data={bootstrap()} companyClient={client} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "关注云杉智能" }));
+
+    await waitFor(() => expect(client.setWatched).toHaveBeenCalledWith(
+      "company-1",
+      { watched: true, expectedVersion: 2 },
+      expect.any(AbortSignal),
+    ));
+    expect(await screen.findByRole("button", { name: "取消关注云杉智能" })).toBeTruthy();
+    expect(screen.getByText("已关注云杉智能")).toBeTruthy();
+    expect(screen.queryByText("公司档案加载失败")).toBeNull();
+  });
+
   it("详情展示正式知识、证据、材料和待确认数量", async () => {
     const client = fakeClient();
 
@@ -71,6 +96,8 @@ describe("持久公司目录页面", () => {
       .toBeTruthy();
     expect(screen.getByText(/1 条待确认知识需要验证/)).toBeTruthy();
     expect(screen.getByText("云杉智能 BP.pdf")).toBeTruthy();
+    expect((document.querySelector('input[type="file"]') as HTMLInputElement).accept)
+      .toBe(".pdf,.docx,.txt,.md");
     expect(client.get).toHaveBeenCalledWith(
       "company-1",
       expect.any(AbortSignal),
@@ -109,12 +136,83 @@ describe("持久公司目录页面", () => {
     ).toBeTruthy();
     expect(screen.queryByText("错误回退公司")).toBeNull();
   });
+
+  it("详情上传把文件绑定当前公司，并在处理完成后刷新数量", async () => {
+    const client = fakeClient();
+    const updated = companyDetail();
+    updated.materialCount = 3;
+    updated.materials = [
+      ...updated.materials,
+      {
+        conversationId: "conversation-new",
+        documentId: "document-new",
+        fileName: "补充材料.txt",
+        status: "completed",
+        sourceChannel: "web",
+        updatedAt: "2026-08-26T01:00:00.000Z",
+      },
+    ];
+    vi.mocked(client.uploadDocument).mockResolvedValue({
+      reusedDocument: false,
+      conversation: { conversationId: "conversation-new" },
+    } as Awaited<ReturnType<CompanyDirectoryClient["uploadDocument"]>>);
+    vi.mocked(client.get)
+      .mockResolvedValueOnce(companyDetail())
+      .mockResolvedValueOnce(updated);
+
+    render(
+      <MemoryRouter initialEntries={["/companies/company-1"]}>
+        <Routes>
+          <Route path="/companies/:id" element={<CompanyDetailPage data={bootstrap()} reload={vi.fn()} companyClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("heading", { name: "云杉智能" });
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [new File(["补充"], "补充材料.txt", { type: "text/plain" })] },
+    });
+
+    expect(await screen.findByText("材料处理完成，档案数量已刷新")).toBeTruthy();
+    expect(client.uploadDocument).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ name: "补充材料.txt" }),
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByRole("button", { name: "材料3" })).toBeTruthy();
+  });
+
+  it("关注按钮带当前版本写入并立即回显", async () => {
+    const client = fakeClient();
+    const watched = companyDetail();
+    watched.version = 3;
+    watched.profile.watched = true;
+    vi.mocked(client.setWatched).mockResolvedValue(watched);
+
+    render(
+      <MemoryRouter initialEntries={["/companies/company-1"]}>
+        <Routes>
+          <Route path="/companies/:id" element={<CompanyDetailPage data={bootstrap()} reload={vi.fn()} companyClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("heading", { name: "云杉智能" });
+    fireEvent.click(screen.getByRole("button", { name: "关注" }));
+
+    await waitFor(() => expect(client.setWatched).toHaveBeenCalledWith(
+      "company-1",
+      { watched: true, expectedVersion: 2 },
+      expect.any(AbortSignal),
+    ));
+    expect(await screen.findByRole("button", { name: "持续跟踪" })).toBeTruthy();
+  });
 });
 
 function fakeClient(): CompanyDirectoryClient {
   return {
     list: vi.fn().mockResolvedValue({ items: [directoryItem()], total: 1 }),
     get: vi.fn().mockResolvedValue(companyDetail()),
+    uploadDocument: vi.fn(),
+    setWatched: vi.fn(),
   };
 }
 

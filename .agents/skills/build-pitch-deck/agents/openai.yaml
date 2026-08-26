@@ -1,0 +1,6 @@
+interface:
+  display_name: "Build Pitch Deck"
+  short_description: "Build a China private-financing pitch deck"
+  default_prompt: "Use $build-pitch-deck to create a source-controlled Chinese pitch-deck specification."
+policy:
+  allow_implicit_invocation: false

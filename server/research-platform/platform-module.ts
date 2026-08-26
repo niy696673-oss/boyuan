@@ -116,6 +116,11 @@ interface ResearchFinalizeInput {
   explicitWebSearch: boolean;
 }
 
+interface FinalizeOptions {
+  boundCompanyId?: string;
+  research?: ResearchFinalizeInput;
+}
+
 interface ConversationRow {
   conversation_id: string;
   thread_id: string;
@@ -255,6 +260,13 @@ class SqlitePlatformModule implements PlatformModule {
     this.#assertOpen();
     const staged = await this.#stage(input);
     return this.#exclusive(() => this.#finalize(input, staged));
+  }
+
+  async ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult> {
+    this.#assertOpen();
+    this.#companyRecord(companyId);
+    const staged = await this.#stage(input);
+    return this.#exclusive(() => this.#finalize(input, staged, { boundCompanyId: companyId }));
   }
 
   async ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult> {
@@ -723,6 +735,21 @@ class SqlitePlatformModule implements PlatformModule {
     return rows.map((row) => this.#industryRecord(row.industry_id));
   }
 
+  async countUnclassifiedIndustryMaterials(): Promise<number> {
+    this.#assertOpen();
+    const row = this.#db.prepare(`
+      SELECT COUNT(DISTINCT conversations.primary_document_id) AS total
+      FROM conversations
+      JOIN analysis_tasks ON analysis_tasks.conversation_id = conversations.conversation_id
+      WHERE analysis_tasks.task_type = 'material_analysis'
+        AND NOT EXISTS (
+          SELECT 1 FROM industry_materials
+          WHERE industry_materials.document_id = conversations.primary_document_id
+        )
+    `).get() as { total: number };
+    return row.total;
+  }
+
   async getIndustry(industryId: string): Promise<IndustryDetail> {
     this.#assertOpen();
     const industry = this.#industryRecord(industryId);
@@ -848,11 +875,13 @@ class SqlitePlatformModule implements PlatformModule {
     };
     const staged = await this.#stage(documentInput);
     const result = await this.#exclusive(() => this.#finalize(documentInput, staged, {
-      ...(companyId ? { companyId } : {}),
-      companyName,
-      ambiguousOptions,
-      intent,
-      explicitWebSearch: input.explicitWebSearch,
+      research: {
+        ...(companyId ? { companyId } : {}),
+        companyName,
+        ambiguousOptions,
+        intent,
+        explicitWebSearch: input.explicitWebSearch,
+      },
     }));
     return result.conversation;
   }
@@ -1164,7 +1193,8 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
-  async #finalize(input: IngestDocumentInput, staged: StagedFile, research?: ResearchFinalizeInput): Promise<IngestDocumentResult> {
+  async #finalize(input: IngestDocumentInput, staged: StagedFile, options: FinalizeOptions = {}): Promise<IngestDocumentResult> {
+    const { boundCompanyId, research } = options;
     const now = this.#now().toISOString();
     const existing = this.#db.prepare('SELECT document_id FROM documents WHERE sha256 = ?').get(staged.sha256) as { document_id: string } | undefined;
     const documentId = existing?.document_id ?? this.#nextId();
@@ -1229,6 +1259,12 @@ class SqlitePlatformModule implements PlatformModule {
           INSERT INTO conversation_documents (conversation_id, document_id, role, created_at)
           VALUES (?, ?, 'primary', ?)
         `).run(conversationId, documentId, now);
+        if (boundCompanyId) {
+          this.#db.prepare(`
+            INSERT OR IGNORE INTO conversation_companies (conversation_id, company_id, role, created_at)
+            VALUES (?, ?, 'primary', ?)
+          `).run(conversationId, boundCompanyId, now);
+        }
         this.#db.prepare(`
           INSERT INTO analysis_tasks (
             task_id, conversation_id, task_type, status, current_step, created_at, updated_at
@@ -1658,7 +1694,9 @@ class SqlitePlatformModule implements PlatformModule {
           this.#db.prepare('INSERT INTO analysis_section_evidence (section_id, evidence_id) VALUES (?, ?)').run(sectionId, evidenceId);
         }
       }
-      const industrySection = result.sections.find((section) => section.key === 'industry_chain_position' && section.summary.trim());
+      const industrySection = result.sections.find((section) => (
+        section.key === 'industry_chain_position' && section.blockIds.length > 0
+      ));
       if (industrySection) {
         const firstBlock = blocks.find((block) => block.blockId === industrySection.blockIds[0]);
         const evidenceId = firstBlock ? this.#evidenceForBlock(target.documentId, firstBlock, now) : undefined;

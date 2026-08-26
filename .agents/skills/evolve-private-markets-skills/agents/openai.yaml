@@ -1,0 +1,6 @@
+interface:
+  display_name: "Evolve Private-Markets Skills"
+  short_description: "Safely improve Skills from approved evidence"
+  default_prompt: "Use $evolve-private-markets-skills to propose and evaluate a controlled Skill update from the approved project context, and return the plan in Simplified Chinese."
+policy:
+  allow_implicit_invocation: false

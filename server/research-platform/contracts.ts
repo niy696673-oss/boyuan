@@ -460,6 +460,7 @@ export interface StartCompanyResearchInput {
 
 export interface PlatformModule {
   ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult>;
+  ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult>;
   quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult>;
   listConversations(): Promise<ConversationSummary[]>;
@@ -474,6 +475,7 @@ export interface PlatformModule {
   getCompany(companyId: string): Promise<CompanyDetail>;
   setCompanyWatched(companyId: string, watched: boolean, expectedVersion: number): Promise<CompanyDetail>;
   listIndustries(): Promise<IndustryRecord[]>;
+  countUnclassifiedIndustryMaterials(): Promise<number>;
   getIndustry(industryId: string): Promise<IndustryDetail>;
   search(query: string): Promise<GlobalSearchResults>;
   getCompanyList(listId: string): Promise<CompanyListRecord>;

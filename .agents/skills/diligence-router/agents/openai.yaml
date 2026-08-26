@@ -1,0 +1,6 @@
+interface:
+  display_name: "Diligence Router"
+  short_description: "Route scoped private-market diligence workflows"
+  default_prompt: "Use $diligence-router to route this China private-market diligence request."
+policy:
+  allow_implicit_invocation: true

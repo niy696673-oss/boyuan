@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,34 +21,78 @@ import {
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, ApiError, type Bootstrap } from "../api";
+import {
+  createIndustryDirectoryClient,
+  type IndustryDirectoryClient,
+} from "../capabilities/industries/client";
+import { ResearchPlatformApiError } from "../capabilities/platform-http";
 import type { Company, IndustryNode } from "../types";
+import type {
+  IndustryDetailResponseV1,
+  IndustryMaterialV1,
+  ReviewEvidence,
+} from "../../shared/research-platform-v1";
+
+const defaultIndustryClient = createIndustryDirectoryClient();
 
 export function IndustriesPage({
   data,
   reload,
+  industryClient = defaultIndustryClient,
 }: {
   data: Bootstrap;
   reload: () => void;
+  industryClient?: IndustryDirectoryClient;
 }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("最近更新");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisNotice, setAnalysisNotice] = useState("");
-  const roots = data.industryNodes.filter(
+  const [details, setDetails] = useState<IndustryDetailResponseV1[] | null>(null);
+  const [unclassifiedMaterialCount, setUnclassifiedMaterialCount] = useState(0);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoadError(false);
+    void industryClient.list(controller.signal)
+      .then(async (directory) => {
+        setUnclassifiedMaterialCount(directory.unclassifiedMaterialCount);
+        return Promise.all(
+          directory.items.map((item) => industryClient.get(item.industryId, controller.signal)),
+        );
+      })
+      .then(setDetails)
+      .catch(() => {
+        if (!controller.signal.aborted) setLoadError(true);
+      });
+    return () => controller.abort();
+  }, [industryClient, refreshKey]);
+
+  const catalogData = useMemo(
+    () => industryBootstrap(data, details || []),
+    [data, details],
+  );
+  const roots = catalogData.industryNodes.filter(
     (node) => node.parentId === null || node.level === 0,
   );
   const visibleRoots = roots.length
     ? roots
-    : data.industryNodes.filter((node) => node.level === 1);
-  const industries = visibleRoots.filter((node) => node.name.includes(query));
-  const unclassifiedMaterials = data.companies
-    .flatMap((company) => company.evidence)
-    .filter((evidence) => !evidence.documentId).length;
-  const pendingPositions = data.companies.filter(
-    (company) =>
-      !company.positions.some((position) => position.status === "confirmed"),
-  ).length;
+    : catalogData.industryNodes.filter((node) => node.level === 1);
+  const detailsById = new Map((details || []).map((detail) => [detail.industryId, detail]));
+  const industries = visibleRoots
+    .filter((node) => node.name.includes(query))
+    .sort((a, b) => {
+      const left = detailsById.get(a.id);
+      const right = detailsById.get(b.id);
+      if (sort === "材料数量") return (right?.materialCount || 0) - (left?.materialCount || 0);
+      if (sort === "公司数量") return (right?.companyCount || 0) - (left?.companyCount || 0);
+      return +new Date(right?.updatedAt || 0) - +new Date(left?.updatedAt || 0);
+    });
+  const pendingPositions = (details || []).flatMap((detail) => detail.companies)
+    .filter((placement) => placement.status !== "confirmed").length;
   const canAnalyze = ["partner", "knowledge_admin", "system_admin"].includes(
     data.user.role,
   );
@@ -62,6 +106,7 @@ export function IndustriesPage({
         `${result.companies} 家公司已正式归类，形成 ${result.industries} 个行业和 ${result.stages} 个产业环节。${result.usedConfiguredModel ? `模型：${result.model}` : "当前未配置 GPT 密钥，本次使用 BP 证据规则完成正式初分。"}`,
       );
       reload();
+      setRefreshKey((key) => key + 1);
     } catch (error) {
       setAnalysisNotice(
         error instanceof ApiError
@@ -72,6 +117,8 @@ export function IndustriesPage({
       setAnalyzing(false);
     }
   };
+  if (loadError) return <IndustryLoadState title="行业目录加载失败" />;
+  if (!details) return <IndustryLoadState title="正在加载行业目录…" />;
   return (
     <div className="by-industry-index">
       <aside className="by-industry-sidebar">
@@ -94,7 +141,7 @@ export function IndustriesPage({
               onClick={() => navigate(`/industry/${node.id}`)}
             >
               <span>{node.name}</span>
-              <em>{companiesForNode(data, node.id).length}</em>
+              <em>{detailsById.get(node.id)?.companyCount || 0}</em>
               <ChevronRight />
             </button>
           ))}
@@ -103,7 +150,7 @@ export function IndustriesPage({
           <h3>待处理</h3>
           <button>
             <FileSearch />
-            待分类材料<em>{unclassifiedMaterials}</em>
+            待分类材料<em>{unclassifiedMaterialCount}</em>
           </button>
           <button>
             <Network />
@@ -132,7 +179,7 @@ export function IndustriesPage({
                 {analyzing ? <RefreshCw /> : <Sparkles />}
                 {analyzing
                   ? "正在分析"
-                  : data.industryNodes.length
+                  : details.length
                     ? "重新分析"
                     : "生成产业链"}
               </button>
@@ -165,7 +212,8 @@ export function IndustriesPage({
             <IndustryCard
               key={industry.id}
               industry={industry}
-              data={data}
+              data={catalogData}
+              detail={detailsById.get(industry.id)}
               onOpen={() => navigate(`/industry/${industry.id}`)}
             />
           ))}
@@ -200,19 +248,18 @@ export function IndustriesPage({
             </button>
           </header>
           <div>
-            {data.companies
-              .flatMap((company) =>
-                company.evidence.map((evidence) => ({ evidence, company })),
+            {details
+              .flatMap((detail) =>
+                detail.materials.map((material) => ({ material, industry: detail })),
               )
               .slice(0, 6)
-              .map(({ evidence, company }) => (
-                <button key={evidence.id}>
+              .map(({ material, industry }) => (
+                <button key={`${industry.industryId}-${material.documentId}`}>
                   <FileText />
                   <span>
-                    <strong>{evidence.fileName}</strong>
+                    <strong>{material.fileName}</strong>
                     <small>
-                      {company.aliases[0] || company.standardName} ·{" "}
-                      {evidence.sourceDate}
+                      {industry.name} · {new Date(material.updatedAt).toLocaleDateString("zh-CN")}
                     </small>
                   </span>
                   <em>已分析</em>
@@ -229,20 +276,19 @@ export function IndustriesPage({
 function IndustryCard({
   industry,
   data,
+  detail,
   onOpen,
 }: {
   industry: IndustryNode;
   data: Bootstrap;
+  detail?: IndustryDetailResponseV1;
   onOpen: () => void;
 }) {
   const children = data.industryNodes.filter(
     (node) => node.parentId === industry.id,
   );
   const companies = companiesForNode(data, industry.id);
-  const materials = companies.reduce(
-    (sum, company) => sum + company.evidence.length,
-    0,
-  );
+  const materials = detail?.materialCount || 0;
   return (
     <article
       onClick={onOpen}
@@ -274,7 +320,7 @@ function IndustryCard({
         </div>
         <div>
           <dt>公司</dt>
-          <dd>{companies.length}</dd>
+          <dd>{detail?.companyCount || companies.length}</dd>
         </div>
         <div>
           <dt>产业环节</dt>
@@ -295,27 +341,44 @@ function IndustryCard({
   );
 }
 
-export function IndustryDetailPage({ data }: { data: Bootstrap }) {
+export function IndustryDetailPage({ data, industryClient = defaultIndustryClient }: { data: Bootstrap; industryClient?: IndustryDirectoryClient }) {
   const { id } = useParams();
-  const industry =
-    data.industryNodes.find((node) => node.id === id) || data.industryNodes[0];
-  if (!industry)
-    return (
-      <section className="by-empty-page">
-        <Globe2 />
-        <h1>还没有行业资料</h1>
-        <p>请先上传行业材料，或从工作台发起行业研究。</p>
-        <Link to="/industry">返回行业</Link>
-      </section>
-    );
-  return <IndustryDetailContent data={data} industry={industry} />;
+  const [detail, setDetail] = useState<IndustryDetailResponseV1 | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "not-found" | "error">("loading");
+
+  useEffect(() => {
+    if (!id) {
+      setState("not-found");
+      return;
+    }
+    const controller = new AbortController();
+    setState("loading");
+    void industryClient.get(id, controller.signal)
+      .then((response) => {
+        setDetail(response);
+        setState("ready");
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setState(error instanceof ResearchPlatformApiError && error.status === 404 ? "not-found" : "error");
+      });
+    return () => controller.abort();
+  }, [id, industryClient]);
+
+  if (state === "loading") return <IndustryLoadState title="正在加载行业资料…" />;
+  if (state === "not-found") return <IndustryLoadState title="找不到这个行业" description="该行业可能不存在，或已经被合并。" />;
+  if (state === "error" || !detail) return <IndustryLoadState title="行业资料加载失败" />;
+  const persistentData = industryBootstrap(data, [detail]);
+  return <IndustryDetailContent data={persistentData} detail={detail} industry={persistentData.industryNodes[0]} />;
 }
 
 function IndustryDetailContent({
   data,
+  detail,
   industry,
 }: {
   data: Bootstrap;
+  detail: IndustryDetailResponseV1;
   industry: IndustryNode;
 }) {
   const navigate = useNavigate();
@@ -332,9 +395,16 @@ function IndustryDetailContent({
       ),
     ),
   );
-  const materials = companies.flatMap((company) =>
-    company.evidence.map((evidence) => ({ evidence, company })),
-  );
+  const materials = detail.materials.map((material) => ({
+    material,
+    company: material.evidence
+      ? companies.find((company) =>
+          company.evidence.some(
+            (evidence) => evidence.id === material.evidence?.evidenceId,
+          ),
+        )
+      : undefined,
+  }));
   const tabs = [
     ["概览", ""],
     ["材料", materials.length],
@@ -436,7 +506,7 @@ function IndustryOverview({
   industry: IndustryNode;
   data: Bootstrap;
   companies: Company[];
-  materials: Array<{ evidence: Company["evidence"][number]; company: Company }>;
+  materials: Array<{ material: IndustryMaterialV1; company?: Company }>;
   onOpenTree: () => void;
 }) {
   const children = data.industryNodes.filter(
@@ -455,14 +525,14 @@ function IndustryOverview({
             <ChevronRight />
           </button>
         </header>
-        {materials.slice(0, 5).map(({ evidence, company }) => (
-          <button key={evidence.id}>
+        {materials.slice(0, 5).map(({ material, company }) => (
+          <button key={`${material.conversationId}-${material.documentId}`}>
             <FileText />
             <span>
-              <strong>{evidence.fileName}</strong>
+              <strong>{material.fileName}</strong>
               <small>
-                {company.aliases[0] || company.standardName} ·{" "}
-                {evidence.sourceDate}
+                {company ? company.aliases[0] || company.standardName : "未关联公司"} ·{" "}
+                {material.updatedAt}
               </small>
             </span>
             <em>
@@ -522,7 +592,7 @@ function IndustryOverview({
 function IndustryMaterials({
   materials,
 }: {
-  materials: Array<{ evidence: Company["evidence"][number]; company: Company }>;
+  materials: Array<{ material: IndustryMaterialV1; company?: Company }>;
 }) {
   return (
     <section className="by-industry-material-page">
@@ -548,15 +618,15 @@ function IndustryMaterials({
           <span>关联公司</span>
           <span>处理状态</span>
         </div>
-        {materials.map(({ evidence, company }) => (
-          <button key={evidence.id}>
+        {materials.map(({ material, company }) => (
+          <button key={`${material.conversationId}-${material.documentId}`}>
             <span>
               <FileText />
-              <strong>{evidence.fileName}</strong>
+              <strong>{material.fileName}</strong>
             </span>
             <span>行业材料</span>
-            <span>{evidence.sourceDate}</span>
-            <span>{company.aliases[0] || company.standardName}</span>
+            <span>{material.updatedAt}</span>
+            <span>{company ? company.aliases[0] || company.standardName : "未关联公司"}</span>
             <span className="success">已分析</span>
           </button>
         ))}
@@ -675,4 +745,125 @@ function collectDescendants(nodes: IndustryNode[], id: string): IndustryNode[] {
     child,
     ...collectDescendants(nodes, child.id),
   ]);
+}
+
+function industryBootstrap(
+  data: Bootstrap,
+  details: IndustryDetailResponseV1[],
+): Bootstrap {
+  const industryNodes = details.flatMap((detail) => [
+    {
+      id: detail.industryId,
+      name: detail.name,
+      parentId: null,
+      level: 0,
+      source: "研究平台 SQLite",
+      status: detail.status === "active" ? "confirmed" as const : "candidate" as const,
+      description: detail.summary,
+      updatedAt: detail.updatedAt,
+    },
+    ...detail.nodes.map((node) => ({
+      id: node.nodeId,
+      name: node.name,
+      parentId: detail.industryId,
+      level: 1,
+      source: "研究平台 SQLite",
+      status: detail.status === "active" ? "confirmed" as const : "candidate" as const,
+      description: node.description,
+      updatedAt: detail.updatedAt,
+    })),
+  ]);
+  const companies = new Map<string, Company>();
+
+  for (const detail of details) {
+    for (const placement of detail.companies) {
+      const placementEvidence = placement.evidence;
+      const relatedMaterials = placementEvidence
+        ? detail.materials.filter(
+            (material) =>
+              material.evidence?.evidenceId === placementEvidence.evidenceId,
+          )
+        : [];
+      const existing = companies.get(placement.company.companyId);
+      const position = {
+        nodeId: placement.nodeId || detail.industryId,
+        positionType: "primary" as const,
+        status: placement.status === "confirmed" ? "confirmed" as const : "candidate" as const,
+        confidence: placement.status === "confirmed" ? 1 : 0,
+        source: placementEvidence
+          ? "internal_evidence" as const
+          : "ai_recommendation" as const,
+        sourceDate: detail.updatedAt,
+        reason: placement.positionLabel,
+      };
+      const evidence = placementEvidence
+        ? relatedMaterials.map((material) =>
+            industryMaterialEvidence(material, placementEvidence),
+          )
+        : [];
+      if (existing) {
+        existing.positions.push(position);
+        existing.evidence = uniqueCompanyEvidence([...existing.evidence, ...evidence]);
+        existing.updatedAt = [existing.updatedAt, placement.company.updatedAt].sort().at(-1)!;
+        continue;
+      }
+      companies.set(placement.company.companyId, {
+        id: placement.company.companyId,
+        standardName: placement.company.canonicalName,
+        aliases: placement.company.aliases.map((alias) => alias.alias),
+        description: placement.positionLabel || "等待补充行业公司档案。",
+        cognitionStatus: placement.company.status === "provisional" ? "待完善" : "已建档",
+        attentionStatus: "未关注",
+        positions: [position],
+        claims: [],
+        evidence,
+        updatedAt: placement.company.updatedAt,
+      });
+    }
+  }
+
+  return {
+    ...data,
+    companies: [...companies.values()],
+    industryNodes,
+    industryEdges: [],
+  };
+}
+
+function industryMaterialEvidence(
+  material: IndustryMaterialV1,
+  placementEvidence: ReviewEvidence,
+): Company["evidence"][number] {
+  const evidence = material.evidence || placementEvidence;
+  return {
+    id: evidence.evidenceId,
+    documentId: material.documentId,
+    fileName: material.fileName,
+    excerpt: evidence.quote,
+    ...(evidence.page === undefined ? {} : { page: evidence.page }),
+    sourceDate:
+      evidence.publishedAt || evidence.retrievedAt || material.updatedAt,
+    visibility: "organization",
+  };
+}
+
+function uniqueCompanyEvidence(items: Company["evidence"]) {
+  return [...new Map(items.map((item) => [item.id, item])).values()];
+}
+
+function IndustryLoadState({
+  title,
+  description = "请稍后重试，或返回行业目录。",
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <section className="by-empty-page">
+      <Globe2 />
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <Link to="/industry">返回行业</Link>
+    </section>
+  );
 }
