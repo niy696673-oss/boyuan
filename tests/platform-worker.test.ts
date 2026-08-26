@@ -62,10 +62,27 @@ describe("research platform worker", () => {
       release?.();
       await expect(sharedRun).resolves.toBe(4);
       expect(maximumActive).toBe(4);
-      expect(runPendingSteps.mock.calls.map(([limit]) => limit)).toEqual([3, 3, 3, 3]);
+      expect(runPendingSteps.mock.calls.map(([limit]) => limit)).toEqual([3, 3, 2, 2]);
     } finally {
       worker.stop();
       release?.();
+    }
+  });
+
+  it("does not start more queues than the configured total batch size", async () => {
+    const runPendingSteps = vi.fn(async (_limit: number) => 1);
+    const platform = { runPendingSteps } as unknown as PlatformModule;
+    const worker = createPlatformWorker(platform, {
+      intervalMs: 60_000,
+      batchSize: 1,
+      concurrency: 4,
+    });
+
+    try {
+      await vi.waitFor(() => expect(runPendingSteps).toHaveBeenCalledTimes(1));
+      expect(runPendingSteps.mock.calls.map(([limit]) => limit)).toEqual([1]);
+    } finally {
+      worker.stop();
     }
   });
 
