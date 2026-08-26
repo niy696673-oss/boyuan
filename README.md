@@ -79,17 +79,26 @@ pnpm import:knowledge -- "/absolute/path/to/bp-directory"
 
 项目默认使用确定性适配器，便于不依赖模型运行普通开发和测试。启用真实 BP 深度分析时，先启动 OpenCode，并让服务端读取以下配置：
 
+在本地 `.env.local` 中配置（启动脚本会自动读取，且不会连带启用 `.env` 中的生产基础设施配置）：
+
+```dotenv
+BOYUAN_ANALYSIS_ADAPTER=opencode
+BOYUAN_OPENCODE_BASE_URL=http://127.0.0.1:4096
+BOYUAN_OPENCODE_TIMEOUT_MS=600000
+BOYUAN_DEEP_OPENCODE_PROVIDER_ID=openai
+BOYUAN_DEEP_OPENCODE_MODEL_ID=gpt-5.6-sol
+BOYUAN_DEEP_OPENCODE_VARIANT=xhigh
+```
+
 ```bash
-export BOYUAN_ANALYSIS_ADAPTER=opencode
-export BOYUAN_OPENCODE_BASE_URL=http://127.0.0.1:4173/opencode-api/
-export BOYUAN_OPENCODE_TIMEOUT_MS=600000
-export BOYUAN_DEEP_OPENCODE_PROVIDER_ID=openai
-export BOYUAN_DEEP_OPENCODE_MODEL_ID=gpt-5.6-sol
-export BOYUAN_DEEP_OPENCODE_VARIANT=xhigh
+pnpm opencode:serve
+# 另开一个终端
 pnpm dev:server
 ```
 
-这里的 `4173/opencode-api/` 是本机已有工作台提供的 OpenCode 代理，不需要把服务密码复制到本项目。若改为直连受保护的 OpenCode Server，再同时配置 `BOYUAN_OPENCODE_USERNAME` 和 `BOYUAN_OPENCODE_PASSWORD`。`BOYUAN_OPENCODE_TIMEOUT_MS` 默认 10 分钟，适配深度模型慢链路；超时会主动终止仍在运行的 OpenCode 会话。项目级 `boyuan-bp-deep-analysis` skill 位于 `.agents/skills`，Sequential Thinking MCP 位于 `opencode.json`；发起分析前会检查二者可用，单次 BP 会话默认禁用全部工具并只放行这两项。真实分析缺少任一调用都会失败，不会回退为演示结果。
+首次使用先运行 `pnpm exec opencode auth login` 并连接 OpenAI。项目使用本机 `4096` 端口上的 OpenCode Server；若为服务设置了密码，再同时配置 `BOYUAN_OPENCODE_USERNAME` 和 `BOYUAN_OPENCODE_PASSWORD`。`BOYUAN_OPENCODE_TIMEOUT_MS` 默认 10 分钟，适配深度模型慢链路；超时会主动终止仍在运行的 OpenCode 会话。项目级 `boyuan-bp-deep-analysis` skill 位于 `.agents/skills`，Sequential Thinking MCP 位于 `opencode.json`；发起分析前会检查二者可用，单次 BP 会话默认禁用全部工具并只放行这两项。真实分析缺少任一调用都会失败，不会回退为演示结果。
+
+旧版公司与 BP 材料可通过 `pnpm migrate:legacy-research` 一次性、可重复地迁入新版研究平台。迁移阶段使用确定性适配器归档历史材料，不会对全部历史 BP 触发付费模型；迁移完成后，新上传材料使用上面的真实 OpenCode 配置。
 
 ## 公司外部调研
 

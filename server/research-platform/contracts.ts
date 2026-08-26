@@ -420,10 +420,17 @@ export interface IngestDocumentInput {
   fileName: string;
   mimeType?: string;
   sourceChannel: SourceChannel;
+  targetCompanyName?: string;
   purpose?: 'material' | 'company_list';
   senderId?: string;
   sourceMessageId?: string;
   content: AsyncIterable<Uint8Array | string>;
+}
+
+export interface EnsureCompanyInput {
+  canonicalName: string;
+  aliases?: Array<{ alias: string; type: string }>;
+  watched?: boolean;
 }
 
 export interface IngestDocumentResult {
@@ -460,6 +467,7 @@ export interface StartCompanyResearchInput {
 
 export interface PlatformModule {
   ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult>;
+  ensureCompany(input: EnsureCompanyInput): Promise<CompanyDetail>;
   ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult>;
   quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult>;
   listConversations(): Promise<ConversationSummary[]>;

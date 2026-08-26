@@ -133,13 +133,24 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
 function CompanyCard({ company, data: _data, onOpen }: { company: CompanyView; data: Bootstrap; onOpen: () => void }) {
   const pending = company.pendingCandidateCount;
   const positions = company.industryTags.slice(0, 2);
+  const statusTone = company.hasConflict ? "conflict" : pending ? "review" : company.knowledgeCount ? "verified" : "draft";
+  const statusLabel = company.hasConflict ? "存在知识冲突" : pending ? `待确认 ${pending}` : company.knowledgeCount ? "已形成正式知识" : "档案待完善";
+  const sourceLabel = company.materialCount ? `${company.materialCount} 份材料已归档` : "由公司名单建立";
+  const industryLabel = positions.length ? positions.join(" / ") : "等待行业归类";
+  const signals = [
+    company.materialCount ? `${company.materialCount} 份原始材料` : "等待补充材料",
+    company.knowledgeCount ? `${company.knowledgeCount} 条正式知识` : pending ? `${pending} 条候选知识` : "尚无正式知识",
+    company.attentionStatus === "持续跟踪" ? "持续跟踪" : "未关注",
+  ];
   return (
-    <article className="by-company-card" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}>
-      <header><CompanyMark company={company} /><div><h2>{company.aliases[0] || company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label="关注公司"><Star /></button></header>
-      <p className="by-company-description">{company.description || "基础档案，等待补充已确认认知。"}</p>
-      <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
+    <article className="by-company-card" role="link" aria-label={`打开 ${company.aliases[0] || company.standardName} 公司档案`} tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); onOpen(); } }}>
+      <header><CompanyMark company={company} /><div><h2>{company.aliases[0] || company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><span className={`by-company-status ${statusTone}`}><ShieldCheck />{statusLabel}</span></header>
+      <div className="by-company-source"><FileText /><span>{sourceLabel}</span><i /><Clock3 /><span>{relativeDate(company.updatedAt)}更新</span></div>
+      <section className="by-company-summary"><span>公司概览</span><p>{company.description || "基础档案，等待补充已确认认知。"}</p></section>
+      <div className="by-company-facts"><div><span>行业 / 赛道</span><strong>{industryLabel}</strong></div><div><span>当前研究阶段</span><strong>{company.cognitionStatus} · {pending ? "等待复核" : "认知已归档"}</strong></div></div>
+      <div className="by-company-highlights"><span>档案信号</span><div>{signals.map((signal) => <em key={signal}>{signal}</em>)}</div></div>
       <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
-      <footer><span className={pending ? "warning" : "success"}>{pending ? `待确认 ${pending}` : "知识已确认"}</span><button>打开公司<ArrowRight /></button></footer>
+      <footer><span className={pending ? "warning" : "success"}>{company.attentionStatus === "持续跟踪" ? <><Star />持续跟踪</> : <><BookOpen />公司档案</>}</span><span className="by-company-open">查看完整研究<ArrowRight /></span></footer>
     </article>
   );
 }
@@ -266,8 +277,15 @@ function KnowledgeRow({ icon, category, claim, evidenceCount }: { icon: React.Re
 }
 
 function IndustryLane({ company, expanded = false }: { company: CompanyView; expanded?: boolean }) {
-  const upstream = company.relations.filter((item) => item.direction === "incoming").slice(0, expanded ? 5 : 3);
-  const downstream = company.relations.filter((item) => item.direction === "outgoing").slice(0, expanded ? 5 : 3);
+  const upstream = company.relations.filter((item) => item.relationType === "upstream_supplier").slice(0, expanded ? 5 : 3);
+  const downstream = company.relations.filter((item) => item.relationType === "downstream_customer").slice(0, expanded ? 5 : 3);
+  const relationshipGroups = [
+    ["investment", "投资关系"],
+    ["cooperation", "合作关系"],
+    ["upstream_supplier", "上游企业"],
+    ["downstream_customer", "下游企业"],
+    ["competitor", "竞争关系"],
+  ] as const;
   const placement = company.industryPlacements.find((item) => item.status === "confirmed") || company.industryPlacements[0];
   return (
     <section className={`by-industry-lane ${expanded ? "expanded" : ""}`}>
@@ -279,6 +297,13 @@ function IndustryLane({ company, expanded = false }: { company: CompanyView; exp
         <ArrowRight />
         <div><span>下游客户 / 生态 · 已确认</span>{downstream.length ? downstream.map((item) => <button key={item.relationId}>{item.company.aliases[0]?.alias || item.company.canonicalName}<small>{item.relationType}</small></button>) : <button>暂无已归档关系<small>等待补充证据</small></button>}</div>
         <div className="candidate"><span>潜在关联 · 待确认</span>{company.relations.filter((item) => item.status !== "confirmed").slice(0, 2).map((item) => <button key={item.relationId}>{item.company.aliases[0]?.alias || item.company.canonicalName}</button>)}{!company.relations.some((item) => item.status !== "confirmed") && <button>暂无待确认关系</button>}</div>
+      </div>
+      <div className="by-relation-ledger">
+        <header><div><span>企业关系账本</span><strong>五类关系均保留确认状态与证据</strong></div><em>{company.relations.filter((item) => item.status === "confirmed").length} 条已确认</em></header>
+        <div>{relationshipGroups.map(([type, label]) => {
+          const items = company.relations.filter((item) => item.relationType === type);
+          return <article key={type}><header><span>{label}</span><em>{items.length}</em></header>{items.length ? items.slice(0, expanded ? 6 : 2).map((item) => <Link key={item.relationId} to={`/companies/${item.company.companyId}`}><strong>{item.company.aliases[0]?.alias || item.company.canonicalName}</strong><small>{item.status === "confirmed" ? "已确认" : "待确认"}{item.evidence?.page ? ` · BP 第 ${item.evidence.page} 页` : item.evidence ? " · 有证据" : " · 待补证据"}</small></Link>) : <p>暂无已确认关系</p>}</article>;
+        })}</div>
       </div>
     </section>
   );

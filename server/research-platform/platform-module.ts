@@ -28,6 +28,7 @@ import type {
   DecideCandidateInput,
   DocumentRecord,
   EvidenceRecord,
+  EnsureCompanyInput,
   GlobalSearchResults,
   IngestDocumentInput,
   IngestDocumentResult,
@@ -255,6 +256,44 @@ class SqlitePlatformModule implements PlatformModule {
     this.#assertOpen();
     const staged = await this.#stage(input);
     return this.#exclusive(() => this.#finalize(input, staged));
+  }
+
+  async ensureCompany(input: EnsureCompanyInput): Promise<CompanyDetail> {
+    this.#assertOpen();
+    const canonicalName = canonicalCompanyName(input.canonicalName);
+    assertCompanyListName(canonicalName);
+    const matches = this.#matchCompanies(canonicalName);
+    if (matches.length > 1) {
+      throw new PlatformConflictError(
+        'ambiguous_company_name',
+        '公司名称对应多个主体，请先完成主体合并',
+      );
+    }
+    const now = this.#now().toISOString();
+    const companyId = matches[0] ?? this.#createCompany(canonicalName);
+    this.#transaction(() => {
+      for (const item of input.aliases ?? []) {
+        const alias = canonicalCompanyName(item.alias);
+        if (!alias || alias === canonicalName) continue;
+        this.#db.prepare(`
+          INSERT OR IGNORE INTO company_aliases (
+            alias_id, company_id, alias, alias_type, created_at
+          ) VALUES (?, ?, ?, ?, ?)
+        `).run(
+          this.#nextId(),
+          companyId,
+          alias,
+          item.type.trim().slice(0, 50) || 'legacy_alias',
+          now,
+        );
+      }
+      if (input.watched !== undefined) {
+        this.#db.prepare(`
+          UPDATE companies SET watched = ?, updated_at = ? WHERE company_id = ?
+        `).run(input.watched ? 1 : 0, now, companyId);
+      }
+    });
+    return this.getCompany(companyId);
   }
 
   async ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult> {
@@ -1166,6 +1205,20 @@ class SqlitePlatformModule implements PlatformModule {
 
   async #finalize(input: IngestDocumentInput, staged: StagedFile, research?: ResearchFinalizeInput): Promise<IngestDocumentResult> {
     const now = this.#now().toISOString();
+    const targetCompanyName = input.targetCompanyName
+      ? canonicalCompanyName(input.targetCompanyName)
+      : undefined;
+    if (targetCompanyName) assertCompanyListName(targetCompanyName);
+    const targetCompanyMatches = targetCompanyName
+      ? this.#matchCompanies(targetCompanyName)
+      : [];
+    if (targetCompanyMatches.length > 1) {
+      throw new PlatformConflictError(
+        'ambiguous_company_name',
+        '指定的公司名称对应多个主体',
+      );
+    }
+    let targetCompanyId = targetCompanyMatches[0];
     const existing = this.#db.prepare('SELECT document_id FROM documents WHERE sha256 = ?').get(staged.sha256) as { document_id: string } | undefined;
     const documentId = existing?.document_id ?? this.#nextId();
     let createdDocumentDirectory: string | undefined;
@@ -1185,6 +1238,9 @@ class SqlitePlatformModule implements PlatformModule {
       const taskType = research ? 'company_research' : input.purpose === 'company_list' || isCompanyListFile(staged.fileName) ? 'company_list_processing' : 'material_analysis';
       const researchPending = Boolean(research && !research.companyId && research.ambiguousOptions.length > 1);
       this.#transaction(() => {
+        if (targetCompanyName && !targetCompanyId) {
+          targetCompanyId = this.#insertCompany(targetCompanyName, now);
+        }
         if (!existing && storagePath) {
           this.#db.prepare(`
             INSERT INTO documents (
@@ -1229,6 +1285,13 @@ class SqlitePlatformModule implements PlatformModule {
           INSERT INTO conversation_documents (conversation_id, document_id, role, created_at)
           VALUES (?, ?, 'primary', ?)
         `).run(conversationId, documentId, now);
+        if (!research && targetCompanyId) {
+          this.#db.prepare(`
+            INSERT OR IGNORE INTO conversation_companies (
+              conversation_id, company_id, role, created_at
+            ) VALUES (?, ?, 'primary', ?)
+          `).run(conversationId, targetCompanyId, now);
+        }
         this.#db.prepare(`
           INSERT INTO analysis_tasks (
             task_id, conversation_id, task_type, status, current_step, created_at, updated_at
@@ -2122,7 +2185,8 @@ class SqlitePlatformModule implements PlatformModule {
     const parent = /parent_company|group_company|holding_company|母公司|集团主体|控股主体/u.test(type);
     const child = /subsidiary|controlled_company|project_company|子公司|项目公司/u.test(type);
     const alias = /brand|alias|short_name|english_name|project_name|品牌|简称|英文名|项目名/u.test(type);
-    if (!parent && !child && !alias) return;
+    const externalRelation = relationshipCandidate(type);
+    if (!parent && !child && !alias && !externalRelation) return;
     const name = organizationCandidateName(value, statement);
     if (!name) return;
     if (alias && !(child && hasLegalEntitySuffix(name))) {
@@ -2131,6 +2195,30 @@ class SqlitePlatformModule implements PlatformModule {
         INSERT OR IGNORE INTO company_aliases (alias_id, company_id, alias, alias_type, created_at)
         VALUES (?, ?, ?, ?, ?)
       `).run(this.#nextId(), candidate.companyId, name, aliasType, now);
+      return;
+    }
+    if (externalRelation) {
+      const relatedId = this.#matchCompanies(name)[0] ?? this.#insertCompany(name, now);
+      if (relatedId === candidate.companyId) return;
+      const fromCompanyId = externalRelation.direction === 'incoming' ? relatedId : candidate.companyId;
+      const toCompanyId = externalRelation.direction === 'incoming' ? candidate.companyId : relatedId;
+      const evidence = this.#db.prepare(`
+        SELECT evidence_id FROM candidate_evidence
+        WHERE candidate_id = ? AND status = 'supporting' ORDER BY rowid LIMIT 1
+      `).get(candidate.candidateId) as { evidence_id: string } | undefined;
+      if (!evidence) return;
+      this.#db.prepare(`
+        INSERT INTO company_relations (
+          relation_id, from_company_id, to_company_id, relation_type, status, created_at,
+          source_candidate_id, evidence_id, updated_at
+        ) VALUES (?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
+        ON CONFLICT(from_company_id, to_company_id, relation_type) DO UPDATE SET
+          status = 'confirmed', source_candidate_id = excluded.source_candidate_id,
+          evidence_id = excluded.evidence_id, updated_at = excluded.updated_at
+      `).run(
+        this.#nextId(), fromCompanyId, toCompanyId, externalRelation.type, now,
+        candidate.candidateId, evidence.evidence_id, now,
+      );
       return;
     }
     if (!parent && !child) return;
@@ -3659,6 +3747,25 @@ function organizationCandidateName(value: string | undefined, statement: string)
     if (group) return canonicalCompanyName(group);
     const trimmed = canonicalCompanyName(source.replace(/^["“']|["”']$/gu, ''));
     if (source === value && trimmed.length >= 2 && trimmed.length <= 80 && !/[，。；;：:\n]/u.test(trimmed)) return trimmed;
+  }
+  return undefined;
+}
+
+function relationshipCandidate(type: string): { type: string; direction: 'incoming' | 'outgoing' } | undefined {
+  if (/relationship_investor|investor_relation|投资机构|投资方/u.test(type)) {
+    return { type: 'investment', direction: 'incoming' };
+  }
+  if (/relationship_supplier|supplier_relation|upstream_company|上游供应商/u.test(type)) {
+    return { type: 'upstream_supplier', direction: 'incoming' };
+  }
+  if (/relationship_customer|customer_relation|downstream_company|下游客户/u.test(type)) {
+    return { type: 'downstream_customer', direction: 'outgoing' };
+  }
+  if (/relationship_partner|cooperation_relation|合作方|合作伙伴/u.test(type)) {
+    return { type: 'cooperation', direction: 'outgoing' };
+  }
+  if (/relationship_competitor|competitor_relation|竞争对手|竞品企业/u.test(type)) {
+    return { type: 'competitor', direction: 'outgoing' };
   }
   return undefined;
 }
