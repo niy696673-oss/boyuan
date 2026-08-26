@@ -55,6 +55,12 @@ export class JsonJobStore implements JobStore {
     return Object.values(this.#data.jobs).filter((job) => !job.completionCardSent).map((job) => structuredClone(job));
   }
 
+  listCleanupPending(): IntakeJob[] {
+    return Object.values(this.#data.jobs)
+      .filter((job) => job.cleanupPending && job.cleanupAttachment)
+      .map((job) => structuredClone(job));
+  }
+
   #load(): StoreData {
     if (!existsSync(this.#path)) {
       return { schemaVersion: 1, jobs: {}, statusCards: {} };
@@ -117,4 +123,9 @@ export class MemoryJobStore implements JobStore {
     return [...this.statusCards.values()].map((receipt) => structuredClone(receipt));
   }
   listPending(): IntakeJob[] { return [...this.jobs.values()].filter((job) => !job.completionCardSent); }
+  listCleanupPending(): IntakeJob[] {
+    return [...this.jobs.values()]
+      .filter((job) => job.cleanupPending && job.cleanupAttachment)
+      .map((job) => structuredClone(job));
+  }
 }

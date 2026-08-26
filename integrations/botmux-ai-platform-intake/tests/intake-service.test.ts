@@ -127,11 +127,36 @@ describe('intake service', () => {
         config: testConfig(temp.path), platform,
         messenger: { sendCard: vi.fn(async () => undefined) },
         store: new MemoryJobStore(), setTimer: () => undefined,
-      });
-      await service.ingestTurn(turn(attachment('one')), {
         releaseAttachment: async () => { order.push('release'); },
       });
+      await service.ingestTurn(turn(attachment('one')));
       expect(order).toEqual(['upload:one', 'release', 'luna']);
+    } finally { temp.cleanup(); }
+  });
+
+  it('keeps a successful upload durable when local cleanup must be retried', async () => {
+    const temp = tempDir();
+    const store = new MemoryJobStore();
+    const platform = platformFixture();
+    const releaseAttachment = vi.fn(async () => { throw new Error('disk_busy'); });
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path), platform,
+        messenger: { sendCard: vi.fn(async () => undefined) },
+        store, setTimer: () => undefined, releaseAttachment,
+      });
+      await service.ingestTurn(turn(attachment('one')));
+      expect(store.get(jobKey('om_message', 'one'))).toMatchObject({
+        conversationId: 'conversation-one',
+        completionCardSent: true,
+        cleanupPending: true,
+        cleanupError: 'disk_busy',
+      });
+
+      await service.ingestTurn(turn(attachment('one')));
+      expect(platform.upload).toHaveBeenCalledTimes(1);
+      expect(platform.quickCard).toHaveBeenCalledTimes(1);
+      expect(releaseAttachment).toHaveBeenCalledTimes(2);
     } finally { temp.cleanup(); }
   });
 

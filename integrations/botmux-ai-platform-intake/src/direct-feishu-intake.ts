@@ -13,11 +13,7 @@ export interface FeishuFileMessage {
 
 export interface DirectFeishuFileIngressOptions {
   materialize(message: FeishuFileMessage): Promise<IntakeAttachment>;
-  releaseAttachment?: (attachment: IntakeAttachment) => Promise<void> | void;
-  ingestTurn(
-    turn: IntakeTurn,
-    options?: { releaseAttachment?: (attachment: IntakeAttachment) => Promise<void> },
-  ): Promise<IntakeOutcome[]>;
+  ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]>;
   messenger?: Messenger;
   statusCardId?: (message: FeishuFileMessage) => string | undefined;
   rememberStatusCard?: (
@@ -42,7 +38,6 @@ export interface FeishuCardReplyPort {
 
 export class DirectFeishuFileIngress {
   readonly #materialize: DirectFeishuFileIngressOptions['materialize'];
-  readonly #releaseAttachment: DirectFeishuFileIngressOptions['releaseAttachment'];
   readonly #ingestTurn: DirectFeishuFileIngressOptions['ingestTurn'];
   readonly #messenger: Messenger | undefined;
   readonly #statusCardId: DirectFeishuFileIngressOptions['statusCardId'];
@@ -52,7 +47,6 @@ export class DirectFeishuFileIngress {
 
   constructor(options: DirectFeishuFileIngressOptions) {
     this.#materialize = options.materialize;
-    this.#releaseAttachment = options.releaseAttachment;
     this.#ingestTurn = options.ingestTurn;
     this.#messenger = options.messenger;
     this.#statusCardId = options.statusCardId;
@@ -114,10 +108,6 @@ export class DirectFeishuFileIngress {
         ...(message.senderId ? { senderId: message.senderId } : {}),
         ...(statusCardMessageId ? { statusCardMessageId } : {}),
         attachments: [attachment],
-      }, {
-        ...(this.#releaseAttachment
-          ? { releaseAttachment: async (file: IntakeAttachment) => this.#releaseAttachment!(file) }
-          : {}),
       });
     } catch (error) {
       if (statusCardMessageId && this.#messenger?.updateCard) {

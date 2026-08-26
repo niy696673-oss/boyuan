@@ -24,11 +24,11 @@ const service = new IntakeService({
   platform: new HttpPlatformClient(config.platformBaseUrl, config.platformIntakeKey, config.timeoutMs),
   messenger,
   store: new JsonJobStore(config.statePath),
+  releaseAttachment: (attachment) => feishu.release(attachment),
 });
 const ingress = new DirectFeishuFileIngress({
   materialize: (message) => feishu.materialize(message),
-  releaseAttachment: (attachment) => feishu.release(attachment),
-  ingestTurn: (turn, options) => service.ingestTurn(turn, options),
+  ingestTurn: (turn) => service.ingestTurn(turn),
   messenger,
   statusCardId: (message) =>
     service.statusCardId(message.messageId, message.fileKey),

@@ -43,7 +43,7 @@ describe('direct Feishu file intake', () => {
       messageId: 'om_pdf',
       senderId: 'ou_sender',
       attachments: [pdf],
-    }), expect.any(Object));
+    }));
   });
 
   it('ignores ordinary chat messages and malformed file events', async () => {
@@ -101,16 +101,13 @@ describe('direct Feishu file intake', () => {
       updateCard: vi.fn(async () => undefined),
     };
     const materialize = vi.fn(async () => { order.push('materialize'); return pdf; });
-    const releaseAttachment = vi.fn(async () => { order.push('release'); });
-    const ingestTurn = vi.fn(async (input, options) => {
-      await options?.releaseAttachment?.(pdf);
+    const ingestTurn = vi.fn(async (input) => {
       order.push('ingest');
       expect(input.statusCardMessageId).toBe('om_status_card');
       return [{ fileKey: 'file_pdf', fileName: '项目 BP.pdf', status: 'completed' as const }];
     });
     const ingress = new DirectFeishuFileIngress({
       materialize,
-      releaseAttachment,
       ingestTurn,
       messenger,
       statusCardId: () => storedStatusCardId,
@@ -123,8 +120,7 @@ describe('direct Feishu file intake', () => {
 
     await expect(ingress.handle(fileEvent())).resolves.toEqual({ handled: true });
 
-    expect(order).toEqual(['loading', 'persist', 'materialize', 'release', 'ingest']);
-    expect(releaseAttachment).toHaveBeenCalledWith(pdf);
+    expect(order).toEqual(['loading', 'persist', 'materialize', 'ingest']);
     expect(JSON.stringify(messenger.sendCard.mock.calls)).toContain('资料处理中');
   });
 
@@ -151,7 +147,6 @@ describe('direct Feishu file intake', () => {
     expect(messenger.sendCard).not.toHaveBeenCalled();
     expect(ingestTurn).toHaveBeenCalledWith(
       expect.objectContaining({ statusCardMessageId: 'om_duplicate' }),
-      expect.any(Object),
     );
   });
 
@@ -216,7 +211,6 @@ describe('direct Feishu file intake', () => {
     expect(sendCard).toHaveBeenCalledOnce();
     expect(ingestTurn).toHaveBeenCalledWith(
       expect.objectContaining({ statusCardMessageId: 'om_status_card' }),
-      expect.any(Object),
     );
   });
 
@@ -248,7 +242,7 @@ describe('direct Feishu file intake', () => {
     expect(ingestTurn).toHaveBeenCalledWith(expect.objectContaining({
       messageId: 'om_pdf',
       statusCardMessageId: 'om_status_card',
-    }), expect.any(Object));
+    }));
   });
 
   it('marks a permanently unsupported attachment as terminal for restart recovery', async () => {

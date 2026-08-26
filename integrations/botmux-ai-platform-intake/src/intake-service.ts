@@ -12,6 +12,7 @@ export interface IntakeServiceOptions {
   store: JobStore;
   nowMs?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => unknown;
+  releaseAttachment?: (attachment: IntakeTurn['attachments'][number]) => Promise<void>;
 }
 
 export class IntakeService {
@@ -21,7 +22,9 @@ export class IntakeService {
   readonly #store: JobStore;
   readonly #nowMs: () => number;
   readonly #setTimer: (callback: () => void, delayMs: number) => unknown;
+  readonly #releaseAttachment: IntakeServiceOptions['releaseAttachment'];
   readonly #scheduled = new Set<string>();
+  readonly #cleanupScheduled = new Set<string>();
   readonly #active = new Map<string, Promise<IntakeOutcome>>();
 
   constructor(options: IntakeServiceOptions) {
@@ -35,6 +38,7 @@ export class IntakeService {
       timer.unref();
       return timer;
     });
+    this.#releaseAttachment = options.releaseAttachment;
   }
 
   statusCardId(messageId: string, fileKey: string): string | undefined {
@@ -73,21 +77,16 @@ export class IntakeService {
     this.#store.putStatusCard({ ...receipt, terminal: true });
   }
 
-  async ingestTurn(
-    turn: IntakeTurn,
-    options: { releaseAttachment?: (attachment: IntakeTurn['attachments'][number]) => Promise<void> } = {},
-  ): Promise<IntakeOutcome[]> {
+  async ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]> {
     const outcomes: IntakeOutcome[] = [];
     for (const attachment of turn.attachments) {
       try {
         const key = jobKey(turn.messageId, attachment.fileKey);
         let active = this.#active.get(key);
         if (!active) {
-          active = this.#acceptOne(turn, attachment, options.releaseAttachment);
+          active = this.#acceptOne(turn, attachment);
           this.#active.set(key, active);
           void active.finally(() => this.#active.delete(key)).catch(() => undefined);
-        } else if (options.releaseAttachment) {
-          await options.releaseAttachment(attachment);
         }
         outcomes.push(await active);
       } catch (error) {
@@ -114,17 +113,17 @@ export class IntakeService {
 
   resumePending(): void {
     for (const job of this.#store.listPending()) this.#schedule(job.key, 0);
+    for (const job of this.#store.listCleanupPending()) this.#scheduleCleanup(job.key, 0);
   }
 
   async #acceptOne(
     turn: IntakeTurn,
     attachment: IntakeTurn['attachments'][number],
-    releaseAttachment?: (attachment: IntakeTurn['attachments'][number]) => Promise<void>,
   ): Promise<IntakeOutcome> {
     const key = jobKey(turn.messageId, attachment.fileKey);
     const existing = this.#store.get(key);
     if (existing) {
-      if (releaseAttachment) await releaseAttachment(attachment);
+      await this.#releaseDuplicateAttachment(existing, attachment);
       if (!existing.completionCardSent) await this.#finish(key);
       const saved = this.#store.get(key) ?? existing;
       return {
@@ -144,8 +143,9 @@ export class IntakeService {
     let uploaded: Awaited<ReturnType<PlatformClient['upload']>>;
     try {
       uploaded = await this.#platform.upload(turn, attachment, this.#config.timeoutMs);
-    } finally {
-      if (releaseAttachment) await releaseAttachment(attachment);
+    } catch (error) {
+      if (this.#releaseAttachment) await this.#releaseAttachment(attachment);
+      throw error;
     }
     const acceptedMs = this.#nowMs();
     const statusCardMessageId = turn.statusCardMessageId ??
@@ -163,9 +163,13 @@ export class IntakeService {
       completionCardMs: 0,
       completionCardSent: false,
       createdAt: new Date(startedMs).toISOString(),
+      ...(this.#releaseAttachment
+        ? { cleanupAttachment: attachment, cleanupPending: true }
+        : {}),
     };
     this.#store.put(job);
     this.#store.deleteStatusCard(key);
+    await this.#cleanup(key);
     await this.#finish(key);
     const saved = this.#store.get(key) ?? job;
     return {
@@ -184,6 +188,51 @@ export class IntakeService {
       this.#scheduled.delete(key);
       void this.#finish(key).catch(() => undefined);
     }, delayMs);
+  }
+
+  #scheduleCleanup(key: string, delayMs: number): void {
+    if (this.#cleanupScheduled.has(key)) return;
+    this.#cleanupScheduled.add(key);
+    this.#setTimer(() => {
+      this.#cleanupScheduled.delete(key);
+      void this.#cleanup(key);
+    }, delayMs);
+  }
+
+  async #cleanup(key: string): Promise<void> {
+    const job = this.#store.get(key);
+    const attachment = job?.cleanupAttachment;
+    if (!job?.cleanupPending || !attachment || !this.#releaseAttachment) return;
+    try {
+      await this.#releaseAttachment(attachment);
+      const latest = this.#store.get(key);
+      if (!latest || latest.cleanupAttachment?.path !== attachment.path) return;
+      delete latest.cleanupAttachment;
+      delete latest.cleanupPending;
+      delete latest.cleanupError;
+      this.#store.put(latest);
+    } catch (error) {
+      const latest = this.#store.get(key);
+      if (!latest || latest.cleanupAttachment?.path !== attachment.path) return;
+      latest.cleanupPending = true;
+      latest.cleanupError = errorMessage(error);
+      this.#store.put(latest);
+      this.#scheduleCleanup(key, this.#config.retryDelayMs);
+    }
+  }
+
+  async #releaseDuplicateAttachment(job: IntakeJob, attachment: IntakeTurn['attachments'][number]): Promise<void> {
+    if (!this.#releaseAttachment) return;
+    try {
+      await this.#releaseAttachment(attachment);
+    } catch (error) {
+      const latest = this.#store.get(job.key) ?? job;
+      latest.cleanupAttachment = attachment;
+      latest.cleanupPending = true;
+      latest.cleanupError = errorMessage(error);
+      this.#store.put(latest);
+      this.#scheduleCleanup(job.key, this.#config.retryDelayMs);
+    }
   }
 
   async #finish(key: string): Promise<void> {

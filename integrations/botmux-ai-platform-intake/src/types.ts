@@ -129,6 +129,9 @@ export interface IntakeJob {
   quickCard?: QuickCardResult;
   createdAt: string;
   lastError?: string;
+  cleanupAttachment?: IntakeAttachment;
+  cleanupPending?: boolean;
+  cleanupError?: string;
 }
 
 export interface StatusCardReceipt {
@@ -160,4 +163,5 @@ export interface JobStore {
   deleteStatusCard(key: string): void;
   listStatusCards(): StatusCardReceipt[];
   listPending(): IntakeJob[];
+  listCleanupPending(): IntakeJob[];
 }
