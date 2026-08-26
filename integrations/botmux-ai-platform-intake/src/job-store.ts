@@ -41,6 +41,16 @@ export class JsonJobStore implements JobStore {
     this.#save();
   }
 
+  deleteStatusCard(key: string): void {
+    if (!this.#data.statusCards[key]) return;
+    delete this.#data.statusCards[key];
+    this.#save();
+  }
+
+  listStatusCards(): StatusCardReceipt[] {
+    return Object.values(this.#data.statusCards).map((receipt) => structuredClone(receipt));
+  }
+
   listPending(): IntakeJob[] {
     return Object.values(this.#data.jobs).filter((job) => !job.completionCardSent).map((job) => structuredClone(job));
   }
@@ -101,6 +111,10 @@ export class MemoryJobStore implements JobStore {
   }
   putStatusCard(receipt: StatusCardReceipt): void {
     this.statusCards.set(receipt.key, structuredClone(receipt));
+  }
+  deleteStatusCard(key: string): void { this.statusCards.delete(key); }
+  listStatusCards(): StatusCardReceipt[] {
+    return [...this.statusCards.values()].map((receipt) => structuredClone(receipt));
   }
   listPending(): IntakeJob[] { return [...this.jobs.values()].filter((job) => !job.completionCardSent); }
 }

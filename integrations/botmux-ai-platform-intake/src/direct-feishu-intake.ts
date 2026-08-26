@@ -13,6 +13,7 @@ export interface FeishuFileMessage {
 
 export interface DirectFeishuFileIngressOptions {
   materialize(message: FeishuFileMessage): Promise<IntakeAttachment>;
+  releaseAttachment?: (attachment: IntakeAttachment) => Promise<void> | void;
   ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]>;
   messenger?: Messenger;
   statusCardId?: (message: FeishuFileMessage) => string | undefined;
@@ -37,6 +38,7 @@ export interface FeishuCardReplyPort {
 
 export class DirectFeishuFileIngress {
   readonly #materialize: DirectFeishuFileIngressOptions['materialize'];
+  readonly #releaseAttachment: DirectFeishuFileIngressOptions['releaseAttachment'];
   readonly #ingestTurn: DirectFeishuFileIngressOptions['ingestTurn'];
   readonly #messenger: Messenger | undefined;
   readonly #statusCardId: DirectFeishuFileIngressOptions['statusCardId'];
@@ -45,6 +47,7 @@ export class DirectFeishuFileIngress {
 
   constructor(options: DirectFeishuFileIngressOptions) {
     this.#materialize = options.materialize;
+    this.#releaseAttachment = options.releaseAttachment;
     this.#ingestTurn = options.ingestTurn;
     this.#messenger = options.messenger;
     this.#statusCardId = options.statusCardId;
@@ -57,6 +60,15 @@ export class DirectFeishuFileIngress {
   async handle(data: unknown): Promise<{ handled: boolean }> {
     const message = parseFeishuFileMessage(data);
     if (!message) return { handled: false };
+    await this.#enqueue(message);
+    return { handled: true };
+  }
+
+  async resume(message: FeishuFileMessage): Promise<void> {
+    await this.#enqueue(message);
+  }
+
+  async #enqueue(message: FeishuFileMessage): Promise<void> {
     let active = this.#active.get(message.messageId);
     if (!active) {
       active = this.#ingest(message);
@@ -64,7 +76,6 @@ export class DirectFeishuFileIngress {
       void active.finally(() => this.#active.delete(message.messageId)).catch(() => undefined);
     }
     await active;
-    return { handled: true };
   }
 
   async #ingest(message: FeishuFileMessage): Promise<void> {
@@ -82,8 +93,9 @@ export class DirectFeishuFileIngress {
       statusCardMessageId = status.messageId;
       this.#rememberStatusCard!(message, statusCardMessageId);
     }
+    let attachment: IntakeAttachment | undefined;
     try {
-      const attachment = await this.#materialize(message);
+      attachment = await this.#materialize(message);
       await this.#ingestTurn({
         chatId: message.chatId,
         sessionId,
@@ -101,6 +113,10 @@ export class DirectFeishuFileIngress {
         }).catch(() => undefined);
       }
       throw error;
+    } finally {
+      if (attachment && this.#releaseAttachment) {
+        await Promise.resolve(this.#releaseAttachment(attachment)).catch(() => undefined);
+      }
     }
   }
 }

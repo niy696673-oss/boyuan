@@ -210,13 +210,14 @@ export function WorkbenchPage({
       !initialConversationId ||
       openedInitialConversation.current === initialConversationId
     ) return;
-    openedInitialConversation.current = initialConversationId;
     const controller = new AbortController();
     setBusy(true);
     setNotice("");
     void researchClient
       .getConversation(initialConversationId, controller.signal)
       .then((conversation) => {
+        if (controller.signal.aborted) return;
+        openedInitialConversation.current = initialConversationId;
         setActiveResearch(toWorkbenchResearch(conversation));
         syncPlatformConversation(conversation);
       })

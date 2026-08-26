@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { companyNetworkUrl, completionCard, failureCard, industryChainUrl, workbenchConversationUrl } from './cards.js';
 import type {
   IntakeConfig, IntakeJob, IntakeOutcome, IntakeTurn, JobStore, Messenger, PlatformClient, QuickCardResult,
+  StatusCardReceipt,
 } from './types.js';
 
 export interface IntakeServiceOptions {
@@ -43,11 +44,13 @@ export class IntakeService {
   }
 
   rememberStatusCard(input: {
+    chatId: string;
     messageId: string;
     fileKey: string;
     fileName: string;
     cardMessageId: string;
     createdAt: string;
+    senderId?: string;
   }): void {
     const key = jobKey(input.messageId, input.fileKey);
     const existing = this.statusCardId(input.messageId, input.fileKey);
@@ -55,6 +58,10 @@ export class IntakeService {
       throw new Error('status_card_conflict');
     }
     this.#store.putStatusCard({ key, ...input });
+  }
+
+  listOrphanStatusCards(): StatusCardReceipt[] {
+    return this.#store.listStatusCards().filter((receipt) => !this.#store.get(receipt.key));
   }
 
   async ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]> {
@@ -134,6 +141,7 @@ export class IntakeService {
       createdAt: new Date(startedMs).toISOString(),
     };
     this.#store.put(job);
+    this.#store.deleteStatusCard(key);
     await this.#finish(key);
     const saved = this.#store.get(key) ?? job;
     return {

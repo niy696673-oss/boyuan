@@ -101,6 +101,7 @@ describe('direct Feishu file intake', () => {
       updateCard: vi.fn(async () => undefined),
     };
     const materialize = vi.fn(async () => { order.push('materialize'); return pdf; });
+    const releaseAttachment = vi.fn(async () => { order.push('release'); });
     const ingestTurn = vi.fn(async (input) => {
       order.push('ingest');
       expect(input.statusCardMessageId).toBe('om_status_card');
@@ -108,6 +109,7 @@ describe('direct Feishu file intake', () => {
     });
     const ingress = new DirectFeishuFileIngress({
       materialize,
+      releaseAttachment,
       ingestTurn,
       messenger,
       statusCardId: () => storedStatusCardId,
@@ -119,7 +121,8 @@ describe('direct Feishu file intake', () => {
 
     await expect(ingress.handle(fileEvent())).resolves.toEqual({ handled: true });
 
-    expect(order).toEqual(['loading', 'persist', 'materialize', 'ingest']);
+    expect(order).toEqual(['loading', 'persist', 'materialize', 'ingest', 'release']);
+    expect(releaseAttachment).toHaveBeenCalledWith(pdf);
     expect(JSON.stringify(messenger.sendCard.mock.calls)).toContain('资料处理中');
   });
 
@@ -205,6 +208,36 @@ describe('direct Feishu file intake', () => {
     expect(ingestTurn).toHaveBeenCalledWith(
       expect.objectContaining({ statusCardMessageId: 'om_status_card' }),
     );
+  });
+
+  it('can resume a persisted source message without waiting for Feishu to redeliver it', async () => {
+    const ingestTurn = vi.fn(async () => [{
+      fileKey: 'file_pdf', fileName: '项目 BP.pdf', status: 'completed' as const,
+    }]);
+    const ingress = new DirectFeishuFileIngress({
+      materialize: vi.fn(async () => pdf),
+      ingestTurn,
+      messenger: {
+        sendCard: vi.fn(async () => ({ messageId: 'om_unexpected' })),
+        updateCard: vi.fn(async () => undefined),
+      },
+      statusCardId: () => 'om_status_card',
+      rememberStatusCard: vi.fn(),
+    });
+
+    await ingress.resume({
+      chatId: 'oc_chat',
+      messageId: 'om_pdf',
+      fileKey: 'file_pdf',
+      fileName: '项目 BP.pdf',
+      receivedAt: new Date(1787702400000).toISOString(),
+      senderId: 'ou_sender',
+    });
+
+    expect(ingestTurn).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: 'om_pdf',
+      statusCardMessageId: 'om_status_card',
+    }));
   });
 
   it('extracts the original Feishu receive time for end-to-end timing', () => {

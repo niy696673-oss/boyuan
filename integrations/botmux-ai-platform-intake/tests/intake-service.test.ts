@@ -19,6 +19,38 @@ function platformFixture(): PlatformClient {
 }
 
 describe('intake service', () => {
+  it('resumes orphan processing receipts and removes the redundant receipt after upload is durable', async () => {
+    const temp = tempDir();
+    const store = new MemoryJobStore();
+    const service = new IntakeService({
+      config: testConfig(temp.path),
+      platform: platformFixture(),
+      messenger: { sendCard: vi.fn(async () => undefined), updateCard: vi.fn(async () => undefined) },
+      store,
+      setTimer: () => undefined,
+    });
+    service.rememberStatusCard({
+      chatId: 'oc_chat',
+      messageId: 'om_message',
+      fileKey: 'one',
+      fileName: 'one.pdf',
+      cardMessageId: 'om_status_card',
+      createdAt: '2026-08-26T00:00:00.000Z',
+      senderId: 'ou_sender',
+    });
+
+    try {
+      expect(service.listOrphanStatusCards()).toEqual([
+        expect.objectContaining({ messageId: 'om_message', cardMessageId: 'om_status_card' }),
+      ]);
+      const input = turn(attachment('one'));
+      input.statusCardMessageId = 'om_status_card';
+      await service.ingestTurn(input);
+      expect(service.listOrphanStatusCards()).toEqual([]);
+      expect(store.getStatusCard(jobKey('om_message', 'one'))).toBeUndefined();
+    } finally { temp.cleanup(); }
+  });
+
   it('replaces an existing processing card instead of posting a second reply', async () => {
     const temp = tempDir();
     const platform = platformFixture();

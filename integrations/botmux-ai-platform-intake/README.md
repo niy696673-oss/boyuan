@@ -35,7 +35,8 @@ The platform process must use the same `BOYUAN_FEISHU_INTAKE_KEY` value as `plat
 
 - Every Feishu file creates an independent receipt and conversation. Byte-identical files may reuse the stored document. Conversation reuse is a non-blocking platform relevance proposal followed by user confirmation; no fixed time window is used, and the concise Feishu result does not wait for that decision.
 - The auto-start service owns the dedicated bot's Feishu long connection and consumes file events before any AI conversation exists. Ordinary BotMux Sol status cards and text replies are structurally absent from this path.
-- The direct ingress replies with one processing card before downloading the file. Its Feishu message ID is persisted immediately, before file download or platform upload, so completion, failure, restart recovery, and delivery retries update that same card instead of adding another bot reply.
+- The direct ingress replies with one processing card before downloading the file. Its Feishu message ID and the minimal source-message metadata needed to redownload are persisted immediately, before file download or platform upload. Startup resumes an orphan receipt after a crash, and completion, failure, and delivery retries update that same card instead of adding another bot reply.
+- The downloaded BP copy is deleted after the platform accepts or rejects the upload. Once a complete job is durable, the redundant processing-card receipt is deleted; only failed pre-upload receipts are retained for restart recovery.
 - An exact BotMux retry resumes the saved job without uploading again.
 - A new Feishu message containing identical bytes creates a new receipt/conversation while reusing the platform document by SHA-256.
 - Upload acceptance creates the workbench deep-analysis task. The plugin then calls the independent Luna quick-card analysis and never polls the Sol task for the Feishu reply.

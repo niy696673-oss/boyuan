@@ -133,11 +133,13 @@ export interface IntakeJob {
 
 export interface StatusCardReceipt {
   key: string;
+  chatId: string;
   messageId: string;
   fileKey: string;
   fileName: string;
   cardMessageId: string;
   createdAt: string;
+  senderId?: string;
 }
 
 export interface IntakeOutcome {
@@ -154,5 +156,7 @@ export interface JobStore {
   put(job: IntakeJob): void;
   getStatusCard(key: string): StatusCardReceipt | undefined;
   putStatusCard(receipt: StatusCardReceipt): void;
+  deleteStatusCard(key: string): void;
+  listStatusCards(): StatusCardReceipt[];
   listPending(): IntakeJob[];
 }

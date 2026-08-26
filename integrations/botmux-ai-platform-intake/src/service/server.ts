@@ -27,24 +27,38 @@ const service = new IntakeService({
 });
 const ingress = new DirectFeishuFileIngress({
   materialize: (message) => feishu.materialize(message),
+  releaseAttachment: (attachment) => feishu.release(attachment),
   ingestTurn: (turn) => service.ingestTurn(turn),
   messenger,
   statusCardId: (message) =>
     service.statusCardId(message.messageId, message.fileKey),
   rememberStatusCard: (message, cardMessageId) =>
     service.rememberStatusCard({
+      chatId: message.chatId,
       messageId: message.messageId,
       fileKey: message.fileKey,
       fileName: message.fileName,
       cardMessageId,
       createdAt: message.receivedAt,
+      ...(message.senderId ? { senderId: message.senderId } : {}),
     }),
 });
-feishu.start((data) => ingress.handle(data), (error) => {
+const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
   process.stderr.write(`[ai-platform-intake] Feishu ingress error: ${message.slice(0, 300)}\n`);
-});
+};
+feishu.start((data) => ingress.handle(data), reportIngressError);
 service.resumePending();
+for (const receipt of service.listOrphanStatusCards()) {
+  void ingress.resume({
+    chatId: receipt.chatId,
+    messageId: receipt.messageId,
+    fileKey: receipt.fileKey,
+    fileName: receipt.fileName,
+    receivedAt: receipt.createdAt,
+    ...(receipt.senderId ? { senderId: receipt.senderId } : {}),
+  }).catch(reportIngressError);
+}
 
 const server = createServer((request, response) => {
   if (request.method === 'GET' && request.url === '/health') {

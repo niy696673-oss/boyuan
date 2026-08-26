@@ -1,7 +1,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk';
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { ProxyAgent } from 'proxy-agent';
 import type { IntakeConfig } from './types.js';
@@ -95,6 +95,17 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
       }
     }
     return validateAttachmentPath({ fileKey: message.fileKey, name: message.fileName, path }, this.#config.attachmentRoot);
+  }
+
+  release(attachment: Awaited<ReturnType<LarkFeishuTransport['materialize']>>): void {
+    const safe = validateAttachmentPath(attachment, this.#config.attachmentRoot);
+    rmSync(safe.path, { force: true });
+    try {
+      rmSync(dirname(safe.path), { recursive: false });
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      if (code !== 'ENOENT' && code !== 'ENOTEMPTY') throw error;
+    }
   }
 
   async reply(input: Parameters<FeishuCardReplyPort['reply']>[0]): Promise<{ messageId: string }> {

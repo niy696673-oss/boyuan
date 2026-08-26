@@ -37,6 +37,7 @@ describe('JSON intake job store', () => {
       const store = new JsonJobStore(statePath);
       store.putStatusCard({
         key: 'receipt',
+        chatId: 'oc_chat',
         messageId: 'om_message',
         fileKey: 'file',
         fileName: 'bp.pdf',
@@ -47,6 +48,8 @@ describe('JSON intake job store', () => {
       expect(new JsonJobStore(statePath).getStatusCard('receipt')).toMatchObject({
         cardMessageId: 'om_status_card',
       });
+      store.deleteStatusCard('receipt');
+      expect(new JsonJobStore(statePath).listStatusCards()).toEqual([]);
     } finally {
       temp.cleanup();
     }
