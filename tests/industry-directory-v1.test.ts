@@ -7,6 +7,7 @@ import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
+import type { MaterialAnalysisPort } from "../server/research-platform/analysis/contracts.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
 import { createDeterministicIndustryResearchAdapter } from "../server/research-platform/industry-research/deterministic-industry-research.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
@@ -179,6 +180,70 @@ describe("研究平台 v1 行业目录接缝", () => {
     for (let index = 0; index < 20; index += 1) {
       if ((await platform.runPendingSteps()) === 0) break;
     }
+
+    const directory = await request(app).get("/api/v1/industries");
+    expect(directory.status).toBe(200);
+    expect(directory.body).toMatchObject({
+      items: [],
+      total: 0,
+      unclassifiedMaterialCount: 1,
+    });
+  });
+
+  it("未分类材料只统计已完成分析，排除已取消和失败任务", async () => {
+    const deterministic = createDeterministicAnalysisAdapter();
+    const { app, platform } = await fixture({
+      analysis: {
+        async analyze(input) {
+          if (input.fileName === "分析失败 BP.txt") {
+            throw new Error("fixture_analysis_failed");
+          }
+          return deterministic.analyze(input);
+        },
+      },
+    });
+
+    const completed = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("木棉软件有限公司\n公司专注企业智能化服务。"),
+        "已完成未分类 BP.txt",
+      );
+    expect(completed.status).toBe(201);
+
+    const cancelled = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("取消样本有限公司\n该材料不应进入未分类统计。"),
+        "已取消 BP.txt",
+      );
+    expect(cancelled.status).toBe(201);
+    await platform.cancelTask(cancelled.body.conversation.task.taskId as string);
+
+    const failed = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("失败样本有限公司\n该材料分析会失败。"),
+        "分析失败 BP.txt",
+      );
+    expect(failed.status).toBe(201);
+
+    for (let index = 0; index < 40; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    await expect(
+      platform.getConversation(completed.body.conversation.conversationId as string),
+    ).resolves.toMatchObject({ task: { status: "completed" } });
+    await expect(
+      platform.getConversation(cancelled.body.conversation.conversationId as string),
+    ).resolves.toMatchObject({ task: { status: "cancelled" } });
+    await expect(
+      platform.getConversation(failed.body.conversation.conversationId as string),
+    ).resolves.toMatchObject({ task: { status: "failed" } });
 
     const directory = await request(app).get("/api/v1/industries");
     expect(directory.status).toBe(200);
@@ -411,12 +476,12 @@ async function seedIndustry(
   }
 }
 
-async function fixture() {
+async function fixture(options: { analysis?: MaterialAnalysisPort } = {}) {
   const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-industry-v1-"));
   roots.push(dataRoot);
   const platform = createPlatformModule({
     dataRoot,
-    analysis: createDeterministicAnalysisAdapter(),
+    analysis: options.analysis ?? createDeterministicAnalysisAdapter(),
     industryResearch: createDeterministicIndustryResearchAdapter(),
     search: createDeterministicSearchAdapter(),
   });

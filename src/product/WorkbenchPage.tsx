@@ -786,28 +786,35 @@ function ConversationRail({
 }) {
   const [search, setSearch] = useState("");
   const normalizedSearch = search.trim().toLocaleLowerCase("zh-CN");
-  const visibleTasks = conversations.filter(({ task }) => {
-    const matchesFilter = (() => {
-      if (filter === "全部") return true;
-      if (task.contextType) return task.contextType === filter;
-      if (filter === "公司") return Boolean(task.companyId);
-      if (filter === "行业")
-        return Boolean(task.industryId) || /行业|产业链/.test(task.query);
-      return !task.companyId || /材料|BP|名单/.test(task.query);
-    })();
-    if (!matchesFilter || !normalizedSearch) return matchesFilter;
-    return [
-      task.query,
-      task.createdBy,
-      task.contextType,
-      task.companyId,
-      task.industryId,
-    ]
-      .filter(Boolean)
-      .some((value) =>
-        String(value).toLocaleLowerCase("zh-CN").includes(normalizedSearch),
-      );
-  });
+  const visibleTasks = conversations
+    .filter(({ task }) => {
+      const matchesFilter = (() => {
+        if (filter === "全部") return true;
+        if (task.contextType) return task.contextType === filter;
+        if (filter === "公司") return Boolean(task.companyId);
+        if (filter === "行业")
+          return Boolean(task.industryId) || /行业|产业链/.test(task.query);
+        return !task.companyId || /材料|BP|名单/.test(task.query);
+      })();
+      if (!matchesFilter || !normalizedSearch) return matchesFilter;
+      return [
+        task.query,
+        task.createdBy,
+        task.contextType,
+        task.companyId,
+        task.industryId,
+      ]
+        .filter(Boolean)
+        .some((value) =>
+          String(value).toLocaleLowerCase("zh-CN").includes(normalizedSearch),
+        );
+    })
+    .sort(
+      (left, right) =>
+        Number(left.task.status === "已取消") -
+        Number(right.task.status === "已取消"),
+    )
+    .slice(0, 30);
   return (
     <aside className="by-conversation-rail" aria-label="研究对话">
       <button className="by-new-conversation" onClick={onNew}>

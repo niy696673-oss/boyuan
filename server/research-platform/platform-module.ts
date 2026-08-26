@@ -928,6 +928,7 @@ class SqlitePlatformModule implements PlatformModule {
       FROM conversations
       JOIN analysis_tasks ON analysis_tasks.conversation_id = conversations.conversation_id
       WHERE analysis_tasks.task_type = 'material_analysis'
+        AND analysis_tasks.status = 'completed'
         AND NOT EXISTS (
           SELECT 1 FROM industry_materials
           WHERE industry_materials.document_id = conversations.primary_document_id

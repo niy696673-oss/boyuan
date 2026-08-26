@@ -489,6 +489,50 @@ describe("工作台研究平台接缝", () => {
     expect(within(rail).queryByText("红杉机器人公司研究")).toBeNull();
   });
 
+  it("会话栏优先展示最多 30 条未取消对话", async () => {
+    const conversations: ConversationSummary[] = Array.from(
+      { length: 31 },
+      (_, index) => {
+        const detail = conversationDetail();
+        const sequence = String(index + 1).padStart(2, "0");
+        return {
+          ...detail,
+          conversationId: `conversation-${sequence}`,
+          title: `演示任务 ${sequence}`,
+          status: index < 30 ? "cancelled" : "completed",
+          task: {
+            ...detail.task,
+            taskId: `task-${sequence}`,
+            status: index < 30 ? "cancelled" : "completed",
+          },
+        };
+      },
+    );
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue(conversations),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    const rail = await screen.findByRole("complementary", { name: "研究对话" });
+    expect(within(rail).getAllByRole("button", { name: /演示任务/ })).toHaveLength(30);
+    expect(within(rail).getByText("演示任务 31")).toBeTruthy();
+    expect(within(rail).queryByText("演示任务 30")).toBeNull();
+  });
+
   it("分开呈现冻结材料证据与持久 Exa 来源，并只链接安全 URL", async () => {
     localStorage.setItem("boyuan-access-token", "workbench-token");
     localStorage.setItem("boyuan-user", "u-investor");
