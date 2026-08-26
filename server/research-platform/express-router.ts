@@ -202,8 +202,15 @@ export function createResearchPlatformV1Router(
 
   router.get("/industries", async (_req, res, next) => {
     try {
-      const items = await platform.listIndustries();
-      const response = { items, total: items.length } satisfies IndustryDirectoryResponseV1;
+      const [items, unclassifiedMaterialCount] = await Promise.all([
+        platform.listIndustries(),
+        platform.countUnclassifiedIndustryMaterials(),
+      ]);
+      const response = {
+        items,
+        total: items.length,
+        unclassifiedMaterialCount,
+      } satisfies IndustryDirectoryResponseV1;
       res.json(response);
     } catch (error) {
       handlePlatformError(error, res, next);

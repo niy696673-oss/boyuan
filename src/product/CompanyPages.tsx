@@ -339,7 +339,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
           </div>
           <p>{company.description}</p>
           <div className="by-company-actions"><button onClick={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
-          <input ref={fileInput} hidden type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
+          <input ref={fileInput} hidden type="file" accept=".pdf,.docx,.xlsx,.csv,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
           {actionNotice && <p role="status">{actionNotice}</p>}
           <dl><div><dt>归档状态</dt><dd><Check />已自动归档</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
         </header>

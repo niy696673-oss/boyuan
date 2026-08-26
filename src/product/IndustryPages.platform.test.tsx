@@ -26,6 +26,7 @@ describe("持久行业目录页面", () => {
     expect(screen.getAllByText("2", { selector: "dd" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("1", { selector: "dd" }).length).toBeGreaterThan(0);
     expect(screen.queryByText("旧行业数据")).toBeNull();
+    expect(screen.getByText("待分类材料").parentElement?.textContent).toContain("3");
     expect(client.list).toHaveBeenCalledOnce();
     expect(client.get).toHaveBeenCalledWith("industry-1", expect.any(AbortSignal));
   });
@@ -95,6 +96,7 @@ function fakeClient(): IndustryDirectoryClient {
         updatedAt: detail.updatedAt,
       }],
       total: 1,
+      unclassifiedMaterialCount: 3,
     }),
     get: vi.fn().mockResolvedValue(detail),
   };

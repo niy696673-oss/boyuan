@@ -96,6 +96,8 @@ describe("持久公司目录页面", () => {
       .toBeTruthy();
     expect(screen.getByText(/1 条待确认知识需要验证/)).toBeTruthy();
     expect(screen.getByText("云杉智能 BP.pdf")).toBeTruthy();
+    expect((document.querySelector('input[type="file"]') as HTMLInputElement).accept)
+      .toBe(".pdf,.docx,.xlsx,.csv,.txt,.md");
     expect(client.get).toHaveBeenCalledWith(
       "company-1",
       expect.any(AbortSignal),

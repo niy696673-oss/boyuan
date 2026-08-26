@@ -208,6 +208,7 @@ export interface IndustryDirectoryItemV1 {
 export interface IndustryDirectoryResponseV1 {
   items: IndustryDirectoryItemV1[];
   total: number;
+  unclassifiedMaterialCount: number;
 }
 
 export interface IndustryNodeV1 {

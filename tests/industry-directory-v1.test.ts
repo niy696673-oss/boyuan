@@ -31,6 +31,7 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(directory.status).toBe(200);
     expect(directory.body).toMatchObject({
       total: 1,
+      unclassifiedMaterialCount: 0,
       items: [
         {
           name: "人工智能",
@@ -58,6 +59,29 @@ describe("研究平台 v1 行业目录接缝", () => {
           nodeName: "产品与解决方案",
         },
       ],
+    });
+  });
+
+  it("返回尚未形成行业证据的持久材料数量", async () => {
+    const { app, platform } = await fixture();
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("木棉软件有限公司\n公司专注企业智能化服务。"),
+        "木棉软件 BP.txt",
+      );
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const directory = await request(app).get("/api/v1/industries");
+    expect(directory.status).toBe(200);
+    expect(directory.body).toMatchObject({
+      items: [],
+      total: 0,
+      unclassifiedMaterialCount: 1,
     });
   });
 

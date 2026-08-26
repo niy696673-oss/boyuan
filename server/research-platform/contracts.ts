@@ -475,6 +475,7 @@ export interface PlatformModule {
   getCompany(companyId: string): Promise<CompanyDetail>;
   setCompanyWatched(companyId: string, watched: boolean, expectedVersion: number): Promise<CompanyDetail>;
   listIndustries(): Promise<IndustryRecord[]>;
+  countUnclassifiedIndustryMaterials(): Promise<number>;
   getIndustry(industryId: string): Promise<IndustryDetail>;
   search(query: string): Promise<GlobalSearchResults>;
   getCompanyList(listId: string): Promise<CompanyListRecord>;

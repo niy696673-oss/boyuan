@@ -735,6 +735,21 @@ class SqlitePlatformModule implements PlatformModule {
     return rows.map((row) => this.#industryRecord(row.industry_id));
   }
 
+  async countUnclassifiedIndustryMaterials(): Promise<number> {
+    this.#assertOpen();
+    const row = this.#db.prepare(`
+      SELECT COUNT(DISTINCT conversations.primary_document_id) AS total
+      FROM conversations
+      JOIN analysis_tasks ON analysis_tasks.conversation_id = conversations.conversation_id
+      WHERE analysis_tasks.task_type = 'material_analysis'
+        AND NOT EXISTS (
+          SELECT 1 FROM industry_materials
+          WHERE industry_materials.document_id = conversations.primary_document_id
+        )
+    `).get() as { total: number };
+    return row.total;
+  }
+
   async getIndustry(industryId: string): Promise<IndustryDetail> {
     this.#assertOpen();
     const industry = this.#industryRecord(industryId);
@@ -1679,7 +1694,9 @@ class SqlitePlatformModule implements PlatformModule {
           this.#db.prepare('INSERT INTO analysis_section_evidence (section_id, evidence_id) VALUES (?, ?)').run(sectionId, evidenceId);
         }
       }
-      const industrySection = result.sections.find((section) => section.key === 'industry_chain_position' && section.summary.trim());
+      const industrySection = result.sections.find((section) => (
+        section.key === 'industry_chain_position' && section.blockIds.length > 0
+      ));
       if (industrySection) {
         const firstBlock = blocks.find((block) => block.blockId === industrySection.blockIds[0]);
         const evidenceId = firstBlock ? this.#evidenceForBlock(target.documentId, firstBlock, now) : undefined;

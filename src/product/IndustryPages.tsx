@@ -50,6 +50,7 @@ export function IndustriesPage({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisNotice, setAnalysisNotice] = useState("");
   const [details, setDetails] = useState<IndustryDetailResponseV1[] | null>(null);
+  const [unclassifiedMaterialCount, setUnclassifiedMaterialCount] = useState(0);
   const [loadError, setLoadError] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -57,9 +58,12 @@ export function IndustriesPage({
     const controller = new AbortController();
     setLoadError(false);
     void industryClient.list(controller.signal)
-      .then(async (directory) => Promise.all(
-        directory.items.map((item) => industryClient.get(item.industryId, controller.signal)),
-      ))
+      .then(async (directory) => {
+        setUnclassifiedMaterialCount(directory.unclassifiedMaterialCount);
+        return Promise.all(
+          directory.items.map((item) => industryClient.get(item.industryId, controller.signal)),
+        );
+      })
       .then(setDetails)
       .catch(() => {
         if (!controller.signal.aborted) setLoadError(true);
@@ -87,7 +91,6 @@ export function IndustriesPage({
       if (sort === "公司数量") return (right?.companyCount || 0) - (left?.companyCount || 0);
       return +new Date(right?.updatedAt || 0) - +new Date(left?.updatedAt || 0);
     });
-  const unclassifiedMaterials = 0;
   const pendingPositions = (details || []).flatMap((detail) => detail.companies)
     .filter((placement) => placement.status !== "confirmed").length;
   const canAnalyze = ["partner", "knowledge_admin", "system_admin"].includes(
@@ -147,7 +150,7 @@ export function IndustriesPage({
           <h3>待处理</h3>
           <button>
             <FileSearch />
-            待分类材料<em>{unclassifiedMaterials}</em>
+            待分类材料<em>{unclassifiedMaterialCount}</em>
           </button>
           <button>
             <Network />

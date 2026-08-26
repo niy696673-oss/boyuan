@@ -6,7 +6,7 @@ describe("行业目录客户端", () => {
   it("读取持久行业列表并编码详情 ID", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ items: [], total: 0 }))
+      .mockResolvedValueOnce(Response.json({ items: [], total: 0, unclassifiedMaterialCount: 0 }))
       .mockResolvedValueOnce(Response.json({ industryId: "industry/1" }));
     const client = createIndustryDirectoryClient(fetcher);
 
