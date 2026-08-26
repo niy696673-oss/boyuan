@@ -11,7 +11,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useParams } from "react-router-dom";
 import { setApiUser, type Bootstrap } from "../api";
 import type { CompanyDirectoryClient } from "../capabilities/companies/client";
 import {
@@ -165,6 +165,16 @@ export function ProductShell({
               />
             }
           />
+          <Route
+            path="/workbench/conversations/:conversationId"
+            element={
+              <WorkbenchConversationRoute
+                data={data}
+                reload={reload}
+                persistentPendingCount={pendingCount}
+              />
+            }
+          />
           <Route path="/companies" element={<CompaniesPage data={data} companyClient={companyClient} />} />
           <Route
             path="/companies/import"
@@ -209,6 +219,26 @@ export function ProductShell({
         </Routes>
       </main>
     </div>
+  );
+}
+
+function WorkbenchConversationRoute({
+  data,
+  reload,
+  persistentPendingCount,
+}: {
+  data: Bootstrap;
+  reload: () => void;
+  persistentPendingCount: number;
+}) {
+  const { conversationId } = useParams();
+  return (
+    <WorkbenchPage
+      data={data}
+      reload={reload}
+      persistentPendingCount={persistentPendingCount}
+      initialConversationId={conversationId}
+    />
   );
 }
 

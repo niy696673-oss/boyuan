@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { parseAnalysisJson } from './analysis-schema.js';
 import {
   createOpenCodeClient,
   type OpenCodeAssistantResponse,
   type OpenCodeConnectionOptions,
+  type OpenCodeSessionMessage,
 } from '../opencode/client.js';
 import {
   AnalysisAdapterError,
@@ -17,6 +19,7 @@ export interface OpenCodeAnalysisOptions extends OpenCodeConnectionOptions {
   model?: { providerId: string; modelId: string };
   variant?: string;
   requiredCapabilities?: OpenCodeRequiredCapabilities;
+  pollIntervalMs?: number;
 }
 
 export interface OpenCodeRequiredCapabilities {
@@ -31,6 +34,8 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
     (status) => new AnalysisAdapterError('opencode_http_error', `OpenCode returned HTTP ${status}`),
     600_000,
   );
+  const timeoutMs = options.timeoutMs === false ? Number.POSITIVE_INFINITY : options.timeoutMs ?? 600_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 500;
   const assertRequiredCapabilities = async (): Promise<void> => {
     const required = options.requiredCapabilities;
     const skills = required ? await client.listSkills() : [];
@@ -63,18 +68,24 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
         },
         parts: [{ type: 'text', text: analysisPrompt(input, required) }],
       };
+      const parentID = `msg_${randomUUID().replace(/-/gu, '')}`;
       let response: OpenCodeAssistantResponse;
+      let turnMessages: OpenCodeAssistantResponse[];
       try {
-        response = await client.sendMessage(sessionId, body);
+        const deadline = Number.isFinite(timeoutMs) ? Date.now() + timeoutMs : Number.POSITIVE_INFINITY;
+        await client.sendMessageAsync(sessionId, { ...body, messageID: parentID }, deadlineSignal(deadline));
+        ({ response, turnMessages } = await waitForAsyncTurn({
+          client,
+          sessionId,
+          parentID,
+          deadline,
+          pollIntervalMs,
+        }));
       } catch (error) {
         await client.abortSession(sessionId).catch(() => undefined);
         throw error;
       }
       if (response.info.error) throw new AnalysisAdapterError('opencode_message_error', 'OpenCode analysis message failed');
-      const messages = await client.listMessages(sessionId);
-      const turnMessages = response.info.parentID
-        ? messages.filter((message) => message.info.role === 'assistant' && message.info.parentID === response.info.parentID)
-        : [response];
       const successfulToolParts = turnMessages.flatMap((message) => message.parts).filter((part) => (
         part.type === 'tool' && part.tool && part.state?.status === 'completed'
       ));
@@ -104,6 +115,54 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
       };
     },
   };
+}
+
+async function waitForAsyncTurn(input: {
+  client: ReturnType<typeof createOpenCodeClient>;
+  sessionId: string;
+  parentID: string;
+  deadline: number;
+  pollIntervalMs: number;
+}): Promise<{ response: OpenCodeAssistantResponse; turnMessages: OpenCodeAssistantResponse[] }> {
+  for (;;) {
+    const signal = deadlineSignal(input.deadline);
+    const [messages, statuses] = await Promise.all([
+      input.client.listMessages(input.sessionId, 100, signal),
+      input.client.sessionStatus(signal),
+    ]);
+    const turnMessages = messages.filter((message): message is OpenCodeAssistantResponse => (
+      isAssistantResponse(message) && message.info.parentID === input.parentID
+    ));
+    const response = turnMessages.at(-1);
+    const state = statuses[input.sessionId]?.type ?? 'idle';
+    if (response?.info.error) {
+      throw new AnalysisAdapterError('opencode_message_error', 'OpenCode analysis message failed');
+    }
+    if (response && state === 'idle') return { response, turnMessages };
+    if (Date.now() >= input.deadline) {
+      throw new AnalysisAdapterError('opencode_timeout', 'OpenCode analysis timed out');
+    }
+    await delay(Math.max(1, input.pollIntervalMs), input.deadline);
+  }
+}
+
+function isAssistantResponse(message: OpenCodeSessionMessage): message is OpenCodeAssistantResponse {
+  return message.info.role === 'assistant'
+    && typeof message.info.providerID === 'string'
+    && typeof message.info.modelID === 'string';
+}
+
+function deadlineSignal(deadline: number): AbortSignal | undefined {
+  if (!Number.isFinite(deadline)) return undefined;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return AbortSignal.abort(new DOMException('The operation timed out', 'TimeoutError'));
+  return AbortSignal.timeout(Math.max(1, remaining));
+}
+
+async function delay(durationMs: number, deadline: number): Promise<void> {
+  const remaining = Number.isFinite(deadline) ? deadline - Date.now() : durationMs;
+  if (remaining <= 0) throw new AnalysisAdapterError('opencode_timeout', 'OpenCode analysis timed out');
+  await new Promise((resolve) => setTimeout(resolve, Math.min(durationMs, remaining)));
 }
 
 function systemInstruction(): string {

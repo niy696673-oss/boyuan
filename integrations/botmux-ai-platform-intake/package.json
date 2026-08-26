@@ -1,0 +1,33 @@
+{
+  "name": "@boyuan/botmux-ai-platform-intake",
+  "version": "0.4.0",
+  "description": "BotMux service plugin that sends Feishu files to the Boyuan AI platform.",
+  "private": true,
+  "type": "module",
+  "keywords": ["botmux-plugin"],
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "validate": "node ./scripts/validate.mjs",
+    "check": "npm run typecheck && npm run test && npm run build && npm run validate"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.64.0",
+    "proxy-agent": "^6.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "botmux": {
+    "schemaVersion": 1,
+    "id": "ai-platform-intake",
+    "displayName": "Boyuan AI Platform Intake",
+    "service": { "mode": "auto" }
+  },
+  "files": ["dist/"],
+  "license": "MIT"
+}

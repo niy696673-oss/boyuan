@@ -50,7 +50,7 @@ import type {
 import { PlatformConflictError, PlatformInputError, PlatformNotFoundError } from './contracts.js';
 import { createDocumentParser } from './parsers/document-parser.js';
 import { DocumentParserError, type DocumentParser, type ParsedBlock } from './parsers/contracts.js';
-import type { QuickCardAnalysisPort, QuickCardAnalysisResult } from './quick-card/contracts.js';
+import type { QuickCardAnalysisPort, QuickCardAnalysisResult, QuickCardExtractionResult } from './quick-card/contracts.js';
 import type { CompanyResearchPort } from './research/contracts.js';
 import { researchSearchTrigger } from './research/search-policy.js';
 import { SearchAdapterError, type SearchTriggerReason, type WebSearchPort, type WebSearchResultItem } from './search/contracts.js';
@@ -258,8 +258,17 @@ class SqlitePlatformModule implements PlatformModule {
 
   async ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult> {
     this.#assertOpen();
+    const replay = await this.#idempotentIngestResult(input);
+    if (replay) return replay;
     const staged = await this.#stage(input);
-    return this.#exclusive(() => this.#finalize(input, staged));
+    return this.#exclusive(async () => {
+      const concurrentReplay = await this.#idempotentIngestResult(input);
+      if (concurrentReplay) {
+        await rm(staged.directory, { recursive: true, force: true });
+        return concurrentReplay;
+      }
+      return this.#finalize(input, staged);
+    });
   }
 
   async ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult> {
@@ -303,12 +312,36 @@ class SqlitePlatformModule implements PlatformModule {
       ...(target.mimeType ? { mimeType: target.mimeType } : {}),
       path: this.#resolveStoragePath(target.storagePath),
     })).blocks;
-    return this.#quickCardAnalysis.analyze({
+    const extraction = await this.#quickCardAnalysis.analyze({
       conversationId: target.conversationId,
       documentId: target.documentId,
       fileName: target.fileName,
       blocks,
     });
+    const attached = this.#db.prepare(`
+      SELECT company_id FROM conversation_companies
+      WHERE conversation_id = ? AND role = 'primary'
+    `).get(conversationId) as { company_id: string } | undefined;
+    const matches = extraction.companyName === '材料未披露' ? [] : this.#matchCompanies(extraction.companyName);
+    const companyId = attached?.company_id ?? (matches.length === 1 ? matches[0] : undefined);
+    const placement = companyId ? this.#db.prepare(`
+      SELECT ci.industry_id FROM company_industries ci
+      JOIN industries i ON i.industry_id = ci.industry_id
+      WHERE ci.company_id = ? AND ci.status != 'rejected'
+      ORDER BY CASE ci.status WHEN 'confirmed' THEN 0 WHEN 'candidate' THEN 1 ELSE 2 END,
+        ci.updated_at DESC, i.updated_at DESC, ci.industry_id
+      LIMIT 1
+    `).get(companyId) as { industry_id: string } | undefined : undefined;
+    const confidence = quickCardConfidence(extraction, Boolean(companyId));
+    return {
+      ...extraction,
+      confidence,
+      confidenceLevel: confidence >= 80 ? '高' : confidence >= 50 ? '中' : '低',
+      navigation: {
+        ...(companyId ? { companyId } : {}),
+        ...(placement ? { industryId: placement.industry_id } : {}),
+      },
+    };
   }
 
   async listConversations(): Promise<ConversationSummary[]> {
@@ -1193,6 +1226,19 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
+  async #idempotentIngestResult(input: IngestDocumentInput): Promise<IngestDocumentResult | undefined> {
+    if (!input.sourceMessageId) return undefined;
+    const existing = this.#db.prepare(`
+      SELECT conversation_id FROM intake_idempotency
+      WHERE source_channel = ? AND source_message_id = ?
+    `).get(input.sourceChannel, input.sourceMessageId) as { conversation_id: string } | undefined;
+    if (!existing) return undefined;
+    return {
+      conversation: await this.getConversation(existing.conversation_id),
+      reusedDocument: true,
+    };
+  }
+
   async #finalize(input: IngestDocumentInput, staged: StagedFile, options: FinalizeOptions = {}): Promise<IngestDocumentResult> {
     const { boundCompanyId, research } = options;
     const now = this.#now().toISOString();
@@ -1264,6 +1310,13 @@ class SqlitePlatformModule implements PlatformModule {
             INSERT OR IGNORE INTO conversation_companies (conversation_id, company_id, role, created_at)
             VALUES (?, ?, 'primary', ?)
           `).run(conversationId, boundCompanyId, now);
+        }
+        if (input.sourceMessageId) {
+          this.#db.prepare(`
+            INSERT INTO intake_idempotency (
+              source_channel, source_message_id, conversation_id, created_at
+            ) VALUES (?, ?, ?, ?)
+          `).run(input.sourceChannel, input.sourceMessageId, conversationId, now);
         }
         this.#db.prepare(`
           INSERT INTO analysis_tasks (
@@ -3120,6 +3173,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateAuditSchema();
     this.#migrateCompanyWatchSchema();
     this.#migrateAnalysisRuntimeSchema();
+    this.#migrateIntakeIdempotencySchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -3537,12 +3591,43 @@ class SqlitePlatformModule implements PlatformModule {
       this.#db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (11, ?)').run(this.#now().toISOString());
     });
   }
+
+  #migrateIntakeIdempotencySchema(): void {
+    const applied = this.#db.prepare('SELECT 1 AS applied FROM schema_migrations WHERE version = 12').get();
+    if (applied) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        CREATE TABLE intake_idempotency (
+          source_channel TEXT NOT NULL,
+          source_message_id TEXT NOT NULL,
+          conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (source_channel, source_message_id),
+          UNIQUE (conversation_id)
+        );
+      `);
+      this.#db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)').run(this.#now().toISOString());
+    });
+  }
 }
 
 function relationStatus(value: string): 'candidate' | 'confirmed' | 'conflicted' {
   if (value === 'confirmed' || value === 'active') return 'confirmed';
   if (value === 'conflicted' || value === 'disputed') return 'conflicted';
   return 'candidate';
+}
+
+function quickCardConfidence(result: QuickCardExtractionResult, companyMatched: boolean): number {
+  const disclosedText = [result.companyIdentity, result.industryTrack, result.financing, result.keyPeople]
+    .filter((value) => value !== '材料未披露').length;
+  const disclosedFacts = disclosedText + (result.highlights.length > 0 ? 1 : 0);
+  const mentionedRelationGroups = [result.competitorNames, result.upstreamNames, result.downstreamNames]
+    .filter((values) => values.length > 0).length;
+  return Math.min(100, Math.round(
+    (disclosedFacts / 5) * 70
+    + (companyMatched ? 20 : 0)
+    + (mentionedRelationGroups / 3) * 10,
+  ));
 }
 
 function industryNameFrom(summary: string, companyName: string): string {

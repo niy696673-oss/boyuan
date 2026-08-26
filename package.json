@@ -16,6 +16,7 @@
     "infra:down": "docker compose down",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:intake-plugin": "npm --prefix integrations/botmux-ai-platform-intake run check",
     "seed": "tsx server/seed.ts",
     "import:knowledge": "tsx server/import-directory.ts"
   },

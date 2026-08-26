@@ -15,14 +15,12 @@ import {
 } from "./industry-analysis.js";
 import type { PlatformModule as ResearchPlatformModule } from "./research-platform/contracts.js";
 import { createResearchPlatformV1Router } from "./research-platform/express-router.js";
+import { createFeishuIntakeRouter } from "./research-platform/feishu-intake-router.js";
+import { normalizeUploadedFileName } from "./upload-file-name.js";
 
 type AuthenticatedRequest = express.Request & { authUser?: User };
 
-export function normalizeUploadedFileName(fileName: string) {
-  if (/[\u3400-\u9fff]/u.test(fileName)) return fileName;
-  const decoded = Buffer.from(fileName, "latin1").toString("utf8");
-  return decoded.includes("�") ? fileName : decoded;
-}
+export { normalizeUploadedFileName } from "./upload-file-name.js";
 
 export function inferCompanyNameFromFile(fileName: string, content = "") {
   const base = fileName.replace(/\.[^.]+$/, "").replace(/\s*\(\d+\)\s*$/u, "");
@@ -50,7 +48,10 @@ export function inferCompanyNameFromFile(fileName: string, content = "") {
 export function createApp(
   store = new Store(),
   services: PlatformServices = createDemoServices(store),
-  options: { researchPlatform?: ResearchPlatformModule } = {},
+  options: {
+    researchPlatform?: ResearchPlatformModule;
+    feishuIntakeKey?: string;
+  } = {},
 ): Express {
   const app = express();
   const upload = multer({
@@ -59,6 +60,16 @@ export function createApp(
   });
   app.use(cors());
   app.use(express.json({ limit: "2mb" }));
+
+  if (options.researchPlatform) {
+    app.use(
+      "/api/v1/feishu",
+      createFeishuIntakeRouter(
+        options.researchPlatform,
+        options.feishuIntakeKey,
+      ),
+    );
+  }
 
   const getUser = (req: express.Request) =>
     (req as AuthenticatedRequest).authUser ||

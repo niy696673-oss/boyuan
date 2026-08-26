@@ -24,8 +24,78 @@ const input = {
 };
 
 describe("OpenCode BP 分析接缝", () => {
+  it("异步提交深度分析，避免长连接断开把已运行的 Sol 标记为失败", async () => {
+    const requests: string[] = [];
+    let userMessageId = "";
+    const adapter = createOpenCodeAnalysisAdapter({
+      baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
+      directory: "/workspace/boyuan",
+      model: { providerId: "openai", modelId: "gpt-5.6-sol" },
+      variant: "high",
+      requiredCapabilities: requiredCapabilities(),
+      fetcher: async (request, init = {}) => {
+        const url = new URL(String(request));
+        requests.push(`${init.method} ${url.pathname}`);
+        if (url.pathname.endsWith("/skill")) {
+          return jsonResponse([{ name: "boyuan-bp-deep-analysis" }]);
+        }
+        if (url.pathname.endsWith("/mcp")) {
+          return jsonResponse({ "sequential-thinking": { status: "connected" } });
+        }
+        if (url.pathname === "/opencode-api/session") {
+          return jsonResponse({ id: "session-async" });
+        }
+        if (url.pathname.endsWith("/prompt_async")) {
+          userMessageId = String(JSON.parse(String(init.body)).messageID);
+          return new Response(null, { status: 204 });
+        }
+        if (url.pathname.endsWith("/session/status")) {
+          return jsonResponse({ "session-async": { type: "idle" } });
+        }
+        if (url.pathname.endsWith("/message") && init.method === "GET") {
+          return jsonResponse([
+            { info: { id: userMessageId, role: "user" }, parts: [] },
+            {
+              info: {
+                id: "assistant-async",
+                parentID: userMessageId,
+                role: "assistant",
+                providerID: "openai",
+                modelID: "gpt-5.6-sol",
+                variant: "high",
+              },
+              parts: [
+                { type: "tool", tool: "skill", state: { status: "completed", input: { name: "boyuan-bp-deep-analysis" } } },
+                { type: "tool", tool: "sequential-thinking_sequentialthinking", state: { status: "completed", input: {} } },
+                { type: "text", text: validAnalysisJson() },
+              ],
+            },
+          ]);
+        }
+        if (url.pathname.endsWith("/message") && init.method === "POST") {
+          throw new TypeError("fetch failed");
+        }
+        return new Response(null, { status: 404 });
+      },
+    });
+
+    await expect(adapter.analyze(input)).resolves.toMatchObject({
+      sessionId: "session-async",
+      providerId: "openai",
+      modelId: "gpt-5.6-sol",
+      variant: "high",
+    });
+    expect(requests).toContain(
+      "POST /opencode-api/session/session-async/prompt_async",
+    );
+    expect(requests).not.toContain(
+      "POST /opencode-api/session/session-async/message",
+    );
+  });
+
   it("通过带路径前缀且无需二次鉴权的本地代理完成分析", async () => {
     const requests: Array<{ url: URL; init: RequestInit }> = [];
+    let userMessageId = "";
     const adapter = createOpenCodeAnalysisAdapter({
       baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
       directory: "/workspace/boyuan",
@@ -48,20 +118,17 @@ describe("OpenCode BP 分析接缝", () => {
           return jsonResponse({ id: "session-1" });
         }
         if (
-          url.pathname === "/opencode-api/session/session-1/message" &&
+          url.pathname === "/opencode-api/session/session-1/prompt_async" &&
           init.method === "POST"
         ) {
-          return jsonResponse({
-            info: {
-              id: "assistant-1",
-              parentID: "user-1",
-              role: "assistant",
-              providerID: "openai",
-              modelID: "gpt-5.6-sol",
-              variant: "xhigh",
-            },
-            parts: [{ type: "text", text: validAnalysisJson() }],
-          });
+          userMessageId = String(JSON.parse(String(init.body)).messageID);
+          return new Response(null, { status: 204 });
+        }
+        if (
+          url.pathname === "/opencode-api/session/status" &&
+          init.method === "GET"
+        ) {
+          return jsonResponse({ "session-1": { type: "idle" } });
         }
         if (
           url.pathname === "/opencode-api/session/session-1/message" &&
@@ -69,7 +136,14 @@ describe("OpenCode BP 分析接缝", () => {
         ) {
           return jsonResponse([
             {
-              info: { parentID: "user-1", role: "assistant" },
+              info: {
+                id: "assistant-1",
+                parentID: userMessageId,
+                role: "assistant",
+                providerID: "openai",
+                modelID: "gpt-5.6-sol",
+                variant: "xhigh",
+              },
               parts: [
                 {
                   type: "tool",
@@ -84,6 +158,7 @@ describe("OpenCode BP 分析接缝", () => {
                   tool: "sequential-thinking_sequentialthinking",
                   state: { status: "completed", input: {} },
                 },
+                { type: "text", text: validAnalysisJson() },
               ],
             },
           ]);
@@ -110,13 +185,13 @@ describe("OpenCode BP 分析接缝", () => {
     ]);
     expect(
       requests.map(({ url }) => url.searchParams.get("directory")),
-    ).toEqual(Array.from({ length: 5 }, () => "/workspace/boyuan"));
+    ).toEqual(Array.from({ length: 6 }, () => "/workspace/boyuan"));
     expect(new Headers(requests[0]?.init.headers).has("authorization")).toBe(
       false,
     );
     const promptRequest = requests.find(
       ({ url, init }) =>
-        url.pathname.endsWith("/message") && init.method === "POST",
+        url.pathname.endsWith("/prompt_async") && init.method === "POST",
     );
     expect(JSON.parse(String(promptRequest?.init.body)).tools).toEqual({
       "*": false,
@@ -176,22 +251,21 @@ describe("OpenCode BP 分析接缝", () => {
       baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
       directory: "/workspace/boyuan",
       timeoutMs: 10,
+      pollIntervalMs: 20,
       fetcher: async (request, init = {}) => {
         const url = new URL(String(request));
         requests.push(`${init.method} ${url.pathname}`);
         if (url.pathname === "/opencode-api/session") {
           return jsonResponse({ id: "session-timeout" });
         }
-        if (url.pathname.endsWith("/message")) {
-          return await new Promise<Response>((_resolve, reject) => {
-            init.signal?.addEventListener(
-              "abort",
-              () => reject(init.signal?.reason),
-              {
-                once: true,
-              },
-            );
-          });
+        if (url.pathname.endsWith("/prompt_async")) {
+          return new Response(null, { status: 204 });
+        }
+        if (url.pathname.endsWith("/message") && init.method === "GET") {
+          return jsonResponse([]);
+        }
+        if (url.pathname.endsWith("/session/status")) {
+          return jsonResponse({ "session-timeout": { type: "busy" } });
         }
         if (url.pathname.endsWith("/abort")) return jsonResponse(true);
         return new Response(null, { status: 404 });
@@ -199,11 +273,15 @@ describe("OpenCode BP 分析接缝", () => {
     });
 
     await expect(adapter.analyze(input)).rejects.toThrow();
-    expect(requests).toEqual([
+    expect(requests.slice(0, 2)).toEqual([
       "POST /opencode-api/session",
-      "POST /opencode-api/session/session-timeout/message",
-      "POST /opencode-api/session/session-timeout/abort",
+      "POST /opencode-api/session/session-timeout/prompt_async",
     ]);
+    expect(requests).toContain("GET /opencode-api/session/session-timeout/message");
+    expect(requests).toContain("GET /opencode-api/session/status");
+    expect(requests.at(-1)).toBe(
+      "POST /opencode-api/session/session-timeout/abort",
+    );
   });
 });
 

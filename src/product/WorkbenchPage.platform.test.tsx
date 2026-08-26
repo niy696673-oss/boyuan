@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
@@ -34,6 +35,81 @@ beforeAll(() => {
 });
 
 describe("工作台研究平台接缝", () => {
+  it("在 StrictMode 首次请求被清理后仍能打开飞书深链", async () => {
+    const detail = conversationDetail();
+    const getConversation = vi.fn((_: string, signal?: AbortSignal) => {
+      if (getConversation.mock.calls.length === 1) {
+        return new Promise<ConversationDetail>((_resolve, reject) => {
+          signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.resolve(detail);
+    });
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([detail]),
+      getConversation,
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+    };
+
+    render(
+      <StrictMode>
+        <MemoryRouter>
+          <WorkbenchPage
+            data={emptyBootstrap()}
+            reload={vi.fn()}
+            researchClient={client}
+            initialConversationId={detail.conversationId}
+          />
+        </MemoryRouter>
+      </StrictMode>,
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        name: detail.document.fileName,
+        level: 1,
+      }),
+    ).toBeTruthy();
+    expect(getConversation).toHaveBeenCalledTimes(2);
+  });
+
+  it("通过飞书深链直接打开指定的持久对话", async () => {
+    const detail = conversationDetail();
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([detail]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          initialConversationId={detail.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(client.getConversation).toHaveBeenCalledWith(
+        detail.conversationId,
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: detail.document.fileName,
+        level: 1,
+      }),
+    ).toBeTruthy();
+  });
+
   it("首页治理入口展示持久审核队列数量", async () => {
     const client: ResearchPlatformClient = {
       listConversations: vi.fn().mockResolvedValue([]),
