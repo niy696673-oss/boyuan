@@ -12,7 +12,7 @@ import type {
 export interface WorkbenchExternalResearch {
   requested: boolean;
   executed: boolean;
-  status: "not_requested" | "pending" | "completed" | "failed";
+  status: "not_requested" | "pending" | "completed" | "failed" | "cancelled";
   failureDetail?: string;
   query?: string;
   sources: ExternalResearchSource[];
@@ -140,6 +140,12 @@ export function toWorkbenchResearch(
           externalSources.length === 0 &&
           conversation.task.status === "failed")),
   );
+  const externalSearchCancelled = Boolean(
+    externalSearchRequested &&
+      !externalSearchExecuted &&
+      externalSources.length === 0 &&
+      conversation.task.status === "cancelled",
+  );
   return {
     ...summary,
     ...(conversation.industry
@@ -171,6 +177,8 @@ export function toWorkbenchResearch(
             executed: externalSearchExecuted || externalSources.length > 0,
             status: externalSearchFailed
               ? "failed"
+              : externalSearchCancelled
+                ? "cancelled"
               : externalSearchExecuted || externalSources.length > 0
                 ? "completed"
                 : externalSearchRequested
@@ -226,6 +234,7 @@ function workbenchStatus(status: ConversationStatus): ResearchTask["status"] {
   if (status === "pending_confirmation") return "待用户确认";
   if (status === "waiting") return "检索中";
   if (status === "failed") return "执行失败";
+  if (status === "cancelled") return "已取消";
   return "识别中";
 }
 

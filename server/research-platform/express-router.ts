@@ -14,6 +14,7 @@ import type {
 import type {
   CompanyDirectoryResponse,
   IndustryDirectoryResponseV1,
+  IndustryReclassificationResponseV1,
   ReviewDecisionResponse,
   ReviewQueueItem,
   ReviewQueueResponse,
@@ -150,6 +151,14 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post("/tasks/:taskId/cancel", async (req, res, next) => {
+    try {
+      res.json(await platform.cancelTask(String(req.params.taskId)));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.post("/company-research", async (req, res, next) => {
     try {
       const input = companyResearchInput(req.body);
@@ -261,6 +270,16 @@ export function createResearchPlatformV1Router(
         total: items.length,
         unclassifiedMaterialCount,
       } satisfies IndustryDirectoryResponseV1;
+      res.json(response);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post("/industries/reclassify", async (_req, res, next) => {
+    try {
+      const response =
+        (await platform.reclassifyIndustries()) satisfies IndustryReclassificationResponseV1;
       res.json(response);
     } catch (error) {
       handlePlatformError(error, res, next);

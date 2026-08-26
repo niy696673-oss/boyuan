@@ -122,6 +122,26 @@ export interface CompanyDirectoryItem {
   materialCount: number;
   knowledgeCount: number;
   pendingCandidateCount: number;
+  latestMaterialAnalysis?: LatestMaterialAnalysisV1;
+}
+
+export interface LatestMaterialAnalysisV1 {
+  taskId: string;
+  conversationId: string;
+  documentId: string;
+  fileName: string;
+  taskStatus:
+    | "queued"
+    | "running"
+    | "waiting"
+    | "pending_confirmation"
+    | "completed"
+    | "failed"
+    | "cancelled";
+  resultStatus?: string;
+  summary?: string;
+  sectionCount: number;
+  updatedAt: string;
 }
 
 export interface CompanyDirectoryResponse {
@@ -134,7 +154,8 @@ export type CompanyConversationStatusV1 =
   | "waiting"
   | "pending_confirmation"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type CompanySourceChannelV1 = "web" | "feishu";
 
@@ -202,6 +223,21 @@ export interface CompanyDetailResponse
   researchRecords: CompanyResearchRecordV1[];
   relations: CompanyRelationV1[];
   industryPlacements: CompanyIndustryPlacementV1[];
+  latestMaterialAnalysis?: LatestMaterialAnalysisV1 & {
+    sections: Array<{
+      key: string;
+      title: string;
+      summary: string;
+      evidence: ReviewEvidence[];
+    }>;
+  };
+}
+
+export interface IndustryReclassificationResponseV1 {
+  companies: number;
+  industries: number;
+  mergedIndustries: number;
+  unclassifiedMaterials: number;
 }
 
 export interface IndustryDirectoryItemV1 {

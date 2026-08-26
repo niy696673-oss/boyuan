@@ -10,7 +10,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   Clock3,
   Download,
   ExternalLink,
@@ -94,8 +93,8 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
       );
       setActionNotice(
         updated.attentionStatus === "未关注"
-          ? `已取消关注${company.aliases[0] || company.standardName}`
-          : `已关注${company.aliases[0] || company.standardName}`,
+          ? `已取消关注${company.standardName}`
+          : `已关注${company.standardName}`,
       );
     } catch (error) {
       if ((error as Error).name !== "AbortError") {
@@ -179,15 +178,14 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
 }
 
 function CompanyCard({ company, data: _data, watching, onWatch, onOpen }: { company: CompanyView; data: Bootstrap; watching: boolean; onWatch: () => void; onOpen: () => void }) {
-  const pending = company.pendingCandidateCount;
   const positions = company.industryTags.slice(0, 2);
   return (
     <article className="by-company-card" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}>
-      <header><CompanyMark company={company} /><div><h2>{company.aliases[0] || company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.aliases[0] || company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></header>
-      <p className="by-company-description">{company.description || "基础档案，等待补充已确认认知。"}</p>
+      <header><CompanyMark company={company} /><div><h2>{company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></header>
+      <p className="by-company-description">{company.description}</p>
       <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
       <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
-      <footer><span className={pending ? "warning" : "success"}>{pending ? `待确认 ${pending}` : "知识已确认"}</span><button>打开公司<ArrowRight /></button></footer>
+      <footer><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><button>打开公司<ArrowRight /></button></footer>
     </article>
   );
 }
@@ -242,7 +240,7 @@ export function CompanyDetailPage({ data, reload, companyClient = defaultCompany
       if (material && isTerminalMaterialStatus(material.status)) {
         await refreshDirectory(controller.signal);
         reload();
-        return material.status === "failed" ? "材料处理失败，请稍后重试" : "材料处理完成，档案数量已刷新";
+        return materialProcessingNotice(material.status);
       }
       await abortableDelay(500, controller.signal);
       detail = await companyClient.get(id, controller.signal);
@@ -287,7 +285,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
   const confirmed = company.claims.filter((claim) => claim.status === "confirmed");
   const pending = company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status));
   const conflicts = company.claims.filter((claim) => claim.status === "disputed");
-  const companyName = company.aliases[0] || company.standardName;
+  const companyName = company.standardName;
 
   const tabs = [
     ["概览", ""], ["材料", company.materialCount], ["已确认知识", confirmed.length], ["待确认", pending.length], ["研究记录", company.researchRecords.length], ["产业关系", ""],
@@ -341,16 +339,17 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
           <div className="by-company-actions"><button onClick={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
           <input ref={fileInput} hidden type="file" accept=".pdf,.docx,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
           {actionNotice && <p role="status">{actionNotice}</p>}
-          <dl><div><dt>归档状态</dt><dd><Check />已自动归档</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
+          <dl><div><dt>分析状态</dt><dd>{company.analysisStatus.tone === "success" ? <Check /> : <Clock3 />}{company.analysisStatus.label}</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
         </header>
 
-        {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning" onClick={() => selectTab("待确认")}><AlertTriangle />{pending.length} 条待确认知识需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
+        {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning" onClick={() => selectTab("待确认")}><AlertTriangle />{pending.length} 条待确认候选需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
 
         <nav className="by-detail-tabs">{tabs.map(([name, count]) => <button className={tab === name ? "active" : ""} key={name} onClick={() => selectTab(name)}>{name}{count !== "" && <em>{count}</em>}</button>)}</nav>
 
         {tab === "概览" && (
           <div className="by-company-overview-grid">
             <div className="by-company-primary-column">
+              <MaterialAnalysisOverview company={company} />
               <section className="by-confirmed-overview">
                 <header><h2>机构已确认认知</h2><span><ShieldCheck />仅展示正式知识</span></header>
                 {["公司身份", "产品与技术", "商业与融资", "风险与待验证"].map((category, index) => {
@@ -364,7 +363,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
               <SupportList title="最近材料" action="查看全部" rows={company.materials.slice(0, 3).map((item) => ({ icon: <FileText />, title: item.fileName, meta: `${relativeDate(item.updatedAt)} · 原始材料` }))} />
               <SupportList title="最近证据" rows={company.evidence.slice(0, 3).map((item) => ({ icon: <FileSearch />, title: item.excerpt, meta: `${item.fileName}${item.page ? ` · 第 ${item.page} 页` : ""}` }))} />
               <FeedbackCarousel tasks={company.researchRecords.map((record) => ({ id: record.runId, query: record.intent, status: platformTaskStatus(record.status), createdBy: "研究平台", createdAt: record.updatedAt, steps: [] }))} index={feedbackIndex} onIndex={setFeedbackIndex} />
-              <SupportList title="信息缺口" rows={[{ icon: <CircleAlert />, title: "星座组网实际进度与发射成功率如何？", meta: "证据不足" }, { icon: <CircleAlert />, title: "终端产品路线与性能参数是否明确？", meta: "等待外部核验" }, { icon: <CircleAlert />, title: "未来收入与订单规模依据是什么？", meta: "待访谈" }]} />
+              <SupportList title="信息缺口" rows={materialInformationGaps(company)} emptyText={company.latestMaterialAnalysis?.sections?.length ? "最近材料分析未识别出明确的信息缺口" : "暂无材料分析结果"} />
             </aside>
           </div>
         )}
@@ -384,7 +383,7 @@ function CompanyDirectory({ companies, activeId }: { companies: CompanyView[]; a
       <Link to="/companies"><ArrowLeft />返回公司列表</Link>
       <label><Search /><input placeholder="搜索公司" /></label>
       <div className="by-company-mini-list">{companies.map((company) => {
-        return <Link className={company.id === activeId ? "active" : ""} to={`/companies/${company.id}`} key={company.id}><CompanyMark company={company} /><span><strong>{company.aliases[0] || company.standardName}</strong><small>{company.cognitionStatus} · {company.materialCount} 份材料</small></span>{company.pendingCandidateCount > 0 && <em>{company.pendingCandidateCount}</em>}</Link>;
+        return <Link className={company.id === activeId ? "active" : ""} to={`/companies/${company.id}`} key={company.id}><CompanyMark company={company} /><span><strong>{company.standardName}</strong><small>{company.cognitionStatus} · {company.materialCount} 份材料</small></span>{company.pendingCandidateCount > 0 && <em>{company.pendingCandidateCount}</em>}</Link>;
       })}</div>
       <Link className="by-company-all-link" to="/companies">查看全部公司<ChevronRight /></Link>
     </aside>
@@ -397,39 +396,75 @@ function KnowledgeRow({ icon, category, claim, evidenceCount }: { icon: React.Re
   );
 }
 
+function MaterialAnalysisOverview({ company }: { company: CompanyView }) {
+  const analysis = company.latestMaterialAnalysis;
+  const sections = analysis?.sections || [];
+  return (
+    <section className="by-confirmed-overview">
+      <header><h2>最近材料分析</h2><span className={company.analysisStatus.tone}><FileSearch />{company.analysisStatus.label}</span></header>
+      {!analysis ? (
+        <div className="by-inline-empty">暂无材料分析结果</div>
+      ) : (
+        <>
+          <article className="by-knowledge-row"><span><FileText /></span><div><h3>{analysis.fileName}</h3><p>{analysis.summary || company.description}</p><small>材料分析摘要 · 不等于机构正式知识 · {analysis.sectionCount} 个维度</small></div></article>
+          {sections.map((section) => (
+            <article className="by-knowledge-row by-material-analysis-section" key={section.key}>
+              <span><FileSearch /></span>
+              <div><h3>{section.title}</h3><p>{section.summary || "材料未形成可展示摘要。"}</p><small>材料分析结果 · 待人工确认 · {section.evidence.length} 条证据</small></div>
+            </article>
+          ))}
+          {!sections.length && <div className="by-inline-empty">{analysis.sectionCount > 0 ? `${analysis.sectionCount} 个分析维度正在准备展示` : "暂无可展示的分析维度"}</div>}
+        </>
+      )}
+    </section>
+  );
+}
+
+function materialInformationGaps(company: CompanyView): Array<{ icon: React.ReactNode; title: string; meta: string }> {
+  return (company.latestMaterialAnalysis?.sections || [])
+    .filter((section) => /(?:材料未披露|未披露|证据不足|待验证|尚未明确|未明确|未提供|暂无数据)/u.test(section.summary))
+    .map((section) => ({
+      icon: <AlertTriangle />,
+      title: section.summary,
+      meta: `${section.title} · ${section.evidence.length} 条证据`,
+    }));
+}
+
 function IndustryLane({ company, expanded = false }: { company: CompanyView; expanded?: boolean }) {
-  const upstream = company.relations.filter((item) => item.direction === "incoming").slice(0, expanded ? 5 : 3);
-  const downstream = company.relations.filter((item) => item.direction === "outgoing").slice(0, expanded ? 5 : 3);
+  const upstream = company.relations.filter((item) => item.status === "confirmed" && item.direction === "incoming").slice(0, expanded ? 5 : 3);
+  const downstream = company.relations.filter((item) => item.status === "confirmed" && item.direction === "outgoing").slice(0, expanded ? 5 : 3);
   const placement = company.industryPlacements.find((item) => item.status === "confirmed") || company.industryPlacements[0];
   return (
     <section className={`by-industry-lane ${expanded ? "expanded" : ""}`}>
       <header><div><h2>产业位置</h2><p>实线为已确认关系，虚线为待确认建议</p></div><button><Network />查看完整关系</button></header>
       <div className="by-lane-grid">
-        <div><span>上游供应商 · 已确认</span>{upstream.length ? upstream.map((item) => <button key={item.relationId}>{item.company.aliases[0]?.alias || item.company.canonicalName}<small>{item.relationType}</small></button>) : <button>暂无已归档关系<small>等待补充证据</small></button>}</div>
+        <div><span>上游供应商 · 已确认</span>{upstream.length ? upstream.map((item) => <button key={item.relationId}>{item.company.canonicalName}<small>{item.relationType}</small></button>) : <button>暂无已归档关系<small>等待补充证据</small></button>}</div>
         <ArrowRight />
-        <div className="center"><strong>{company.aliases[0] || company.standardName}</strong><span>{placement?.industryName || "产业位置待确认"}</span><small>{placement?.positionLabel || "等待补充证据"}</small></div>
+        <div className="center"><strong>{company.standardName}</strong><span>{placement?.industryName || "产业位置待确认"}</span><small>{placement?.positionLabel || "等待补充证据"}</small></div>
         <ArrowRight />
-        <div><span>下游客户 / 生态 · 已确认</span>{downstream.length ? downstream.map((item) => <button key={item.relationId}>{item.company.aliases[0]?.alias || item.company.canonicalName}<small>{item.relationType}</small></button>) : <button>暂无已归档关系<small>等待补充证据</small></button>}</div>
-        <div className="candidate"><span>潜在关联 · 待确认</span>{company.relations.filter((item) => item.status !== "confirmed").slice(0, 2).map((item) => <button key={item.relationId}>{item.company.aliases[0]?.alias || item.company.canonicalName}</button>)}{!company.relations.some((item) => item.status !== "confirmed") && <button>暂无待确认关系</button>}</div>
+        <div><span>下游客户 / 生态 · 已确认</span>{downstream.length ? downstream.map((item) => <button key={item.relationId}>{item.company.canonicalName}<small>{item.relationType}</small></button>) : <button>暂无已归档关系<small>等待补充证据</small></button>}</div>
+        <div className="candidate"><span>潜在关联 · 待确认</span>{company.relations.filter((item) => item.status !== "confirmed").slice(0, 2).map((item) => <button key={item.relationId}>{item.company.canonicalName}</button>)}{!company.relations.some((item) => item.status !== "confirmed") && <button>暂无待确认关系</button>}</div>
       </div>
     </section>
   );
 }
 
 function FeedbackCarousel({ tasks, index, onIndex }: { tasks: Bootstrap["tasks"]; index: number; onIndex: (index: number) => void }) {
-  const items = tasks.length ? tasks : [{ id: "empty", query: "尚无研究记录", status: "已完成", createdAt: new Date().toISOString() } as Bootstrap["tasks"][number]];
-  const item = items[index % items.length];
+  if (!tasks.length) {
+    return <section className="by-feedback-carousel"><header><h2>最近研究</h2></header><div className="by-inline-empty">暂无研究记录</div></section>;
+  }
+  const item = tasks[index % tasks.length];
   return (
-    <section className="by-feedback-carousel"><header><h2>最近研究</h2><div><button aria-label="上一条" onClick={() => onIndex((index - 1 + items.length) % items.length)}><ChevronLeft /></button><button aria-label="下一条" onClick={() => onIndex((index + 1) % items.length)}><ChevronRight /></button></div></header><article><span><Sparkles /></span><p>{item.query}</p><small>{item.status} · {relativeDate(item.createdAt)}</small></article><div>{items.map((row, itemIndex) => <i className={itemIndex === index % items.length ? "active" : ""} key={row.id} />)}</div></section>
+    <section className="by-feedback-carousel"><header><h2>最近研究</h2><div><button aria-label="上一条" onClick={() => onIndex((index - 1 + tasks.length) % tasks.length)}><ChevronLeft /></button><button aria-label="下一条" onClick={() => onIndex((index + 1) % tasks.length)}><ChevronRight /></button></div></header><article><span><Sparkles /></span><p>{item.query}</p><small>{item.status} · {relativeDate(item.createdAt)}</small></article><div>{tasks.map((row, itemIndex) => <i className={itemIndex === index % tasks.length ? "active" : ""} key={row.id} />)}</div></section>
   );
 }
 
-function SupportList({ title, action, rows }: { title: string; action?: string; rows: Array<{ icon: React.ReactNode; title: string; meta: string }> }) {
-  return <section className="by-support-list"><header><h2>{title}</h2>{action && <button>{action}<ChevronRight /></button>}</header>{rows.map((row, index) => <button key={`${row.title}-${index}`}><span>{row.icon}</span><div><strong>{row.title}</strong><small>{row.meta}</small></div><ChevronRight /></button>)}</section>;
+function SupportList({ title, action, rows, emptyText }: { title: string; action?: string; rows: Array<{ icon: React.ReactNode; title: string; meta: string }>; emptyText?: string }) {
+  return <section className="by-support-list"><header><h2>{title}</h2>{action && <button>{action}<ChevronRight /></button>}</header>{rows.map((row, index) => <button key={`${row.title}-${index}`}><span>{row.icon}</span><div><strong>{row.title}</strong><small>{row.meta}</small></div><ChevronRight /></button>)}{!rows.length && emptyText && <div className="by-inline-empty">{emptyText}</div>}</section>;
 }
 
 function CompanyMaterials({ company, uploading, onUpload }: { company: CompanyView; uploading: boolean; onUpload: () => void }) {
-  return <section className="by-tab-panel"><header><div><h2>公司材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "failed" ? "warning" : "success"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
+  return <section className="by-tab-panel"><header><div><h2>公司材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "completed" ? "success" : "warning"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
 }
 
 function CompanyClaims({ claims, title }: { claims: Claim[]; title: string }) {
@@ -544,7 +579,7 @@ function CompanyImportRow({ row, busy, selectedCompanyId, correctedName, onSelec
 }
 
 function CompanyMark({ company }: { company: Company }) {
-  return <span className="by-company-mark" aria-hidden="true">{(company.aliases[0] || company.standardName).slice(0, 1)}</span>;
+  return <span className="by-company-mark" aria-hidden="true">{company.standardName.slice(0, 1)}</span>;
 }
 
 function countCompanies(companies: CompanyView[], filter: CompanyFilter) {
@@ -566,19 +601,29 @@ function CompanyLoadState({ title, description = "请稍后重试，或返回公
 function platformTaskStatus(status: CompanyView["researchRecords"][number]["status"]): Bootstrap["tasks"][number]["status"] {
   if (status === "completed") return "已完成";
   if (status === "failed") return "执行失败";
-  if (status === "pending_confirmation" || status === "waiting") return "待用户确认";
+  if (status === "cancelled") return "已取消";
+  if (status === "pending_confirmation") return "待用户确认";
   return "生成中";
 }
 
 function materialStatusLabel(status: CompanyView["materials"][number]["status"]) {
-  if (status === "completed") return "已归档";
+  if (status === "completed") return "分析完成";
   if (status === "failed") return "处理失败";
+  if (status === "cancelled") return "已取消";
   if (status === "pending_confirmation") return "待确认";
+  if (status === "waiting") return "等待处理";
   return "处理中";
 }
 
 function isTerminalMaterialStatus(status: CompanyView["materials"][number]["status"]) {
-  return status === "completed" || status === "failed" || status === "pending_confirmation";
+  return status === "completed" || status === "failed" || status === "cancelled" || status === "pending_confirmation";
+}
+
+function materialProcessingNotice(status: CompanyView["materials"][number]["status"]) {
+  if (status === "failed") return "材料处理失败，请稍后重试";
+  if (status === "cancelled") return "材料处理已取消";
+  if (status === "pending_confirmation") return "材料分析完成，结果等待确认";
+  return "材料处理完成，档案数量已刷新";
 }
 
 function abortableDelay(durationMs: number, signal: AbortSignal) {

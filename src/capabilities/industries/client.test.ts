@@ -66,4 +66,21 @@ describe("行业目录客户端", () => {
       }),
     );
   });
+
+  it("通过 v1 行业接缝重新分类", async () => {
+    const response = {
+      companies: 4,
+      industries: 2,
+      mergedIndustries: 1,
+      unclassifiedMaterials: 3,
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+    const client = createIndustryDirectoryClient(fetcher);
+
+    await expect(client.reclassify()).resolves.toEqual(response);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/industries/reclassify",
+      expect.objectContaining({ method: "POST", signal: undefined }),
+    );
+  });
 });

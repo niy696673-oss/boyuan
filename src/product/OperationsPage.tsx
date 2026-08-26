@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { Bootstrap } from "../api";
 import { api } from "../api";
-import type { DocumentRecord } from "../types";
+import type { DocumentRecord, ResearchTask } from "../types";
 
 export function OperationsPage({ data, mode, reload }: { data: Bootstrap; mode: "tasks" | "admin"; reload: () => void }) {
   if (mode === "tasks") return <TaskArchive data={data} />;
@@ -23,7 +23,19 @@ export function OperationsPage({ data, mode, reload }: { data: Bootstrap; mode: 
 }
 
 function TaskArchive({ data }: { data: Bootstrap }) {
-  return <section className="by-operations-page"><header className="by-page-heading"><div><span>研究过程</span><h1>全部研究任务</h1><p>查看任务目的、执行步骤、状态和候选知识产出。</p></div></header><label className="by-operations-search"><Search /><input placeholder="搜索任务或公司" /></label><div className="by-operations-table"><div className="head"><span>研究任务</span><span>公司</span><span>发起时间</span><span>状态</span><span>产出</span></div>{data.tasks.map((task) => { const company = data.companies.find((item) => item.id === task.companyId); return <button key={task.id}><span><FileText /><strong>{task.query}</strong></span><span>{company?.aliases[0] || "待识别"}</span><span>{new Date(task.createdAt).toLocaleString("zh-CN")}</span><span className={task.status === "执行失败" ? "danger" : task.status === "已完成" ? "success" : "warning"}>{task.status}</span><span>{task.answer ? `${task.answer.citationCount} 条引用` : "等待生成"}</span><ChevronRight /></button>; })}</div></section>;
+  return <section className="by-operations-page"><header className="by-page-heading"><div><span>研究过程</span><h1>全部研究任务</h1><p>查看任务目的、执行步骤、状态和候选知识产出。</p></div></header><label className="by-operations-search"><Search /><input placeholder="搜索任务或公司" /></label><div className="by-operations-table"><div className="head"><span>研究任务</span><span>公司</span><span>发起时间</span><span>状态</span><span>产出</span></div>{data.tasks.map((task) => { const company = data.companies.find((item) => item.id === task.companyId); return <button key={task.id}><span><FileText /><strong>{task.query}</strong></span><span>{company?.aliases[0] || "待识别"}</span><span>{new Date(task.createdAt).toLocaleString("zh-CN")}</span><span className={taskStatusTone(task.status)}>{task.status}</span><span>{taskOutput(task)}</span><ChevronRight /></button>; })}</div></section>;
+}
+
+function taskStatusTone(status: ResearchTask["status"]): "danger" | "success" | "warning" {
+  if (status === "执行失败") return "danger";
+  if (status === "已完成") return "success";
+  return "warning";
+}
+
+function taskOutput(task: ResearchTask): string {
+  if (task.answer) return `${task.answer.citationCount} 条引用`;
+  if (task.status === "执行失败" || task.status === "已取消") return "未生成";
+  return "等待生成";
 }
 
 function AdminOperations({ data, reload }: { data: Bootstrap; reload: () => void }) {

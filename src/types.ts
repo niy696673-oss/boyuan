@@ -140,7 +140,7 @@ export interface ResearchTask {
   companyId?: string;
   industryId?: string;
   contextType?: "材料" | "公司" | "行业";
-  status: "识别中" | "检索中" | "生成中" | "待用户确认" | "已完成" | "执行失败";
+  status: "识别中" | "检索中" | "生成中" | "待用户确认" | "已完成" | "执行失败" | "已取消";
   createdBy: string;
   createdAt: string;
   steps: Array<{

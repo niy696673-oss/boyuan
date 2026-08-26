@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
+import type { MaterialAnalysisPort } from "../server/research-platform/analysis/contracts.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 import { initialStoreData, Store } from "../server/store.js";
@@ -23,6 +24,102 @@ afterEach(async () => {
 });
 
 describe("研究平台 v1 公司目录接缝", () => {
+  it("目录隐藏只有失败空任务的占位公司，但仍可按 ID 审计", async () => {
+    const { app, platform } = await fixture({
+      analysis: {
+        async analyze() {
+          throw new Error("fixture_analysis_failed");
+        },
+      },
+    });
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("失败占位科技有限公司\n公司材料解析后分析失败。"),
+        "失败占位科技 BP.txt",
+      );
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const conversation = await platform.getConversation(
+      uploaded.body.conversation.conversationId,
+    );
+    const companyId = conversation.company?.companyId;
+    expect(companyId).toEqual(expect.any(String));
+    expect(conversation.task.status).toBe("failed");
+    expect(await platform.listCompanies()).toEqual([]);
+    expect(await platform.getCompany(companyId!)).toMatchObject({
+      companyId,
+      canonicalName: "失败占位科技有限公司",
+    });
+  });
+
+  it("清理材料来源前缀，并在候选未确认时返回最新 13 维材料分析", async () => {
+    const { app, platform } = await fixture();
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("航空发动机精细化测压系统\n项目面向航空发动机测试市场。"),
+        "创新组11+航空发动机精细化测压系统.pdf.txt",
+      );
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const directory = await request(app).get("/api/v1/companies");
+    expect(directory.status).toBe(200);
+    expect(directory.body).toMatchObject({
+      total: 1,
+      items: [
+        {
+          canonicalName: "航空发动机精细化测压系统",
+          knowledgeCount: 0,
+          pendingCandidateCount: expect.any(Number),
+          latestMaterialAnalysis: {
+            taskStatus: "completed",
+            sectionCount: 13,
+            summary: expect.any(String),
+          },
+        },
+      ],
+    });
+    expect(directory.body.items[0].pendingCandidateCount).toBeGreaterThan(0);
+
+    const companyId = directory.body.items[0].companyId as string;
+    const detail = await request(app).get(`/api/v1/companies/${companyId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.knowledge).toEqual([]);
+    expect(detail.body.latestMaterialAnalysis.sections).toHaveLength(13);
+  });
+
+  it("创新组材料披露明确项目公司时使用法律主体，而不是项目标题", async () => {
+    const { app, platform } = await fixture();
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from(
+          "项目公司为北京星河航空科技有限公司。合作方为上海海纳材料有限公司。",
+        ),
+        "创新组12+航空发动机温度测试系统.pdf.txt",
+      );
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    expect(await platform.listCompanies()).toEqual([
+      expect.objectContaining({
+        canonicalName: "北京星河航空科技有限公司",
+      }),
+    ]);
+  });
+
   it("返回持久公司及页面所需的材料、正式知识和待确认计数", async () => {
     const { app, platform } = await fixture();
     await seedConfirmedCompany(app, platform);
@@ -48,6 +145,26 @@ describe("研究平台 v1 公司目录接缝", () => {
       ],
     });
     expect(response.body.items[0].companyId).toEqual(expect.any(String));
+  });
+
+  it("新材料进入队列后，目录展示真正的最新分析状态而不是旧结果", async () => {
+    const { app, platform } = await fixture();
+    const companyId = await seedConfirmedCompany(app, platform);
+    const uploaded = await request(app)
+      .post(`/api/v1/companies/${companyId}/documents`)
+      .attach(
+        "file",
+        Buffer.from("云杉智能有限公司\n这是尚未开始处理的新一轮材料。"),
+        "云杉智能补充材料.txt",
+      );
+    expect(uploaded.status).toBe(201);
+
+    const directory = await request(app).get("/api/v1/companies");
+    expect(directory.body.items[0].latestMaterialAnalysis).toMatchObject({
+      taskId: uploaded.body.conversation.task.taskId,
+      taskStatus: "queued",
+      sectionCount: 0,
+    });
   });
 
   it("返回公司正式知识、证据和材料，并在重启后保持一致", async () => {
@@ -201,12 +318,12 @@ async function seedConfirmedCompany(
   return candidate.companyId;
 }
 
-async function fixture() {
+async function fixture(options: { analysis?: MaterialAnalysisPort } = {}) {
   const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-company-v1-"));
   roots.push(dataRoot);
   const platform = createPlatformModule({
     dataRoot,
-    analysis: createDeterministicAnalysisAdapter(),
+    analysis: options.analysis ?? createDeterministicAnalysisAdapter(),
   });
   modules.push(platform);
   const store = new Store({

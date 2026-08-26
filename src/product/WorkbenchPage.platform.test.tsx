@@ -386,6 +386,45 @@ describe("工作台研究平台接缝", () => {
     expect(client.getConversation).toHaveBeenCalledTimes(1);
   });
 
+  it("将已取消会话作为 warning 终态展示，并停止继续轮询", async () => {
+    const detail = conversationDetail();
+    detail.status = "cancelled";
+    detail.task.status = "cancelled";
+    const summary: ConversationSummary = {
+      ...detail,
+      status: "processing",
+      task: { ...detail.task, status: "running" },
+    };
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([summary]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /白杨智能 BP\.txt/ }),
+    );
+
+    const rail = screen.getByRole("complementary", { name: "研究对话" });
+    const cancelled = await within(rail).findByText("已取消");
+    expect(cancelled.classList.contains("warning")).toBe(true);
+    expect(client.getConversation).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("等待生成")).toBeNull();
+  });
+
   it("会话栏按标题、来源和类型筛选持久对话", async () => {
     const material = conversationDetail();
     const company: ConversationSummary = {
@@ -448,6 +487,50 @@ describe("工作台研究平台接缝", () => {
     fireEvent.change(search, { target: { value: "白杨智能" } });
     expect(within(rail).getByText("白杨智能 BP.txt")).toBeTruthy();
     expect(within(rail).queryByText("红杉机器人公司研究")).toBeNull();
+  });
+
+  it("会话栏优先展示最多 30 条未取消对话", async () => {
+    const conversations: ConversationSummary[] = Array.from(
+      { length: 31 },
+      (_, index) => {
+        const detail = conversationDetail();
+        const sequence = String(index + 1).padStart(2, "0");
+        return {
+          ...detail,
+          conversationId: `conversation-${sequence}`,
+          title: `演示任务 ${sequence}`,
+          status: index < 30 ? "cancelled" : "completed",
+          task: {
+            ...detail.task,
+            taskId: `task-${sequence}`,
+            status: index < 30 ? "cancelled" : "completed",
+          },
+        };
+      },
+    );
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue(conversations),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    const rail = await screen.findByRole("complementary", { name: "研究对话" });
+    expect(within(rail).getAllByRole("button", { name: /演示任务/ })).toHaveLength(30);
+    expect(within(rail).getByText("演示任务 31")).toBeTruthy();
+    expect(within(rail).queryByText("演示任务 30")).toBeNull();
   });
 
   it("分开呈现冻结材料证据与持久 Exa 来源，并只链接安全 URL", async () => {
@@ -640,6 +723,7 @@ function industryClient(items: IndustryDirectoryItemV1[] = []): IndustryDirector
       total: items.length,
       unclassifiedMaterialCount: 0,
     }),
+    reclassify: vi.fn(),
     get: vi.fn(),
     uploadDocument: vi.fn(),
     setWatched: vi.fn(),

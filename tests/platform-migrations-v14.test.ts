@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 15;
+const CURRENT_SCHEMA_VERSION = 16;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -225,6 +225,113 @@ describe("research-platform SQLite schema reconciliation", () => {
     expect(restoredNotification).toMatchObject({ readAt: read.readAt });
     expectCurrentSchema(dataRoot);
   });
+
+  it("v16 cleans legacy company labels and merges generated draft industries without losing links", async () => {
+    const dataRoot = await createDataRoot();
+    const original = openPlatform(dataRoot);
+    const seeded = await seedMaterial(original, "legacy-generated-labels");
+    const company = (await original.listCompanies())[0];
+    if (!company) throw new Error("seed company missing");
+    closeModule(original);
+    const duplicateCompanyId = "company-duplicate-v16";
+
+    withDatabase(dataRoot, (database) => {
+      database.exec("PRAGMA foreign_keys = ON");
+      database
+        .prepare(
+          `INSERT INTO companies (
+             company_id, canonical_name, status, version,
+             created_at, updated_at, watched
+           ) VALUES (?, ?, 'provisional', 1, ?, ?, 1)`,
+        )
+        .run(
+          duplicateCompanyId,
+          `创新组11+${company.canonicalName}`,
+          new Date().toISOString(),
+          new Date().toISOString(),
+        );
+      database
+        .prepare(
+          `INSERT INTO company_aliases (
+             alias_id, company_id, alias, alias_type, created_at
+           ) VALUES (?, ?, ?, 'declared', ?)`,
+        )
+        .run(
+          "alias-malformed-v16",
+          duplicateCompanyId,
+          "气动院）是航空工业唯一的空气动力专业研究机构",
+          new Date().toISOString(),
+        );
+      for (const table of [
+        "conversation_companies",
+        "knowledge_candidates",
+        "company_industries",
+      ]) {
+        database
+          .prepare(`UPDATE ${table} SET company_id = ? WHERE company_id = ?`)
+          .run(duplicateCompanyId, company.companyId);
+      }
+      database
+        .prepare(
+          `UPDATE company_match_cases SET resolved_company_id = ?
+           WHERE resolved_company_id = ?`,
+        )
+        .run(duplicateCompanyId, company.companyId);
+      database
+        .prepare("UPDATE industries SET name = ? WHERE industry_id = ?")
+        .run(`${company.canonicalName}相关行业`, seeded.industryId);
+      database.prepare("DELETE FROM schema_migrations WHERE version = 16").run();
+    });
+
+    const upgraded = openPlatform(dataRoot);
+    const upgradedCompanies = await upgraded.listCompanies();
+    expect(upgradedCompanies).toEqual([
+      expect.objectContaining({
+        companyId: company.companyId,
+        canonicalName: company.canonicalName,
+        materialCount: 1,
+        pendingCandidateCount: expect.any(Number),
+        profile: expect.objectContaining({ watched: true }),
+        aliases: expect.not.arrayContaining([
+          expect.objectContaining({
+            alias: "气动院）是航空工业唯一的空气动力专业研究机构",
+          }),
+        ]),
+      }),
+    ]);
+    expect(
+      upgradedCompanies[0]?.aliases.some((alias) =>
+        alias.alias.includes("是航空工业"),
+      ),
+    ).toBe(false);
+    expect(
+      withDatabase(dataRoot, (database) =>
+        database
+          .prepare("SELECT 1 AS present FROM companies WHERE company_id = ?")
+          .get(duplicateCompanyId),
+      ),
+    ).toBeUndefined();
+    expect(
+      (await upgraded.getConversation(seeded.conversationId)).company,
+    ).toMatchObject({ companyId: company.companyId });
+    expect(await upgraded.listIndustries()).toEqual([
+      expect.objectContaining({
+        name: "人工智能与企业服务",
+        companyCount: 1,
+        materialCount: 1,
+      }),
+    ]);
+    expect(
+      (await upgraded.getIndustry((await upgraded.listIndustries())[0]!.industryId))
+        .companies,
+    ).toEqual([
+      expect.objectContaining({
+        company: expect.objectContaining({ companyId: company.companyId }),
+      }),
+    ]);
+    expectDatabaseIntegrity(dataRoot);
+    expectCurrentSchema(dataRoot);
+  });
 });
 
 async function createDataRoot(): Promise<string> {
@@ -339,6 +446,17 @@ function expectSchemaHistory(dataRoot: string, latestVersion: number): void {
       .prepare("SELECT version FROM schema_migrations ORDER BY version")
       .all() as unknown as Array<{ version: number }>;
     expect(versions.at(-1)?.version).toBe(latestVersion);
+  });
+}
+
+function expectDatabaseIntegrity(dataRoot: string): void {
+  withDatabase(dataRoot, (database) => {
+    const quickCheck = database.prepare("PRAGMA quick_check").all() as unknown as Array<{
+      quick_check: string;
+    }>;
+    const foreignKeyErrors = database.prepare("PRAGMA foreign_key_check").all();
+    expect(quickCheck).toEqual([{ quick_check: "ok" }]);
+    expect(foreignKeyErrors).toEqual([]);
   });
 }
 

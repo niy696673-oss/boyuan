@@ -7,6 +7,7 @@ import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
+import type { MaterialAnalysisPort } from "../server/research-platform/analysis/contracts.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
 import { createDeterministicIndustryResearchAdapter } from "../server/research-platform/industry-research/deterministic-industry-research.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
@@ -25,6 +26,108 @@ afterEach(async () => {
 });
 
 describe("研究平台 v1 行业目录接缝", () => {
+  it("将不同公司的航空材料聚合到同一受控行业，而不是生成一企一行业", async () => {
+    const { app, platform } = await fixture();
+    for (const [company, fileName, detail] of [
+      ["星航测控有限公司", "星航测控 BP.txt", "公司位于航空发动机测试产业链中游，面向精细化测压与试验验证。"],
+      ["云翼装备有限公司", "云翼装备 BP.txt", "公司位于航空航天产业链中游，提供飞行器高端装备核心部件与系统集成。"],
+    ] as const) {
+      const uploaded = await request(app)
+        .post("/api/v1/documents")
+        .attach("file", Buffer.from(`${company}\n${detail}`), fileName);
+      expect(uploaded.status).toBe(201);
+    }
+    for (let index = 0; index < 40; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const directory = await request(app).get("/api/v1/industries");
+    expect(directory.status).toBe(200);
+    expect(directory.body).toMatchObject({
+      total: 1,
+      items: [
+        {
+          name: "航空航天与高端装备",
+          companyCount: 2,
+          materialCount: 2,
+        },
+      ],
+    });
+    expect(
+      directory.body.items.some((item: { name: string }) =>
+        item.name.endsWith("相关行业"),
+      ),
+    ).toBe(false);
+    const reclassified = await request(app).post(
+      "/api/v1/industries/reclassify",
+    );
+    expect(reclassified.status).toBe(200);
+    expect(reclassified.body).toEqual({
+      companies: 2,
+      industries: 1,
+      mergedIndustries: 0,
+      unclassifiedMaterials: 0,
+    });
+    const detail = await platform.getIndustry(
+      directory.body.items[0].industryId as string,
+    );
+    expect(detail.companies).toHaveLength(2);
+    expect(detail.companies.every((company) => company.status === "candidate"))
+      .toBe(true);
+  });
+
+  it("同一公司多份材料属于不同赛道时保留两边公司关联，不产生空行业", async () => {
+    const { app, platform } = await fixture();
+    const first = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from(
+          "复合赛道科技有限公司\n公司位于航空发动机与飞行器高端装备产业链中游。",
+        ),
+        "复合赛道航空材料.txt",
+      );
+    expect(first.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    const companyId = (await platform.listCompanies())[0]?.companyId;
+    expect(companyId).toEqual(expect.any(String));
+
+    const second = await request(app)
+      .post(`/api/v1/companies/${companyId}/documents`)
+      .attach(
+        "file",
+        Buffer.from(
+          "复合赛道科技有限公司\n公司位于 Chiplet 产业链中游，提供 D2D、CPU 与 GPU 芯粒互联能力。",
+        ),
+        "复合赛道芯片材料.txt",
+      );
+    expect(second.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const industries = await platform.listIndustries();
+    expect(industries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "航空航天与高端装备",
+          companyCount: 1,
+          materialCount: 1,
+        }),
+        expect.objectContaining({
+          name: "半导体与集成电路",
+          companyCount: 1,
+          materialCount: 1,
+        }),
+      ]),
+    );
+    expect(industries.every((industry) => industry.companyCount > 0)).toBe(
+      true,
+    );
+  });
+
   it("从材料分析结果返回持久行业、产业节点、材料和公司", async () => {
     const { app, platform } = await fixture();
     await seedIndustry(app, platform);
@@ -36,7 +139,7 @@ describe("研究平台 v1 行业目录接缝", () => {
       unclassifiedMaterialCount: 0,
       items: [
         {
-          name: "人工智能",
+          name: "人工智能与企业服务",
           materialCount: 1,
           companyCount: 1,
         },
@@ -48,7 +151,7 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(detail.status).toBe(200);
     expect(detail.body).toMatchObject({
       industryId,
-      name: "人工智能",
+      name: "人工智能与企业服务",
       nodes: [
         { stage: "upstream" },
         { stage: "midstream" },
@@ -77,6 +180,70 @@ describe("研究平台 v1 行业目录接缝", () => {
     for (let index = 0; index < 20; index += 1) {
       if ((await platform.runPendingSteps()) === 0) break;
     }
+
+    const directory = await request(app).get("/api/v1/industries");
+    expect(directory.status).toBe(200);
+    expect(directory.body).toMatchObject({
+      items: [],
+      total: 0,
+      unclassifiedMaterialCount: 1,
+    });
+  });
+
+  it("未分类材料只统计已完成分析，排除已取消和失败任务", async () => {
+    const deterministic = createDeterministicAnalysisAdapter();
+    const { app, platform } = await fixture({
+      analysis: {
+        async analyze(input) {
+          if (input.fileName === "分析失败 BP.txt") {
+            throw new Error("fixture_analysis_failed");
+          }
+          return deterministic.analyze(input);
+        },
+      },
+    });
+
+    const completed = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("木棉软件有限公司\n公司专注企业智能化服务。"),
+        "已完成未分类 BP.txt",
+      );
+    expect(completed.status).toBe(201);
+
+    const cancelled = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("取消样本有限公司\n该材料不应进入未分类统计。"),
+        "已取消 BP.txt",
+      );
+    expect(cancelled.status).toBe(201);
+    await platform.cancelTask(cancelled.body.conversation.task.taskId as string);
+
+    const failed = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("失败样本有限公司\n该材料分析会失败。"),
+        "分析失败 BP.txt",
+      );
+    expect(failed.status).toBe(201);
+
+    for (let index = 0; index < 40; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    await expect(
+      platform.getConversation(completed.body.conversation.conversationId as string),
+    ).resolves.toMatchObject({ task: { status: "completed" } });
+    await expect(
+      platform.getConversation(cancelled.body.conversation.conversationId as string),
+    ).resolves.toMatchObject({ task: { status: "cancelled" } });
+    await expect(
+      platform.getConversation(failed.body.conversation.conversationId as string),
+    ).resolves.toMatchObject({ task: { status: "failed" } });
 
     const directory = await request(app).get("/api/v1/industries");
     expect(directory.status).toBe(200);
@@ -226,7 +393,7 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(started.body).toMatchObject({
       type: "industry",
       status: "waiting",
-      industry: { industryId, name: "人工智能" },
+      industry: { industryId, name: "人工智能与企业服务" },
       task: {
         type: "industry_research",
         currentStep: "load_industry_context",
@@ -256,16 +423,16 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(completed.status).toBe(200);
     expect(completed.body).toMatchObject({
       status: "completed",
-      industry: { industryId, name: "人工智能" },
+      industry: { industryId, name: "人工智能与企业服务" },
       industryResearch: {
         industryId,
         triggerReason: "user_requested",
         summary: expect.stringContaining("人工智能"),
         sources: [expect.objectContaining({
           sourceType: "web",
-          title: "人工智能公开信息",
+          title: "人工智能与企业服务公开信息",
           site: "example.com",
-          url: "https://example.com/companies/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD",
+          url: "https://example.com/companies/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%E4%B8%8E%E4%BC%81%E4%B8%9A%E6%9C%8D%E5%8A%A1",
           accessStatus: "accessible",
           retrievedAt: "2026-08-24T00:00:00.000Z",
         })],
@@ -309,12 +476,12 @@ async function seedIndustry(
   }
 }
 
-async function fixture() {
+async function fixture(options: { analysis?: MaterialAnalysisPort } = {}) {
   const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-industry-v1-"));
   roots.push(dataRoot);
   const platform = createPlatformModule({
     dataRoot,
-    analysis: createDeterministicAnalysisAdapter(),
+    analysis: options.analysis ?? createDeterministicAnalysisAdapter(),
     industryResearch: createDeterministicIndustryResearchAdapter(),
     search: createDeterministicSearchAdapter(),
   });

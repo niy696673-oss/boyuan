@@ -97,6 +97,7 @@ const terminalPlatformStatuses = new Set<ConversationStatus>([
   "pending_confirmation",
   "completed",
   "failed",
+  "cancelled",
 ]);
 
 export function WorkbenchPage({
@@ -785,28 +786,35 @@ function ConversationRail({
 }) {
   const [search, setSearch] = useState("");
   const normalizedSearch = search.trim().toLocaleLowerCase("zh-CN");
-  const visibleTasks = conversations.filter(({ task }) => {
-    const matchesFilter = (() => {
-      if (filter === "全部") return true;
-      if (task.contextType) return task.contextType === filter;
-      if (filter === "公司") return Boolean(task.companyId);
-      if (filter === "行业")
-        return Boolean(task.industryId) || /行业|产业链/.test(task.query);
-      return !task.companyId || /材料|BP|名单/.test(task.query);
-    })();
-    if (!matchesFilter || !normalizedSearch) return matchesFilter;
-    return [
-      task.query,
-      task.createdBy,
-      task.contextType,
-      task.companyId,
-      task.industryId,
-    ]
-      .filter(Boolean)
-      .some((value) =>
-        String(value).toLocaleLowerCase("zh-CN").includes(normalizedSearch),
-      );
-  });
+  const visibleTasks = conversations
+    .filter(({ task }) => {
+      const matchesFilter = (() => {
+        if (filter === "全部") return true;
+        if (task.contextType) return task.contextType === filter;
+        if (filter === "公司") return Boolean(task.companyId);
+        if (filter === "行业")
+          return Boolean(task.industryId) || /行业|产业链/.test(task.query);
+        return !task.companyId || /材料|BP|名单/.test(task.query);
+      })();
+      if (!matchesFilter || !normalizedSearch) return matchesFilter;
+      return [
+        task.query,
+        task.createdBy,
+        task.contextType,
+        task.companyId,
+        task.industryId,
+      ]
+        .filter(Boolean)
+        .some((value) =>
+          String(value).toLocaleLowerCase("zh-CN").includes(normalizedSearch),
+        );
+    })
+    .sort(
+      (left, right) =>
+        Number(left.task.status === "已取消") -
+        Number(right.task.status === "已取消"),
+    )
+    .slice(0, 30);
   return (
     <aside className="by-conversation-rail" aria-label="研究对话">
       <button className="by-new-conversation" onClick={onNew}>
@@ -1082,15 +1090,17 @@ function ActiveConversation({
   );
   const externalSearchState = research.externalResearch?.status === "failed"
     ? "检索失败"
-    : externalSources.length
-      ? `已完成 · ${externalSources.length} 条来源`
-      : research.externalResearch?.executed
-      ? "已完成 · 0 条来源"
-      : research.externalResearch?.requested
-        ? "检索中"
-        : externalClaims.length
-          ? "已完成"
-          : "未执行";
+    : research.externalResearch?.status === "cancelled"
+      ? "已取消"
+      : externalSources.length
+        ? `已完成 · ${externalSources.length} 条来源`
+        : research.externalResearch?.executed
+        ? "已完成 · 0 条来源"
+        : research.externalResearch?.requested
+          ? "检索中"
+          : externalClaims.length
+            ? "已完成"
+            : "未执行";
   const pendingCount =
     research.pendingCandidateCount ??
     company?.claims.filter((claim) =>
@@ -1109,6 +1119,13 @@ function ActiveConversation({
         : parseStep?.status === "needs-review"
           ? "需要处理"
           : "等待处理";
+  const analysisState = task.answer
+    ? "已完成"
+    : task.status === "已取消"
+      ? "已取消"
+      : task.status === "执行失败"
+        ? "执行失败"
+        : "等待生成";
   return (
     <section className="by-active-conversation">
       <div className="by-conversation-scroll">
@@ -1198,7 +1215,7 @@ function ActiveConversation({
           <TimelineItem
             icon={<Sparkles />}
             title="AI 分析"
-            state={task.answer ? "已完成" : "等待生成"}
+            state={analysisState}
             source="AI 候选"
           >
             <article className="by-analysis-card">
@@ -1349,7 +1366,9 @@ function ActiveConversation({
                 !externalClaims.length &&
                 research.externalResearch?.status !== "failed" && (
                 <p className="by-inline-empty">
-                  {research.externalResearch?.executed
+                  {research.externalResearch?.status === "cancelled"
+                    ? "外部信息核验已取消，本次未生成来源。"
+                    : research.externalResearch?.executed
                     ? "外部信息核验已执行，本次未返回可展示来源。"
                     : research.externalResearch?.requested
                       ? "外部信息核验正在执行，来源返回后会在此展示。"
@@ -1921,6 +1940,8 @@ function StatusMark({
         失败
       </em>
     );
+  if (status === "已取消")
+    return <em className="by-status warning">已取消</em>;
   if (status === "已完成")
     return (
       <em className="by-status success">

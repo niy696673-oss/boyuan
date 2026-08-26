@@ -20,7 +20,7 @@ import {
   Upload,
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, ApiError, type Bootstrap } from "../api";
+import type { Bootstrap } from "../api";
 import {
   createIndustryDirectoryClient,
   type IndustryDirectoryClient,
@@ -110,17 +110,17 @@ export function IndustriesPage({
     setAnalyzing(true);
     setAnalysisNotice("");
     try {
-      const result = await api.analyzeIndustries();
+      const result = await industryClient.reclassify();
       setAnalysisNotice(
-        `${result.companies} 家公司已正式归类，形成 ${result.industries} 个行业和 ${result.stages} 个产业环节。${result.usedConfiguredModel ? `模型：${result.model}` : "当前未配置 GPT 密钥，本次使用 BP 证据规则完成正式初分。"}`,
+        `${result.companies} 家公司已重新分类，形成 ${result.industries} 个行业，合并 ${result.mergedIndustries} 个重复行业；仍有 ${result.unclassifiedMaterials} 份材料待分类。`,
       );
       reload();
       setRefreshKey((key) => key + 1);
     } catch (error) {
       setAnalysisNotice(
-        error instanceof ApiError
+        error instanceof Error
           ? error.message
-          : "产业链分析失败，请稍后重试",
+          : "行业重新分类失败，请稍后重试",
       );
     } finally {
       setAnalyzing(false);
@@ -187,7 +187,7 @@ export function IndustriesPage({
           <div>
             <span>行业知识入口</span>
             <h1>行业与产业链</h1>
-            <p>基于已有 BP 建立正式行业分类、产业环节和公司映射。</p>
+            <p>基于已有 BP 建立行业分类、产业环节和公司映射；草稿待确认后成为正式知识。</p>
           </div>
           <div>
             <select
@@ -221,10 +221,10 @@ export function IndustriesPage({
               >
                 {analyzing ? <RefreshCw /> : <Sparkles />}
                 {analyzing
-                  ? "正在分析"
+                  ? "正在重新分类"
                   : details.length
-                    ? "重新分析"
-                    : "生成产业链"}
+                    ? "重新分类"
+                    : "生成行业分类"}
               </button>
             )}
           </div>
@@ -264,11 +264,11 @@ export function IndustriesPage({
             <section className="by-catalog-empty">
               <Globe2 />
               <h2>还没有行业资料</h2>
-              <p>使用已有 BP 生成正式行业分类和产业链。</p>
+              <p>使用已有 BP 生成待确认行业分类和产业链。</p>
               {canAnalyze ? (
                 <button className="primary" onClick={() => void analyze()}>
                   <Sparkles />
-                  生成产业链
+                  生成行业分类
                 </button>
               ) : (
                 <button className="primary">
@@ -334,6 +334,7 @@ function IndustryCard({
   );
   const companies = companiesForNode(data, industry.id);
   const materials = detail?.materialCount || 0;
+  const isActive = detail?.status === "active";
   return (
     <article
       onClick={onOpen}
@@ -374,8 +375,8 @@ function IndustryCard({
       </dl>
       <footer>
         <span>
-          <ShieldCheck />
-          正式知识
+          {isActive ? <ShieldCheck /> : <FileSearch />}
+          {isActive ? "正式知识" : "待确认分类"}
         </span>
         <button>
           进入行业
@@ -470,6 +471,7 @@ function IndustryDetailContent({
     ["产业链", descendants.length],
     ["公司", companies.length],
   ] as const;
+  const isActive = detail.status === "active";
   const selectTab = (name: (typeof tabs)[number][0]) => {
     setTab(name);
     const next = new URLSearchParams(searchParams);
@@ -526,8 +528,13 @@ function IndustryDetailContent({
             <h1>{industry.name}</h1>
             <p>
               {industry.description ||
-                "基于 BP 证据形成的正式行业知识与产业链。"}
+                (isActive
+                  ? "基于 BP 证据形成的正式行业知识与产业链。"
+                  : "基于 BP 证据形成的待确认行业分类与产业链。")}
             </p>
+            <em className={`by-status ${isActive ? "success" : "warning"}`}>
+              {isActive ? "正式知识" : "待确认分类"}
+            </em>
           </div>
         </div>
         <dl>
@@ -603,7 +610,12 @@ function IndustryDetailContent({
         />
       )}
       {tab === "产业链" && (
-        <IndustryTree industry={industry} nodes={descendants} data={data} />
+        <IndustryTree
+          industry={industry}
+          nodes={descendants}
+          data={data}
+          status={detail.status}
+        />
       )}
       {tab === "公司" && <IndustryCompanies companies={companies} />}
     </div>
@@ -774,9 +786,10 @@ function IndustryMaterials({
 
 function industryMaterialStatus(
   status: IndustryMaterialV1["status"],
-): { label: "处理中" | "待处理" | "失败" | "已完成"; tone: "running" | "warning" | "danger" | "success" } {
+): { label: "处理中" | "待处理" | "失败" | "已完成" | "已取消"; tone: "running" | "warning" | "danger" | "success" } {
   if (status === "completed") return { label: "已完成", tone: "success" };
   if (status === "failed") return { label: "失败", tone: "danger" };
+  if (status === "cancelled") return { label: "已取消", tone: "warning" };
   if (status === "processing") return { label: "处理中", tone: "running" };
   return { label: "待处理", tone: "warning" };
 }
@@ -785,22 +798,29 @@ function IndustryTree({
   industry,
   nodes,
   data,
+  status,
 }: {
   industry: IndustryNode;
   nodes: IndustryNode[];
   data: Bootstrap;
+  status: IndustryDetailResponseV1["status"];
 }) {
   const stages = nodes.filter((node) => node.level === 1);
+  const isActive = status === "active";
   return (
     <section className="by-industry-tree">
       <header>
         <div>
           <h2>{industry.name}产业链</h2>
-          <p>以下环节与公司位置来自已有 BP，已作为正式知识写入。</p>
+          <p>
+            {isActive
+              ? "以下环节与公司位置来自已有 BP，已作为正式知识写入。"
+              : "以下环节与公司位置来自已有 BP，当前为待确认分类。"}
+          </p>
         </div>
         <span className="by-formal-knowledge">
-          <ShieldCheck />
-          BP 正式知识
+          {isActive ? <ShieldCheck /> : <FileSearch />}
+          {isActive ? "BP 正式知识" : "待确认分类"}
         </span>
       </header>
       <div className="by-chain-flow">
