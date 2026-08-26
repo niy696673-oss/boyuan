@@ -366,14 +366,16 @@ export function IndustryDetailPage({ data, industryClient = defaultIndustryClien
   if (state === "not-found") return <IndustryLoadState title="找不到这个行业" description="该行业可能不存在，或已经被合并。" />;
   if (state === "error" || !detail) return <IndustryLoadState title="行业资料加载失败" />;
   const persistentData = industryBootstrap(data, [detail]);
-  return <IndustryDetailContent data={persistentData} industry={persistentData.industryNodes[0]} />;
+  return <IndustryDetailContent data={persistentData} detail={detail} industry={persistentData.industryNodes[0]} />;
 }
 
 function IndustryDetailContent({
   data,
+  detail,
   industry,
 }: {
   data: Bootstrap;
+  detail: IndustryDetailResponseV1;
   industry: IndustryNode;
 }) {
   const navigate = useNavigate();
@@ -390,9 +392,16 @@ function IndustryDetailContent({
       ),
     ),
   );
-  const materials = companies.flatMap((company) =>
-    company.evidence.map((evidence) => ({ evidence, company })),
-  );
+  const materials = detail.materials.map((material) => ({
+    material,
+    company: material.evidence
+      ? companies.find((company) =>
+          company.evidence.some(
+            (evidence) => evidence.id === material.evidence?.evidenceId,
+          ),
+        )
+      : undefined,
+  }));
   const tabs = [
     ["概览", ""],
     ["材料", materials.length],
@@ -494,7 +503,7 @@ function IndustryOverview({
   industry: IndustryNode;
   data: Bootstrap;
   companies: Company[];
-  materials: Array<{ evidence: Company["evidence"][number]; company: Company }>;
+  materials: Array<{ material: IndustryMaterialV1; company?: Company }>;
   onOpenTree: () => void;
 }) {
   const children = data.industryNodes.filter(
@@ -513,14 +522,14 @@ function IndustryOverview({
             <ChevronRight />
           </button>
         </header>
-        {materials.slice(0, 5).map(({ evidence, company }) => (
-          <button key={evidence.id}>
+        {materials.slice(0, 5).map(({ material, company }) => (
+          <button key={`${material.conversationId}-${material.documentId}`}>
             <FileText />
             <span>
-              <strong>{evidence.fileName}</strong>
+              <strong>{material.fileName}</strong>
               <small>
-                {company.aliases[0] || company.standardName} ·{" "}
-                {evidence.sourceDate}
+                {company ? company.aliases[0] || company.standardName : "未关联公司"} ·{" "}
+                {material.updatedAt}
               </small>
             </span>
             <em>
@@ -580,7 +589,7 @@ function IndustryOverview({
 function IndustryMaterials({
   materials,
 }: {
-  materials: Array<{ evidence: Company["evidence"][number]; company: Company }>;
+  materials: Array<{ material: IndustryMaterialV1; company?: Company }>;
 }) {
   return (
     <section className="by-industry-material-page">
@@ -606,15 +615,15 @@ function IndustryMaterials({
           <span>关联公司</span>
           <span>处理状态</span>
         </div>
-        {materials.map(({ evidence, company }) => (
-          <button key={evidence.id}>
+        {materials.map(({ material, company }) => (
+          <button key={`${material.conversationId}-${material.documentId}`}>
             <span>
               <FileText />
-              <strong>{evidence.fileName}</strong>
+              <strong>{material.fileName}</strong>
             </span>
             <span>行业材料</span>
-            <span>{evidence.sourceDate}</span>
-            <span>{company.aliases[0] || company.standardName}</span>
+            <span>{material.updatedAt}</span>
+            <span>{company ? company.aliases[0] || company.standardName : "未关联公司"}</span>
             <span className="success">已分析</span>
           </button>
         ))}
@@ -765,24 +774,30 @@ function industryBootstrap(
 
   for (const detail of details) {
     for (const placement of detail.companies) {
-      const relatedMaterials = detail.materials.filter((material) =>
-        placement.evidence
-          ? material.evidence?.evidenceId === placement.evidence.evidenceId
-          : detail.companies.length === 1,
-      );
+      const placementEvidence = placement.evidence;
+      const relatedMaterials = placementEvidence
+        ? detail.materials.filter(
+            (material) =>
+              material.evidence?.evidenceId === placementEvidence.evidenceId,
+          )
+        : [];
       const existing = companies.get(placement.company.companyId);
       const position = {
         nodeId: placement.nodeId || detail.industryId,
         positionType: "primary" as const,
         status: placement.status === "confirmed" ? "confirmed" as const : "candidate" as const,
         confidence: placement.status === "confirmed" ? 1 : 0,
-        source: "internal_evidence" as const,
+        source: placementEvidence
+          ? "internal_evidence" as const
+          : "ai_recommendation" as const,
         sourceDate: detail.updatedAt,
         reason: placement.positionLabel,
       };
-      const evidence = relatedMaterials.map((material) =>
-        industryMaterialEvidence(material, placement.evidence),
-      );
+      const evidence = placementEvidence
+        ? relatedMaterials.map((material) =>
+            industryMaterialEvidence(material, placementEvidence),
+          )
+        : [];
       if (existing) {
         existing.positions.push(position);
         existing.evidence = uniqueCompanyEvidence([...existing.evidence, ...evidence]);
@@ -814,17 +829,17 @@ function industryBootstrap(
 
 function industryMaterialEvidence(
   material: IndustryMaterialV1,
-  placementEvidence?: ReviewEvidence,
+  placementEvidence: ReviewEvidence,
 ): Company["evidence"][number] {
   const evidence = material.evidence || placementEvidence;
   return {
-    id: evidence?.evidenceId || `industry-material:${material.documentId}`,
+    id: evidence.evidenceId,
     documentId: material.documentId,
     fileName: material.fileName,
-    excerpt: evidence?.quote || material.fileName,
-    ...(evidence?.page === undefined ? {} : { page: evidence.page }),
+    excerpt: evidence.quote,
+    ...(evidence.page === undefined ? {} : { page: evidence.page }),
     sourceDate:
-      evidence?.publishedAt || evidence?.retrievedAt || material.updatedAt,
+      evidence.publishedAt || evidence.retrievedAt || material.updatedAt,
     visibility: "organization",
   };
 }

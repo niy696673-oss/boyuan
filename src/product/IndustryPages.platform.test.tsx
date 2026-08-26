@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
 import type { IndustryDirectoryClient } from "../capabilities/industries/client";
 import { ResearchPlatformApiError } from "../capabilities/platform-http";
+import type { IndustryDetailResponseV1 } from "../../shared/research-platform-v1";
 import { IndustriesPage, IndustryDetailPage } from "./IndustryPages";
 
 describe("持久行业目录页面", () => {
@@ -40,7 +41,10 @@ describe("持久行业目录页面", () => {
     );
     expect(await screen.findByRole("heading", { name: "人工智能" })).toBeTruthy();
     expect(screen.getByText("行业补充材料.pdf")).toBeTruthy();
+    expect(screen.getByText("行业访谈纪要.docx")).toBeTruthy();
     expect(screen.getByText("云杉智能")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^材料/ }));
+    expect(screen.getByText("未关联公司")).toBeTruthy();
 
     vi.mocked(client.get).mockRejectedValue(
       new ResearchPlatformApiError("industry not found", 404, "not_found"),
@@ -53,6 +57,27 @@ describe("持久行业目录页面", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole("heading", { name: "找不到这个行业" })).toBeTruthy();
+  });
+
+  it("没有公司位置证据时不把行业材料自动归给唯一公司", async () => {
+    const client = fakeClient();
+    const detail = industryDetail();
+    const { evidence: _evidence, ...placementWithoutEvidence } = detail.companies[0];
+    detail.companies = [placementWithoutEvidence];
+    vi.mocked(client.get).mockResolvedValue(detail);
+
+    render(
+      <MemoryRouter initialEntries={["/industry/industry-1"]}>
+        <Routes>
+          <Route path="/industry/:id" element={<IndustryDetailPage data={bootstrap()} industryClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "人工智能" })).toBeTruthy();
+    expect(screen.getByText("0 份材料")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^材料/ }));
+    expect(screen.getAllByText("未关联公司")).toHaveLength(2);
   });
 });
 
@@ -75,7 +100,7 @@ function fakeClient(): IndustryDirectoryClient {
   };
 }
 
-function industryDetail() {
+function industryDetail(): IndustryDetailResponseV1 {
   return {
     industryId: "industry-1",
     name: "人工智能",
@@ -106,6 +131,14 @@ function industryDetail() {
           sourceType: "material" as const,
           quote: "公司处于人工智能产业中游。",
         },
+      },
+      {
+        conversationId: "conversation-2",
+        documentId: "document-2",
+        fileName: "行业访谈纪要.docx",
+        status: "completed" as const,
+        sourceChannel: "web" as const,
+        updatedAt: "2026-08-25T00:00:00.000Z",
       },
     ],
     companies: [
