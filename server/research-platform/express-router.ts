@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import express from "express";
 import multer from "multer";
+import { normalizeUploadedFileName } from "../upload-file-name.js";
 import type {
   ConfirmCompanyListRowsInput,
   CompanyDetail,
@@ -35,7 +36,7 @@ export function createResearchPlatformV1Router(
       if (!req.file) {
         throw new PlatformInputError("multipart_file_required", "请选择文件");
       }
-      const fileName = normalizeMultipartFileName(req.file.originalname);
+      const fileName = normalizeUploadedFileName(req.file.originalname);
       if (/\.(?:csv|xlsx?)$/iu.test(fileName)) {
         throw new PlatformInputError(
           "company_list_not_available",
@@ -447,12 +448,6 @@ function companyListResearchInput(body: unknown): string[] {
     throw new PlatformInputError("invalid_company_ids", "请选择需要研究的公司");
   }
   return companyIds as string[];
-}
-
-function normalizeMultipartFileName(fileName: string) {
-  if (/[㐀-鿿]/u.test(fileName)) return fileName;
-  const decoded = Buffer.from(fileName, "latin1").toString("utf8");
-  return decoded.includes("�") ? fileName : decoded;
 }
 
 function handlePlatformError(

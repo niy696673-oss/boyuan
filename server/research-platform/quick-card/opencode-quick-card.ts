@@ -22,7 +22,7 @@ const QUICK_DISABLED_TOOLS = [
 
 export function createOpenCodeQuickCardAdapter(options: OpenCodeQuickCardOptions): QuickCardAnalysisPort {
   const client = createOpenCodeClient(
-    options,
+    { ...options, timeoutMs: false },
     (status) => new QuickCardAdapterError('quick_card_opencode_http_error', `OpenCode returned HTTP ${status}`),
     25_000,
   );

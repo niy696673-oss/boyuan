@@ -95,6 +95,7 @@ describe('direct Feishu file intake', () => {
 
   it('posts the processing card before downloading the file and passes its message id to intake', async () => {
     const order: string[] = [];
+    let storedStatusCardId: string | undefined;
     const messenger = {
       sendCard: vi.fn(async () => { order.push('loading'); return { messageId: 'om_status_card' }; }),
       updateCard: vi.fn(async () => undefined),
@@ -105,11 +106,20 @@ describe('direct Feishu file intake', () => {
       expect(input.statusCardMessageId).toBe('om_status_card');
       return [{ fileKey: 'file_pdf', fileName: '项目 BP.pdf', status: 'completed' as const }];
     });
-    const ingress = new DirectFeishuFileIngress({ materialize, ingestTurn, messenger, hasJob: () => false });
+    const ingress = new DirectFeishuFileIngress({
+      materialize,
+      ingestTurn,
+      messenger,
+      statusCardId: () => storedStatusCardId,
+      rememberStatusCard: (_message, cardMessageId) => {
+        order.push('persist');
+        storedStatusCardId = cardMessageId;
+      },
+    });
 
     await expect(ingress.handle(fileEvent())).resolves.toEqual({ handled: true });
 
-    expect(order).toEqual(['loading', 'materialize', 'ingest']);
+    expect(order).toEqual(['loading', 'persist', 'materialize', 'ingest']);
     expect(JSON.stringify(messenger.sendCard.mock.calls)).toContain('资料处理中');
   });
 
@@ -122,12 +132,18 @@ describe('direct Feishu file intake', () => {
     const ingestTurn = vi.fn(async () => [{
       fileKey: 'file_pdf', fileName: '项目 BP.pdf', status: 'completed' as const,
     }]);
-    const ingress = new DirectFeishuFileIngress({ materialize, ingestTurn, messenger, hasJob: () => true });
+    const ingress = new DirectFeishuFileIngress({
+      materialize,
+      ingestTurn,
+      messenger,
+      statusCardId: () => 'om_duplicate',
+      rememberStatusCard: vi.fn(),
+    });
 
     await ingress.handle(fileEvent());
 
     expect(messenger.sendCard).not.toHaveBeenCalled();
-    expect(ingestTurn).toHaveBeenCalledWith(expect.not.objectContaining({ statusCardMessageId: expect.anything() }));
+    expect(ingestTurn).toHaveBeenCalledWith(expect.objectContaining({ statusCardMessageId: 'om_duplicate' }));
   });
 
   it('turns the processing card into a failure card when file download fails', async () => {
@@ -139,7 +155,8 @@ describe('direct Feishu file intake', () => {
       materialize: vi.fn(async () => { throw new Error('download_failed'); }),
       ingestTurn: vi.fn(async () => []),
       messenger,
-      hasJob: () => false,
+      statusCardId: () => undefined,
+      rememberStatusCard: vi.fn(),
     });
 
     await expect(ingress.handle(fileEvent())).rejects.toThrow('download_failed');
@@ -149,6 +166,45 @@ describe('direct Feishu file intake', () => {
       card: expect.objectContaining({ schema: '2.0' }),
     }));
     expect(JSON.stringify(messenger.updateCard.mock.calls)).toContain('材料处理失败');
+  });
+
+  it('reuses the persisted processing card after a restart before upload acceptance', async () => {
+    let storedStatusCardId: string | undefined;
+    const sendCard = vi.fn(async () => ({ messageId: 'om_status_card' }));
+    const messenger = {
+      sendCard,
+      updateCard: vi.fn(async () => undefined),
+    };
+    const statusCardId = () => storedStatusCardId;
+    const rememberStatusCard = (_message: unknown, cardMessageId: string) => {
+      storedStatusCardId = cardMessageId;
+    };
+    const first = new DirectFeishuFileIngress({
+      materialize: vi.fn(async () => { throw new Error('service_restarted'); }),
+      ingestTurn: vi.fn(async () => []),
+      messenger,
+      statusCardId,
+      rememberStatusCard,
+    });
+
+    await expect(first.handle(fileEvent())).rejects.toThrow('service_restarted');
+
+    const ingestTurn = vi.fn(async () => [{
+      fileKey: 'file_pdf', fileName: '项目 BP.pdf', status: 'completed' as const,
+    }]);
+    const resumed = new DirectFeishuFileIngress({
+      materialize: vi.fn(async () => pdf),
+      ingestTurn,
+      messenger,
+      statusCardId,
+      rememberStatusCard,
+    });
+    await resumed.handle(fileEvent());
+
+    expect(sendCard).toHaveBeenCalledOnce();
+    expect(ingestTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCardMessageId: 'om_status_card' }),
+    );
   });
 
   it('extracts the original Feishu receive time for end-to-end timing', () => {

@@ -29,4 +29,42 @@ describe('JSON intake job store', () => {
       temp.cleanup();
     }
   });
+
+  it('persists the processing-card receipt before a complete intake job exists', () => {
+    const temp = tempDir();
+    const statePath = `${temp.path}/state.json`;
+    try {
+      const store = new JsonJobStore(statePath);
+      store.putStatusCard({
+        key: 'receipt',
+        messageId: 'om_message',
+        fileKey: 'file',
+        fileName: 'bp.pdf',
+        cardMessageId: 'om_status_card',
+        createdAt: '2026-08-26T00:00:00.000Z',
+      });
+
+      expect(new JsonJobStore(statePath).getStatusCard('receipt')).toMatchObject({
+        cardMessageId: 'om_status_card',
+      });
+    } finally {
+      temp.cleanup();
+    }
+  });
+
+  it('rejects a malformed processing-card receipt index', () => {
+    const temp = tempDir();
+    const statePath = `${temp.path}/state.json`;
+    writeFileSync(statePath, JSON.stringify({
+      schemaVersion: 1,
+      jobs: {},
+      statusCards: [],
+    }));
+
+    try {
+      expect(() => new JsonJobStore(statePath)).toThrow('intake_state_invalid');
+    } finally {
+      temp.cleanup();
+    }
+  });
 });

@@ -12,7 +12,6 @@ export function parseIntakeConfig(value: Record<string, unknown>, configDirector
   };
   const attachmentRoot = path('attachmentRoot', './attachments');
   const statePath = path('statePath', './state/jobs.json');
-  const outboxDir = path('outboxDir', './outbox');
   const publicWorkbenchUrl = httpUrl(value.publicWorkbenchUrl, 'publicWorkbenchUrl');
   const config: IntakeConfig = {
     schemaVersion: 1,
@@ -22,12 +21,9 @@ export function parseIntakeConfig(value: Record<string, unknown>, configDirector
     platformIntakeKey: requiredSecret(value.platformIntakeKey, 'platformIntakeKey'),
     publicWorkbenchUrl,
     publicProductUrl: httpUrl(value.publicProductUrl ?? new URL(publicWorkbenchUrl).origin, 'publicProductUrl'),
-    botmuxExecutable: stringValue(value.botmuxExecutable) ?? 'botmux',
     servicePort: integer(value.servicePort, 'servicePort', 9470, 1, 65_535),
-    serviceKey: requiredSecret(value.serviceKey, 'serviceKey'),
     attachmentRoot,
     statePath,
-    outboxDir,
     retryDelayMs: integer(value.retryDelayMs ?? value.pollIntervalMs, 'retryDelayMs', 1_500, 250, 60_000),
     timeoutMs: integer(value.timeoutMs, 'timeoutMs', 600_000, 10_000, 3_600_000),
   };
@@ -41,7 +37,7 @@ function larkAppId(value: unknown): string {
 }
 
 export function prepareRuntimeDirectories(config: IntakeConfig): void {
-  for (const directory of [config.attachmentRoot, dirname(config.statePath), config.outboxDir]) {
+  for (const directory of [config.attachmentRoot, dirname(config.statePath)]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stat = lstatSync(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('unsafe_runtime_directory');

@@ -4,6 +4,7 @@ import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import express from "express";
 import multer from "multer";
+import { normalizeUploadedFileName } from "../upload-file-name.js";
 import type { PlatformModule } from "./contracts.js";
 import {
   PlatformConflictError,
@@ -14,6 +15,9 @@ import {
 export function createFeishuIntakeRouter(
   platform: PlatformModule,
   intakeKey: string | undefined,
+  options: {
+    resolveProductIndustryId?: (industryName: string) => string | undefined;
+  } = {},
 ): express.Router {
   const router = express.Router();
   const upload = multer({ dest: tmpdir(), limits: { files: 1 } });
@@ -48,7 +52,7 @@ export function createFeishuIntakeRouter(
         );
         try {
           const result = await platform.ingestDocument({
-            fileName: normalizeMultipartFileName(request.file.originalname),
+            fileName: normalizeUploadedFileName(request.file.originalname),
             mimeType: request.file.mimetype,
             sourceChannel: "feishu",
             sourceMessageId,
@@ -70,11 +74,24 @@ export function createFeishuIntakeRouter(
     authorize,
     async (request, response, next) => {
       try {
-        response.json(
-          await platform.quickAnalyzeConversation(
-            requiredPathParameter(request.params.conversationId),
-          ),
+        const result = await platform.quickAnalyzeConversation(
+          requiredPathParameter(request.params.conversationId),
         );
+        const productIndustryId = result.navigation.industryId &&
+          options.resolveProductIndustryId
+          ? options.resolveProductIndustryId(
+            (await platform.getIndustry(result.navigation.industryId)).name,
+          )
+          : undefined;
+        response.json({
+          ...result,
+          navigation: {
+            ...(result.navigation.companyId
+              ? { companyId: result.navigation.companyId }
+              : {}),
+            ...(productIndustryId ? { industryId: productIndustryId } : {}),
+          },
+        });
       } catch (error) {
         handlePlatformError(error, response, next);
       }
@@ -132,12 +149,6 @@ function optionalMetadataHeader(
     );
   }
   return normalized;
-}
-
-function normalizeMultipartFileName(fileName: string): string {
-  if (/[㐀-鿿]/u.test(fileName)) return fileName;
-  const decoded = Buffer.from(fileName, "latin1").toString("utf8");
-  return decoded.includes("�") ? fileName : decoded;
 }
 
 function handlePlatformError(

@@ -4,7 +4,7 @@ export interface OpenCodeConnectionOptions {
   baseUrl: URL;
   credentials?: { username: string; password: string };
   directory: string;
-  timeoutMs?: number;
+  timeoutMs?: number | false;
   fetcher?: typeof fetch;
 }
 
@@ -73,10 +73,13 @@ export function createOpenCodeClient(
     headers.set("accept", "application/json");
     headers.set("content-type", "application/json");
     if (authorization) headers.set("authorization", authorization);
+    const signal =
+      init.signal ??
+      (timeoutMs === false ? undefined : AbortSignal.timeout(timeoutMs));
     const response = await fetcher(url, {
       ...init,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+      ...(signal ? { signal } : {}),
     });
     if (!response.ok) throw httpError(response.status);
     return (await response.json()) as T;

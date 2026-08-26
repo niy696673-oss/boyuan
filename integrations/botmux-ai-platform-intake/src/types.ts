@@ -10,12 +10,9 @@ export interface IntakeConfig {
   platformIntakeKey: string;
   publicWorkbenchUrl: string;
   publicProductUrl: string;
-  botmuxExecutable: string;
   servicePort: number;
-  serviceKey: string;
   attachmentRoot: string;
   statePath: string;
-  outboxDir: string;
   retryDelayMs: number;
   timeoutMs: number;
 }
@@ -134,6 +131,15 @@ export interface IntakeJob {
   lastError?: string;
 }
 
+export interface StatusCardReceipt {
+  key: string;
+  messageId: string;
+  fileKey: string;
+  fileName: string;
+  cardMessageId: string;
+  createdAt: string;
+}
+
 export interface IntakeOutcome {
   fileKey: string;
   fileName: string;
@@ -146,12 +152,7 @@ export interface IntakeOutcome {
 export interface JobStore {
   get(key: string): IntakeJob | undefined;
   put(job: IntakeJob): void;
+  getStatusCard(key: string): StatusCardReceipt | undefined;
+  putStatusCard(receipt: StatusCardReceipt): void;
   listPending(): IntakeJob[];
 }
-
-export interface ProcessResult { code: number; stdout: string; stderr: string }
-export type ProcessRunner = (
-  executable: string,
-  args: readonly string[],
-  options?: { env?: NodeJS.ProcessEnv; input?: string; timeoutMs?: number },
-) => Promise<ProcessResult>;

@@ -3,12 +3,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import express from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
+import { createFeishuIntakeRouter } from "../server/research-platform/feishu-intake-router.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 import type { QuickCardAnalysisPort } from "../server/research-platform/quick-card/contracts.js";
 import { initialStoreData, Store } from "../server/store.js";
@@ -143,5 +145,50 @@ describe("飞书材料接入新工作台", () => {
 
     expect(response.status).toBe(503);
     expect(response.body).toEqual({ error: "feishu_intake_unavailable" });
+  });
+
+  it("只把研究行业映射为产品 UI 中真实存在的产业链 ID", async () => {
+    const platform = {
+      quickAnalyzeConversation: async () => ({
+        companyName: "白杨智能",
+        companyIdentity: "北京白杨智能科技有限公司",
+        industryTrack: "特种具身智能",
+        financing: "材料未披露",
+        keyPeople: "材料未披露",
+        highlights: [],
+        competitorNames: [],
+        upstreamNames: [],
+        downstreamNames: [],
+        providerId: "openai",
+        modelId: "gpt-5.6-luna",
+        variant: "none",
+        sessionId: "quick-session",
+        confidence: 50,
+        confidenceLevel: "中" as const,
+        navigation: {
+          companyId: "research-company",
+          industryId: "research-industry",
+        },
+      }),
+      getIndustry: async () => ({ name: "具身智能" }),
+    } as unknown as PlatformModule;
+    const app = express();
+    app.use(
+      "/api/v1/feishu",
+      createFeishuIntakeRouter(platform, "test-feishu-intake-key-123", {
+        resolveProductIndustryId: (name) =>
+          name === "具身智能" ? "product-industry" : undefined,
+      }),
+    );
+
+    const response = await request(app)
+      .post("/api/v1/feishu/conversations/conversation/quick-card")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123");
+
+    expect(response.status).toBe(200);
+    expect(response.body.navigation).toEqual({
+      companyId: "research-company",
+      industryId: "product-industry",
+    });
   });
 });

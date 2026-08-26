@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
 import type { CompanyDirectoryClient } from "../capabilities/companies/client";
 import type { IndustryDirectoryClient } from "../capabilities/industries/client";
+import { ResearchPlatformApiError } from "../capabilities/platform-http";
 import { CompanyDetailPage } from "./CompanyPages";
 import { IndustryDetailPage } from "./IndustryPages";
 
@@ -63,6 +64,30 @@ describe("飞书卡片实体深链", () => {
     );
 
     expect((await screen.findByRole("button", { name: /产业链/ })).className).toContain("active");
+  });
+
+  it("未知行业 ID 不回退到另一个产业链", async () => {
+    const client = industryClient();
+    vi.mocked(client.get).mockRejectedValue(
+      new ResearchPlatformApiError("industry not found", 404, "not_found"),
+    );
+    render(
+      <MemoryRouter initialEntries={["/industry/research-only?tab=chain"]}>
+        <Routes>
+          <Route
+            path="/industry/:id"
+            element={
+              <IndustryDetailPage data={bootstrap()} industryClient={client} />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "找不到这个行业" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("人工智能产业链")).toBeNull();
   });
 });
 

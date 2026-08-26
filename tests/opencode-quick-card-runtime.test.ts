@@ -87,7 +87,7 @@ describe("OpenCode 快速卡适配器", () => {
     expect(body.parts[0]?.text).toContain("competitorNames");
     expect(body.parts[0]?.text).not.toContain("13 个 BP 维度");
     expect(
-      fetcher.mock.calls.every((call) => call[1]?.signal instanceof AbortSignal),
+      fetcher.mock.calls.every((call) => call[1]?.signal === undefined),
     ).toBe(true);
   });
 
@@ -124,20 +124,6 @@ describe("快速卡运行时选择", () => {
     ).toThrow(/BOYUAN_QUICK_CARD_PROVIDER_ID/);
   });
 
-  it("拒绝非法超时，不把 30 秒作为固定等待点", () => {
-    expect(() =>
-      createRuntimeQuickCardAdapter(
-        {
-          BOYUAN_QUICK_CARD_ADAPTER: "opencode",
-          BOYUAN_OPENCODE_BASE_URL: "http://127.0.0.1:4173/opencode-api/",
-          BOYUAN_QUICK_CARD_PROVIDER_ID: "openai",
-          BOYUAN_QUICK_CARD_MODEL_ID: "gpt-5.6-luna",
-          BOYUAN_QUICK_CARD_TIMEOUT_MS: "thirty-seconds",
-        },
-        { directory: "/workspace" },
-      ),
-    ).toThrow(/BOYUAN_QUICK_CARD_TIMEOUT_MS/);
-  });
 });
 
 function jsonResponse(value: unknown): Response {

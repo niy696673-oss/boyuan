@@ -36,8 +36,25 @@ export class IntakeService {
     });
   }
 
-  hasJob(messageId: string, fileKey: string): boolean {
-    return Boolean(this.#store.get(jobKey(messageId, fileKey)));
+  statusCardId(messageId: string, fileKey: string): string | undefined {
+    const key = jobKey(messageId, fileKey);
+    return this.#store.get(key)?.statusCardMessageId ??
+      this.#store.getStatusCard(key)?.cardMessageId;
+  }
+
+  rememberStatusCard(input: {
+    messageId: string;
+    fileKey: string;
+    fileName: string;
+    cardMessageId: string;
+    createdAt: string;
+  }): void {
+    const key = jobKey(input.messageId, input.fileKey);
+    const existing = this.statusCardId(input.messageId, input.fileKey);
+    if (existing && existing !== input.cardMessageId) {
+      throw new Error('status_card_conflict');
+    }
+    this.#store.putStatusCard({ key, ...input });
   }
 
   async ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]> {
@@ -100,6 +117,8 @@ export class IntakeService {
       : observedMs;
     const uploaded = await this.#platform.upload(turn, attachment, this.#config.timeoutMs);
     const acceptedMs = this.#nowMs();
+    const statusCardMessageId = turn.statusCardMessageId ??
+      this.#store.getStatusCard(key)?.cardMessageId;
     const job: IntakeJob = {
       key,
       chatId: turn.chatId,
@@ -108,7 +127,7 @@ export class IntakeService {
       fileKey: attachment.fileKey,
       fileName: attachment.name,
       conversationId: uploaded.conversation.conversationId,
-      ...(turn.statusCardMessageId ? { statusCardMessageId: turn.statusCardMessageId } : {}),
+      ...(statusCardMessageId ? { statusCardMessageId } : {}),
       platformAcceptedAt: new Date(acceptedMs).toISOString(),
       completionCardMs: 0,
       completionCardSent: false,

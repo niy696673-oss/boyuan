@@ -15,7 +15,11 @@ export interface DirectFeishuFileIngressOptions {
   materialize(message: FeishuFileMessage): Promise<IntakeAttachment>;
   ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]>;
   messenger?: Messenger;
-  hasJob?: (message: FeishuFileMessage) => boolean;
+  statusCardId?: (message: FeishuFileMessage) => string | undefined;
+  rememberStatusCard?: (
+    message: FeishuFileMessage,
+    cardMessageId: string,
+  ) => void;
 }
 
 export interface FeishuCardReplyPort {
@@ -35,14 +39,19 @@ export class DirectFeishuFileIngress {
   readonly #materialize: DirectFeishuFileIngressOptions['materialize'];
   readonly #ingestTurn: DirectFeishuFileIngressOptions['ingestTurn'];
   readonly #messenger: Messenger | undefined;
-  readonly #hasJob: DirectFeishuFileIngressOptions['hasJob'];
+  readonly #statusCardId: DirectFeishuFileIngressOptions['statusCardId'];
+  readonly #rememberStatusCard: DirectFeishuFileIngressOptions['rememberStatusCard'];
   readonly #active = new Map<string, Promise<void>>();
 
   constructor(options: DirectFeishuFileIngressOptions) {
     this.#materialize = options.materialize;
     this.#ingestTurn = options.ingestTurn;
     this.#messenger = options.messenger;
-    this.#hasJob = options.hasJob;
+    this.#statusCardId = options.statusCardId;
+    this.#rememberStatusCard = options.rememberStatusCard;
+    if (this.#messenger && (!this.#statusCardId || !this.#rememberStatusCard)) {
+      throw new Error('status_card_store_required');
+    }
   }
 
   async handle(data: unknown): Promise<{ handled: boolean }> {
@@ -60,17 +69,19 @@ export class DirectFeishuFileIngress {
 
   async #ingest(message: FeishuFileMessage): Promise<void> {
     const sessionId = `feishu:${message.messageId}`;
-    const shouldAcknowledge = this.#messenger && !this.#hasJob?.(message);
-    const status = shouldAcknowledge
-      ? await this.#messenger!.sendCard({
+    let statusCardMessageId = this.#statusCardId?.(message);
+    if (this.#messenger && !statusCardMessageId) {
+      const status = await this.#messenger.sendCard({
         chatId: message.chatId,
         sessionId,
         messageId: message.messageId,
         responseKind: 'loading',
         card: processingCard(message.fileName),
-      }).catch(() => undefined)
-      : undefined;
-    const statusCardMessageId = status?.messageId;
+      });
+      if (!status?.messageId) throw new Error('status_card_message_id_missing');
+      statusCardMessageId = status.messageId;
+      this.#rememberStatusCard!(message, statusCardMessageId);
+    }
     try {
       const attachment = await this.#materialize(message);
       await this.#ingestTurn({

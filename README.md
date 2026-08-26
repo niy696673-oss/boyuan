@@ -103,7 +103,6 @@ export BOYUAN_QUICK_CARD_ADAPTER=opencode
 export BOYUAN_QUICK_CARD_PROVIDER_ID=openai
 export BOYUAN_QUICK_CARD_MODEL_ID=gpt-5.6-luna
 export BOYUAN_QUICK_CARD_VARIANT=none
-export BOYUAN_QUICK_CARD_TIMEOUT_MS=120000
 pnpm dev:server
 ```
 
