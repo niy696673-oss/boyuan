@@ -91,6 +91,26 @@ describe("飞书材料接入新工作台", () => {
       },
     });
 
+    const replayed = await request(app)
+      .post("/api/v1/feishu/documents")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
+      .set("x-boyuan-message-id", "om_feishu_material")
+      .set("x-boyuan-sender-id", "ou_sender")
+      .attach(
+        "file",
+        Buffer.from("同一条飞书消息重试时不应新建对话"),
+        "重试副本.txt",
+      );
+    expect(replayed.status).toBe(201);
+    expect(replayed.body).toMatchObject({
+      reusedDocument: true,
+      conversation: {
+        conversationId: uploaded.body.conversation.conversationId,
+        title: "白杨智能BP.txt",
+      },
+    });
+    expect(await platform.listConversations()).toHaveLength(1);
+
     const conversationId = uploaded.body.conversation.conversationId as string;
     const quick = await request(app)
       .post(

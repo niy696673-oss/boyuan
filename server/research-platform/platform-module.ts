@@ -258,8 +258,17 @@ class SqlitePlatformModule implements PlatformModule {
 
   async ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult> {
     this.#assertOpen();
+    const replay = await this.#idempotentIngestResult(input);
+    if (replay) return replay;
     const staged = await this.#stage(input);
-    return this.#exclusive(() => this.#finalize(input, staged));
+    return this.#exclusive(async () => {
+      const concurrentReplay = await this.#idempotentIngestResult(input);
+      if (concurrentReplay) {
+        await rm(staged.directory, { recursive: true, force: true });
+        return concurrentReplay;
+      }
+      return this.#finalize(input, staged);
+    });
   }
 
   async ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult> {
@@ -1217,6 +1226,19 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
+  async #idempotentIngestResult(input: IngestDocumentInput): Promise<IngestDocumentResult | undefined> {
+    if (!input.sourceMessageId) return undefined;
+    const existing = this.#db.prepare(`
+      SELECT conversation_id FROM intake_idempotency
+      WHERE source_channel = ? AND source_message_id = ?
+    `).get(input.sourceChannel, input.sourceMessageId) as { conversation_id: string } | undefined;
+    if (!existing) return undefined;
+    return {
+      conversation: await this.getConversation(existing.conversation_id),
+      reusedDocument: true,
+    };
+  }
+
   async #finalize(input: IngestDocumentInput, staged: StagedFile, options: FinalizeOptions = {}): Promise<IngestDocumentResult> {
     const { boundCompanyId, research } = options;
     const now = this.#now().toISOString();
@@ -1288,6 +1310,13 @@ class SqlitePlatformModule implements PlatformModule {
             INSERT OR IGNORE INTO conversation_companies (conversation_id, company_id, role, created_at)
             VALUES (?, ?, 'primary', ?)
           `).run(conversationId, boundCompanyId, now);
+        }
+        if (input.sourceMessageId) {
+          this.#db.prepare(`
+            INSERT INTO intake_idempotency (
+              source_channel, source_message_id, conversation_id, created_at
+            ) VALUES (?, ?, ?, ?)
+          `).run(input.sourceChannel, input.sourceMessageId, conversationId, now);
         }
         this.#db.prepare(`
           INSERT INTO analysis_tasks (
@@ -3144,6 +3173,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateAuditSchema();
     this.#migrateCompanyWatchSchema();
     this.#migrateAnalysisRuntimeSchema();
+    this.#migrateIntakeIdempotencySchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -3559,6 +3589,24 @@ class SqlitePlatformModule implements PlatformModule {
         ALTER TABLE analysis_runs ADD COLUMN tool_usage_json TEXT NOT NULL DEFAULT '[]';
       `);
       this.#db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (11, ?)').run(this.#now().toISOString());
+    });
+  }
+
+  #migrateIntakeIdempotencySchema(): void {
+    const applied = this.#db.prepare('SELECT 1 AS applied FROM schema_migrations WHERE version = 12').get();
+    if (applied) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        CREATE TABLE intake_idempotency (
+          source_channel TEXT NOT NULL,
+          source_message_id TEXT NOT NULL,
+          conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (source_channel, source_message_id),
+          UNIQUE (conversation_id)
+        );
+      `);
+      this.#db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)').run(this.#now().toISOString());
     });
   }
 }
