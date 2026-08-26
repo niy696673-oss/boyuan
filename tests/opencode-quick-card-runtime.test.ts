@@ -75,14 +75,7 @@ describe("OpenCode 快速卡适配器", () => {
       model: { providerID: "openai", modelID: "gpt-5.6-luna" },
       variant: "none",
     });
-    expect(Object.values(body.tools).every((enabled) => enabled === false)).toBe(
-      true,
-    );
-    expect(body.tools).toMatchObject({
-      skill: false,
-      "sequential-thinking_sequentialthinking": false,
-      task: false,
-    });
+    expect(body.tools).toEqual({ "*": false });
     expect(body.parts[0]?.text).toContain("paragraph-1");
     expect(body.parts[0]?.text).toContain("competitorNames");
     expect(body.parts[0]?.text).not.toContain("13 个 BP 维度");

@@ -67,12 +67,6 @@ export function createApp(
       createFeishuIntakeRouter(
         options.researchPlatform,
         options.feishuIntakeKey,
-        {
-          resolveProductIndustryId: (industryName) =>
-            store.data.industryNodes.find(
-              (industry) => industry.name === industryName,
-            )?.id,
-        },
       ),
     );
   }

@@ -76,7 +76,9 @@ describe("飞书材料接入新工作台", () => {
       .set("x-boyuan-sender-id", "ou_sender")
       .attach(
         "file",
-        Buffer.from("北京白杨智能科技有限公司\n公司专注特种具身智能。"),
+        Buffer.from(
+          "北京白杨智能科技有限公司\n公司专注特种具身智能，位于产业链中游。",
+        ),
         "白杨智能BP.txt",
       );
 
@@ -139,6 +141,18 @@ describe("飞书材料接入新工作台", () => {
       status: "completed",
       task: { status: "completed" },
     });
+
+    const [industry] = await platform.listIndustries();
+    expect(industry).toBeTruthy();
+    const linkedQuick = await request(app)
+      .post(
+        `/api/v1/feishu/conversations/${encodeURIComponent(conversationId)}/quick-card`,
+      )
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123");
+    expect(linkedQuick.status).toBe(200);
+    expect(linkedQuick.body.navigation).toMatchObject({
+      industryId: industry.industryId,
+    });
   });
 
   it("未配置飞书接入密钥时不开放入口", async () => {
@@ -167,7 +181,7 @@ describe("飞书材料接入新工作台", () => {
     expect(response.body).toEqual({ error: "feishu_intake_unavailable" });
   });
 
-  it("只把研究行业映射为产品 UI 中真实存在的产业链 ID", async () => {
+  it("保留研究平台中产品 UI 使用的持久产业链 ID", async () => {
     const platform = {
       quickAnalyzeConversation: async () => ({
         companyName: "白杨智能",
@@ -195,10 +209,7 @@ describe("飞书材料接入新工作台", () => {
     const app = express();
     app.use(
       "/api/v1/feishu",
-      createFeishuIntakeRouter(platform, "test-feishu-intake-key-123", {
-        resolveProductIndustryId: (name) =>
-          name === "具身智能" ? "product-industry" : undefined,
-      }),
+      createFeishuIntakeRouter(platform, "test-feishu-intake-key-123"),
     );
 
     const response = await request(app)
@@ -208,7 +219,7 @@ describe("飞书材料接入新工作台", () => {
     expect(response.status).toBe(200);
     expect(response.body.navigation).toEqual({
       companyId: "research-company",
-      industryId: "product-industry",
+      industryId: "research-industry",
     });
   });
 });

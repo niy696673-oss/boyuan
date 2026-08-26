@@ -15,9 +15,6 @@ import {
 export function createFeishuIntakeRouter(
   platform: PlatformModule,
   intakeKey: string | undefined,
-  options: {
-    resolveProductIndustryId?: (industryName: string) => string | undefined;
-  } = {},
 ): express.Router {
   const router = express.Router();
   const upload = multer({ dest: tmpdir(), limits: { files: 1 } });
@@ -77,21 +74,7 @@ export function createFeishuIntakeRouter(
         const result = await platform.quickAnalyzeConversation(
           requiredPathParameter(request.params.conversationId),
         );
-        const productIndustryId = result.navigation.industryId &&
-          options.resolveProductIndustryId
-          ? options.resolveProductIndustryId(
-            (await platform.getIndustry(result.navigation.industryId)).name,
-          )
-          : undefined;
-        response.json({
-          ...result,
-          navigation: {
-            ...(result.navigation.companyId
-              ? { companyId: result.navigation.companyId }
-              : {}),
-            ...(productIndustryId ? { industryId: productIndustryId } : {}),
-          },
-        });
+        response.json(result);
       } catch (error) {
         handlePlatformError(error, response, next);
       }

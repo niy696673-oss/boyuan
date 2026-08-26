@@ -14,12 +14,6 @@ export interface OpenCodeQuickCardOptions extends OpenCodeConnectionOptions {
 const MAX_BLOCKS = 160;
 const MAX_BLOCK_CHARACTERS = 4_000;
 const MAX_TOTAL_CHARACTERS = 48_000;
-const QUICK_DISABLED_TOOLS = [
-  'invalid', 'question', 'bash', 'read', 'glob', 'grep', 'edit', 'write', 'task',
-  'webfetch', 'todowrite', 'websearch', 'skill', 'apply_patch',
-  'sequential-thinking_sequentialthinking',
-] as const;
-
 export function createOpenCodeQuickCardAdapter(options: OpenCodeQuickCardOptions): QuickCardAnalysisPort {
   const client = createOpenCodeClient(
     { ...options, timeoutMs: false },
@@ -33,7 +27,7 @@ export function createOpenCodeQuickCardAdapter(options: OpenCodeQuickCardOptions
           model: { providerID: options.model.providerId, modelID: options.model.modelId },
           variant: options.variant,
           system: '你是博源 AI 平台的快速材料提取器。只依据给定材料，缺失信息统一写“材料未披露”。不要调用任何工具。只输出 JSON 对象。',
-          tools: Object.fromEntries(QUICK_DISABLED_TOOLS.map((tool) => [tool, false])),
+          tools: { '*': false },
           parts: [{ type: 'text', text: quickPrompt(input.fileName, input.blocks) }],
       });
       if (response.info.error) throw new QuickCardAdapterError('quick_card_opencode_message_error', 'OpenCode quick-card message failed');
