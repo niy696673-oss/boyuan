@@ -91,6 +91,24 @@ pnpm dev:server
 
 这里的 `4173/opencode-api/` 是本机已有工作台提供的 OpenCode 代理，不需要把服务密码复制到本项目。若改为直连受保护的 OpenCode Server，再同时配置 `BOYUAN_OPENCODE_USERNAME` 和 `BOYUAN_OPENCODE_PASSWORD`。`BOYUAN_OPENCODE_TIMEOUT_MS` 默认 10 分钟，适配深度模型慢链路；超时会主动终止仍在运行的 OpenCode 会话。项目级 `boyuan-bp-deep-analysis` skill 位于 `.agents/skills`，Sequential Thinking MCP 位于 `opencode.json`；发起分析前会检查二者可用，单次 BP 会话默认禁用全部工具并只放行这两项。真实分析缺少任一调用都会失败，不会回退为演示结果。
 
+## 飞书 BP 入口
+
+`integrations/botmux-ai-platform-intake` 是本仓库的新工作台飞书入口。它在收到 PDF 后先发送一张处理中状态卡，再把同一条消息原位更新为 Luna 快速完成卡；上传同时创建的新工作台深度分析对话由 Sol 在后台独立运行。
+
+服务端与插件必须使用同一接入密钥，并为快速卡单独配置 Luna：
+
+```bash
+export BOYUAN_FEISHU_INTAKE_KEY=replace-with-a-random-secret
+export BOYUAN_QUICK_CARD_ADAPTER=opencode
+export BOYUAN_QUICK_CARD_PROVIDER_ID=openai
+export BOYUAN_QUICK_CARD_MODEL_ID=gpt-5.6-luna
+export BOYUAN_QUICK_CARD_VARIANT=none
+export BOYUAN_QUICK_CARD_TIMEOUT_MS=120000
+pnpm dev:server
+```
+
+插件配置中的 `platformBaseUrl` 应指向本服务端（本地默认 `http://127.0.0.1:4174`），`publicWorkbenchUrl` 应指向新工作台对外地址。30 秒只作为性能目标，代码不会等满 30 秒，也不会在达到 30 秒时硬中断。插件安装和配置说明见 [`integrations/botmux-ai-platform-intake/README.md`](./integrations/botmux-ai-platform-intake/README.md)。
+
 ## 公司外部调研
 
 工作台的“公司”研究会创建 `/api/v1/company-research` 对话，先读取正式知识，再根据触发原因执行公开搜索，最后由研究适配器生成带 URL 证据的待确认候选。默认配置使用确定性研究与搜索适配器，便于无凭证开发；它不代表真实公开核验。
@@ -114,6 +132,9 @@ Exa 只接收平台生成的公开查询，不接收 BP 正文。OpenCode 研究
 ```bash
 pnpm test
 pnpm build
+# 首次验证插件前，在独立包内安装一次依赖
+npm --prefix integrations/botmux-ai-platform-intake ci
+pnpm test:intake-plugin
 ```
 
 - [PRD 验收报告](./PRD验收报告.md)

@@ -81,12 +81,14 @@ export function WorkbenchPage({
   researchClient = defaultResearchClient,
   companyClient = defaultCompanyClient,
   persistentPendingCount,
+  initialConversationId,
 }: {
   data: Bootstrap;
   reload: () => void;
   researchClient?: ResearchPlatformClient;
   companyClient?: CompanyDirectoryClient;
   persistentPendingCount?: number;
+  initialConversationId?: string;
 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -117,6 +119,7 @@ export function WorkbenchPage({
     () => ({ ...data, companies: directoryCompanies || [] }),
     [data, directoryCompanies],
   );
+  const openedInitialConversation = useRef<string | undefined>(undefined);
 
   const pending =
     persistentPendingCount ??
@@ -201,6 +204,32 @@ export function WorkbenchPage({
     });
     return () => controller.abort();
   }, [loadPlatformConversations]);
+
+  useEffect(() => {
+    if (
+      !initialConversationId ||
+      openedInitialConversation.current === initialConversationId
+    ) return;
+    openedInitialConversation.current = initialConversationId;
+    const controller = new AbortController();
+    setBusy(true);
+    setNotice("");
+    void researchClient
+      .getConversation(initialConversationId, controller.signal)
+      .then((conversation) => {
+        setActiveResearch(toWorkbenchResearch(conversation));
+        syncPlatformConversation(conversation);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setNotice(error instanceof Error ? error.message : "无法打开研究对话");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBusy(false);
+      });
+    return () => controller.abort();
+  }, [initialConversationId, researchClient, syncPlatformConversation]);
 
   useEffect(() => {
     const conversationId = activeResearch?.platformConversationId;

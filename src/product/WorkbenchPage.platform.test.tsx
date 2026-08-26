@@ -34,6 +34,40 @@ beforeAll(() => {
 });
 
 describe("工作台研究平台接缝", () => {
+  it("通过飞书深链直接打开指定的持久对话", async () => {
+    const detail = conversationDetail();
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([detail]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          initialConversationId={detail.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(client.getConversation).toHaveBeenCalledWith(
+        detail.conversationId,
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: detail.document.fileName,
+        level: 1,
+      }),
+    ).toBeTruthy();
+  });
+
   it("首页治理入口展示持久审核队列数量", async () => {
     const client: ResearchPlatformClient = {
       listConversations: vi.fn().mockResolvedValue([]),
