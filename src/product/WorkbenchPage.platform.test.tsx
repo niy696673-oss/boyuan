@@ -8,16 +8,20 @@ import {
   within,
 } from "@testing-library/react";
 import { StrictMode } from "react";
-import { MemoryRouter } from "react-router-dom";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
 import type { CompanyDirectoryClient } from "../capabilities/companies/client";
+import type { IndustryDirectoryClient } from "../capabilities/industries/client";
 import type { ResearchPlatformClient } from "../capabilities/research/client";
 import type {
   ConversationDetail,
   ConversationSummary,
 } from "../capabilities/research/types";
-import type { CompanyDirectoryItem } from "../../shared/research-platform-v1";
+import type {
+  CompanyDirectoryItem,
+  IndustryDirectoryItemV1,
+} from "../../shared/research-platform-v1";
 import { WorkbenchPage } from "./WorkbenchPage";
 
 vi.mock("@gsap/react", () => ({ useGSAP: () => undefined }));
@@ -32,6 +36,12 @@ beforeAll(() => {
   window.scrollTo = vi.fn();
   HTMLElement.prototype.scrollTo = vi.fn();
   window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+});
+
+afterEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("工作台研究平台接缝", () => {
@@ -52,6 +62,7 @@ describe("工作台研究平台接缝", () => {
       getConversation,
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
     };
 
     render(
@@ -83,6 +94,7 @@ describe("工作台研究平台接缝", () => {
       getConversation: vi.fn().mockResolvedValue(detail),
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
     };
 
     render(
@@ -116,6 +128,7 @@ describe("工作台研究平台接缝", () => {
       getConversation: vi.fn(),
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
     };
 
     render(
@@ -143,6 +156,7 @@ describe("工作台研究平台接缝", () => {
       getConversation: vi.fn().mockResolvedValue(detail),
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn().mockResolvedValue(detail),
+      startIndustryResearch: vi.fn(),
     };
 
     render(
@@ -178,6 +192,113 @@ describe("工作台研究平台接缝", () => {
     expect(await screen.findByText("生成候选知识")).toBeTruthy();
   });
 
+  it("从公司上下文显式确认输入范围后创建 BP 诊断 Skill 任务", async () => {
+    const detail = conversationDetail();
+    detail.type = "company";
+    detail.task.type = "company_research";
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      getCompanyResearchWorkflowSources: vi.fn().mockResolvedValue([
+        {
+          sourceId: "source-bp-1",
+          title: "白杨智能 BP.pdf",
+          locator: "page:1",
+        },
+      ]),
+      startCompanyResearch: vi.fn().mockResolvedValue(detail),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/?companyId=company-persistent-1"]}>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient([
+            directoryItem("company-persistent-1", "白杨智能有限公司", "白杨智能"),
+          ])}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: /白杨智能/ });
+    fireEvent.click(
+      screen.getByRole("button", { name: "BP 材料完整性复核" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "融资或交易阶段" }), {
+      target: { value: "A 轮" },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByRole("textbox", { name: "研究问题" }), {
+      target: { value: "诊断当前 BP 的证据缺口" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+
+    await waitFor(() => expect(client.startCompanyResearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: "company-persistent-1",
+        explicitWebSearch: false,
+        workflow: expect.objectContaining({
+          skill: "diagnose-bp",
+          scope: expect.objectContaining({
+            stage: "A 轮",
+            decisionOwner: "投资经理",
+          }),
+          inputScopeApproval: expect.objectContaining({
+            approved: true,
+            approvedBy: "投资经理",
+            sourceIds: ["source-bp-1"],
+          }),
+        }),
+      }),
+    ));
+    expect(
+      screen.getByText(/不替代标准 BP 深度分析/),
+    ).toBeTruthy();
+  });
+
+  it("行业深链通过持久研究接口创建行业任务", async () => {
+    const industry = industryItem("industry-1", "人工智能");
+    const detail = conversationDetail();
+    detail.type = "industry";
+    detail.task.type = "industry_research";
+    detail.industry = industry;
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn().mockResolvedValue(detail),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/?industryId=industry-1"]}>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient([industry])}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: /人工智能/ });
+    fireEvent.change(screen.getByRole("textbox", { name: "研究问题" }), {
+      target: { value: "分析产业链结构与关键趋势" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+
+    await waitFor(() => expect(client.startIndustryResearch).toHaveBeenCalledWith({
+      industryId: "industry-1",
+      intent: "分析产业链结构与关键趋势",
+      explicitWebSearch: true,
+    }));
+  });
+
   it("展示持久对话并在打开后呈现真实任务步骤", async () => {
     const detail = conversationDetail();
     const summary: ConversationSummary = detail;
@@ -186,16 +307,25 @@ describe("工作台研究平台接缝", () => {
       getConversation: vi.fn().mockResolvedValue(detail),
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
     };
 
     render(
       <MemoryRouter>
-        <WorkbenchPage
-          data={emptyBootstrap()}
-          reload={vi.fn()}
-          researchClient={client}
-          companyClient={directoryClient()}
-        />
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <WorkbenchPage
+                data={emptyBootstrap()}
+                reload={vi.fn()}
+                researchClient={client}
+                companyClient={directoryClient()}
+              />
+            }
+          />
+          <Route path="/confirmations" element={<h1>待确认页面</h1>} />
+        </Routes>
       </MemoryRouter>,
     );
 
@@ -210,7 +340,11 @@ describe("工作台研究平台接缝", () => {
     expect(await screen.findByText("解析文件")).toBeTruthy();
     expect(screen.getByText("生成候选知识")).toBeTruthy();
     expect(screen.getByText("已由研究平台持久保存")).toBeTruthy();
-    expect(screen.getByText("1 条候选知识待确认")).toBeTruthy();
+    const reviewCandidates = screen.getByRole("button", {
+      name: "1 条候选知识待确认",
+    });
+    fireEvent.click(reviewCandidates);
+    expect(await screen.findByRole("heading", { name: "待确认页面" })).toBeTruthy();
   });
 
   it("同步会话栏的待确认终态，并停止继续轮询", async () => {
@@ -227,6 +361,7 @@ describe("工作台研究平台接缝", () => {
       getConversation: vi.fn().mockResolvedValue(detail),
       uploadDocument: vi.fn(),
       startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
     };
 
     render(
@@ -250,6 +385,225 @@ describe("工作台研究平台接缝", () => {
     );
     expect(client.getConversation).toHaveBeenCalledTimes(1);
   });
+
+  it("会话栏按标题、来源和类型筛选持久对话", async () => {
+    const material = conversationDetail();
+    const company: ConversationSummary = {
+      ...material,
+      conversationId: "conversation-company",
+      title: "红杉机器人公司研究",
+      type: "company",
+      sourceChannel: "web",
+      task: {
+        ...material.task,
+        taskId: "task-company",
+        type: "company_research",
+      },
+    };
+    const industry: ConversationSummary = {
+      ...material,
+      conversationId: "conversation-industry",
+      title: "人工智能行业研究",
+      type: "industry",
+      sourceChannel: "feishu",
+      task: {
+        ...material.task,
+        taskId: "task-industry",
+        type: "industry_research",
+      },
+    };
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([material, company, industry]),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    const rail = await screen.findByRole("complementary", { name: "研究对话" });
+    const search = within(rail).getByRole("textbox", {
+      name: "搜索对话或来源",
+    });
+
+    fireEvent.change(search, { target: { value: "飞书" } });
+    expect(within(rail).getByText("人工智能行业研究")).toBeTruthy();
+    expect(within(rail).queryByText("红杉机器人公司研究")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "公司" } });
+    expect(within(rail).getByText("红杉机器人公司研究")).toBeTruthy();
+    expect(within(rail).queryByText("人工智能行业研究")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "白杨智能" } });
+    expect(within(rail).getByText("白杨智能 BP.txt")).toBeTruthy();
+    expect(within(rail).queryByText("红杉机器人公司研究")).toBeNull();
+  });
+
+  it("分开呈现冻结材料证据与持久 Exa 来源，并只链接安全 URL", async () => {
+    localStorage.setItem("boyuan-access-token", "workbench-token");
+    localStorage.setItem("boyuan-user", "u-investor");
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
+      new Response("document bytes", {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workbench-document");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const clickDownload = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    const detail = companyResearchDetail();
+    detail.companyResearch?.sources.push({
+      evidenceId: "evidence-web-unsafe",
+      sourceType: "web",
+      quote: "不安全地址只显示，不打开。",
+      site: "unsafe.example",
+      url: "javascript:alert(1)",
+      retrievedAt: "2026-08-26T02:00:00.000Z",
+      accessStatus: "metadata_only",
+    });
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+          initialConversationId={detail.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("白杨智能公开进展")).toBeTruthy();
+    expect(screen.getByText("example.com")).toBeTruthy();
+    expect(screen.getByText("https://example.com/company")).toBeTruthy();
+    expect(screen.getByText(/已获取/)).toBeTruthy();
+    const sourceLink = screen.getByRole("link", {
+      name: "打开外部来源：白杨智能公开进展",
+    });
+    expect(sourceLink.getAttribute("href")).toBe("https://example.com/company");
+    expect(screen.getByText("evidence-material-approved")).toBeTruthy();
+    expect(screen.queryByText("evidence-web-1")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "下载原文" }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    expect(fetcher).toHaveBeenLastCalledWith(
+      "/api/v1/documents/document-1/content",
+      expect.objectContaining({
+        headers: {
+          accept: "application/octet-stream",
+          authorization: "Bearer workbench-token",
+          "x-user-id": "u-investor",
+        },
+      }),
+    );
+
+    const materialRow = document.querySelector(".by-file-row");
+    expect(materialRow).toBeTruthy();
+    fireEvent.click(materialRow as HTMLElement);
+    const drawer = screen.getByRole("complementary", { name: "证据详情" });
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: "下载原文" }),
+    );
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(clickDownload).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("javascript:alert(1)")).toBeNull();
+    expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(screen.queryByText(/尚未执行外部信息核验/)).toBeNull();
+  });
+
+  it("Exa 已执行但没有结果时不再显示尚未执行", async () => {
+    const detail = companyResearchDetail();
+    if (!detail.companyResearch) throw new Error("company research missing");
+    detail.companyResearch.sources = [];
+    detail.analysisSections[0]!.evidence = detail.analysisSections[0]!.evidence.filter(
+      (item) => item.sourceType === "material",
+    );
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+          initialConversationId={detail.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("外部信息核验已执行，本次未返回可展示来源。"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/尚未执行外部信息核验/)).toBeNull();
+  });
+
+  it.each(["company", "industry"] as const)(
+    "%s Exa 失败时展示执行详情和重新发送语义",
+    async (kind) => {
+      const detail = failedExternalResearchDetail(kind);
+      const client: ResearchPlatformClient = {
+        listConversations: vi.fn().mockResolvedValue([]),
+        getConversation: vi.fn().mockResolvedValue(detail),
+        uploadDocument: vi.fn(),
+        startCompanyResearch: vi.fn(),
+        startIndustryResearch: vi.fn(),
+      };
+
+      render(
+        <MemoryRouter>
+          <WorkbenchPage
+            data={emptyBootstrap()}
+            reload={vi.fn()}
+            researchClient={client}
+            companyClient={directoryClient()}
+            industryClient={industryClient()}
+            initialConversationId={detail.conversationId}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText("检索失败")).toBeTruthy();
+      expect(
+        screen.getByText(
+          new RegExp(`外部检索步骤失败：${kind}_exa_failed.*重新输入原研究问题.*重试`),
+        ),
+      ).toBeTruthy();
+      if (kind === "company") {
+        expect(screen.getByText("白杨智能公开进展")).toBeTruthy();
+      }
+      expect(screen.queryByText("检索中")).toBeNull();
+    },
+  );
 });
 
 function emptyBootstrap(): Bootstrap {
@@ -276,6 +630,33 @@ function directoryClient(items: CompanyDirectoryItem[] = []): CompanyDirectoryCl
     get: vi.fn(),
     uploadDocument: vi.fn(),
     setWatched: vi.fn(),
+  };
+}
+
+function industryClient(items: IndustryDirectoryItemV1[] = []): IndustryDirectoryClient {
+  return {
+    list: vi.fn().mockResolvedValue({
+      items,
+      total: items.length,
+      unclassifiedMaterialCount: 0,
+    }),
+    get: vi.fn(),
+    uploadDocument: vi.fn(),
+    setWatched: vi.fn(),
+  };
+}
+
+function industryItem(industryId: string, name: string): IndustryDirectoryItemV1 {
+  return {
+    industryId,
+    name,
+    summary: `${name}产业链`,
+    status: "active",
+    watched: false,
+    version: 1,
+    materialCount: 0,
+    companyCount: 0,
+    updatedAt: "2026-08-26T00:00:00.000Z",
   };
 }
 
@@ -364,4 +745,109 @@ function conversationDetail(): ConversationDetail {
       },
     ],
   };
+}
+
+function companyResearchDetail(): ConversationDetail {
+  const detail = conversationDetail();
+  detail.type = "company";
+  detail.title = "白杨智能有限公司公司研究";
+  detail.task.type = "company_research";
+  detail.task.steps.push({
+    stepId: "step-search",
+    name: "execute_external_search",
+    position: 8,
+    status: "completed",
+    attempts: 1,
+  });
+  detail.analysisSections = [
+    {
+      key: "company_research",
+      title: "公司研究结论",
+      summary: "内部材料与公开来源已分别核验。",
+      evidence: [
+        {
+          evidenceId: "evidence-material-approved",
+          sourceType: "material",
+          quote: "公司专注企业智能化服务。",
+          fileName: "白杨智能 BP.txt",
+          documentId: "document-1",
+          page: 2,
+        },
+        {
+          evidenceId: "evidence-web-1",
+          sourceType: "web",
+          quote: "公司发布公开进展。",
+          title: "白杨智能公开进展",
+          site: "example.com",
+          url: "https://example.com/company",
+          retrievedAt: "2026-08-26T01:00:00.000Z",
+        },
+      ],
+    },
+  ];
+  detail.companyResearch = {
+    runId: "research-1",
+    companyId: "company-1",
+    intent: "核验最新公开进展",
+    explicitWebSearch: true,
+    triggerReason: "user_requested",
+    publicQuery: "白杨智能 最新公开进展",
+    summary: "内部材料与公开来源已分别核验。",
+    sources: [
+      {
+        evidenceId: "evidence-web-1",
+        sourceType: "web",
+        quote: "公司发布公开进展。",
+        title: "白杨智能公开进展",
+        site: "example.com",
+        url: "https://example.com/company",
+        retrievedAt: "2026-08-26T01:00:00.000Z",
+        accessStatus: "accessible",
+      },
+    ],
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T01:00:00.000Z",
+  };
+  return detail;
+}
+
+function failedExternalResearchDetail(
+  kind: "company" | "industry",
+): ConversationDetail {
+  const detail = companyResearchDetail();
+  detail.conversationId = `conversation-${kind}-failed`;
+  detail.type = kind;
+  detail.status = "failed";
+  detail.task.type = kind === "company" ? "company_research" : "industry_research";
+  detail.task.status = "failed";
+  detail.task.currentStep =
+    kind === "company" ? "execute_external_search" : "execute_industry_search";
+  const searchStep = detail.task.steps.find((step) =>
+    ["execute_external_search", "execute_industry_search"].includes(step.name),
+  );
+  if (!searchStep) throw new Error("search step missing");
+  searchStep.name = detail.task.currentStep;
+  searchStep.status = "failed";
+  searchStep.errorCode = `${kind}_exa_failed`;
+  detail.analysisSections[0]!.evidence = detail.analysisSections[0]!.evidence.filter(
+    (item) => item.sourceType === "material",
+  );
+  const companyResearch = detail.companyResearch;
+  if (!companyResearch) throw new Error("company research missing");
+  if (kind === "industry") {
+    companyResearch.sources = [];
+    delete detail.companyResearch;
+    detail.industryResearch = {
+      runId: companyResearch.runId,
+      industryId: "industry-1",
+      intent: companyResearch.intent,
+      explicitWebSearch: companyResearch.explicitWebSearch,
+      triggerReason: "user_requested",
+      publicQuery: companyResearch.publicQuery,
+      sources: [],
+      createdAt: companyResearch.createdAt,
+      updatedAt: companyResearch.updatedAt,
+    };
+  }
+  return detail;
 }

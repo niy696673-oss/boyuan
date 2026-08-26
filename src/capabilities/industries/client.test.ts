@@ -41,4 +41,29 @@ describe("行业目录客户端", () => {
         }),
       );
   });
+
+  it("上传行业材料并使用版本保存订阅状态", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ conversation: {}, reusedDocument: false }))
+      .mockResolvedValueOnce(Response.json({ industryId: "industry/1", watched: true }));
+    const client = createIndustryDirectoryClient(fetcher);
+    const file = new File(["行业材料"], "行业材料.txt", { type: "text/plain" });
+
+    await client.uploadDocument("industry/1", file);
+    await client.setWatched("industry/1", true, 2);
+
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/industries/industry%2F1/documents",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/industries/industry%2F1/watch",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ watched: true, expectedVersion: 2 }),
+      }),
+    );
+  });
 });

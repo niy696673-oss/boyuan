@@ -70,7 +70,9 @@ describe('direct Feishu file intake', () => {
       chatId: 'oc_chat',
       sessionId: 'feishu:om_pdf',
       messageId: 'om_pdf',
+      fileKey: 'file_pdf',
       responseKind: 'loading',
+      cardKind: 'loading',
       card: { schema: '2.0', body: { elements: [{ content: '资料处理中', tag: 'markdown' }] } },
     })).resolves.toEqual({ messageId: 'om_status_card' });
 
@@ -91,6 +93,60 @@ describe('direct Feishu file intake', () => {
       content: expect.stringContaining('BP 导入 · 事实核验'),
     }));
     expect(JSON.stringify([reply.mock.calls, update.mock.calls])).not.toContain('gpt-5.6-sol');
+  });
+
+  it('uses a stable attachment-level UUID for each card reply', async () => {
+    const reply = vi.fn(async (_input: { uuid: string }) => ({ messageId: 'om_status_card' }));
+    const messenger = new FeishuCardMessenger({ reply, update: vi.fn(async () => undefined) });
+    const base = {
+      chatId: 'oc_chat',
+      sessionId: 'feishu:om_pdf',
+      messageId: 'om_pdf',
+      card: { schema: '2.0' },
+    } as const;
+
+    await messenger.sendCard({ ...base, fileKey: 'file_one', responseKind: 'loading', cardKind: 'loading' });
+    await messenger.sendCard({ ...base, fileKey: 'file_two', responseKind: 'loading', cardKind: 'loading' });
+    await messenger.sendCard({ ...base, fileKey: 'file_one', responseKind: 'loading', cardKind: 'loading' });
+    await messenger.sendCard({ ...base, fileKey: 'file_one', responseKind: 'final', cardKind: 'failure' });
+    await messenger.sendCard({ ...base, fileKey: 'file_one', responseKind: 'final', cardKind: 'completion' });
+
+    const uuids = reply.mock.calls.map(([input]) => input.uuid);
+    expect(uuids[0]).not.toBe(uuids[1]);
+    expect(uuids[0]).toBe(uuids[2]);
+    expect(uuids[0]).not.toBe(uuids[3]);
+    expect(uuids[3]).not.toBe(uuids[4]);
+  });
+
+  it('processes different attachments from the same message concurrently', async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const materialize = vi.fn(async (message: { fileKey: string; fileName: string }) => ({
+      ...pdf,
+      fileKey: message.fileKey,
+      name: message.fileName,
+    }));
+    const ingestTurn = vi.fn(async (input) => {
+      await gate;
+      const attachment = input.attachments[0]!;
+      return [{ fileKey: attachment.fileKey, fileName: attachment.name, status: 'completed' as const }];
+    });
+    const ingress = new DirectFeishuFileIngress({ materialize, ingestTurn });
+    const base = {
+      chatId: 'oc_chat',
+      messageId: 'om_shared',
+      receivedAt: new Date(1787702400000).toISOString(),
+    };
+
+    const first = ingress.resume({ ...base, fileKey: 'file_one', fileName: 'one.pdf' });
+    const second = ingress.resume({ ...base, fileKey: 'file_two', fileName: 'two.pdf' });
+    await vi.waitFor(() => expect(materialize).toHaveBeenCalledTimes(2));
+    release?.();
+    await Promise.all([first, second]);
+
+    expect(ingestTurn).toHaveBeenCalledTimes(2);
+    expect(ingestTurn.mock.calls.map(([input]) => input.attachments[0]?.fileKey).sort())
+      .toEqual(['file_one', 'file_two']);
   });
 
   it('posts the processing card before downloading the file and passes its message id to intake', async () => {

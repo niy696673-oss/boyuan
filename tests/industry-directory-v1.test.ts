@@ -8,8 +8,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
+import { createDeterministicIndustryResearchAdapter } from "../server/research-platform/industry-research/deterministic-industry-research.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
+import { createDeterministicSearchAdapter } from "../server/research-platform/search/deterministic-search.js";
 import { initialStoreData, Store } from "../server/store.js";
 
 const roots: string[] = [];
@@ -115,6 +117,177 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(missing.status).toBe(404);
     expect(missing.body).toMatchObject({ error: "not_found" });
   });
+
+  it("行业材料上传和订阅状态写入 SQLite，并在目录与详情中同步", async () => {
+    const { app, platform } = await fixture();
+    await seedIndustry(app, platform);
+    const companiesBefore = await platform.listCompanies();
+    const candidatesBefore = await platform.listCandidates();
+    const directory = await request(app).get("/api/v1/industries");
+    const industry = directory.body.items[0] as {
+      industryId: string;
+      version: number;
+    };
+
+    const uploaded = await request(app)
+      .post(`/api/v1/industries/${industry.industryId}/documents`)
+      .attach(
+        "file",
+        Buffer.from("人工智能行业补充材料\n产业链中游包括工业软件。"),
+        "人工智能行业补充.txt",
+      );
+    expect(uploaded.status).toBe(201);
+    const conversationId = uploaded.body.conversation.conversationId as string;
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const completed = await request(app).get(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    expect(completed.status).toBe(200);
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      industry: { industryId: industry.industryId },
+      document: {
+        parseStatus: "parsed",
+        archiveStatus: "archived",
+        materialType: "industry_material",
+      },
+      task: {
+        status: "completed",
+        steps: expect.arrayContaining([
+          expect.objectContaining({
+            name: "parse_document",
+            status: "completed",
+          }),
+          expect.objectContaining({
+            name: "identify_company",
+            status: "skipped",
+          }),
+          expect.objectContaining({
+            name: "suggest_conversation_reuse",
+            status: "skipped",
+          }),
+          expect.objectContaining({
+            name: "analyze_material",
+            status: "skipped",
+          }),
+          expect.objectContaining({
+            name: "generate_candidates",
+            status: "skipped",
+          }),
+        ]),
+      },
+    });
+    expect(
+      (await platform.listCompanies()).map((item) => item.companyId),
+    ).toEqual(companiesBefore.map((item) => item.companyId));
+    expect(
+      (await platform.listCandidates()).map((item) => item.candidateId),
+    ).toEqual(candidatesBefore.map((item) => item.candidateId));
+
+    const watched = await request(app)
+      .put(`/api/v1/industries/${industry.industryId}/watch`)
+      .send({ watched: true, expectedVersion: industry.version });
+    expect(watched.status).toBe(200);
+    expect(watched.body).toMatchObject({
+      watched: true,
+      version: industry.version + 1,
+      materials: expect.arrayContaining([
+        expect.objectContaining({
+          conversationId,
+          fileName: "人工智能行业补充.txt",
+          materialType: "industry_material",
+          status: "completed",
+        }),
+      ]),
+    });
+
+    const refreshed = await request(app).get("/api/v1/industries");
+    expect(refreshed.body.items[0]).toMatchObject({
+      watched: true,
+      version: industry.version + 1,
+    });
+  });
+
+  it("创建持久行业研究，服务重启后继续执行并保存来源与结果", async () => {
+    const { app, dataRoot, platform, store } = await fixture();
+    await seedIndustry(app, platform);
+    const directory = await request(app).get("/api/v1/industries");
+    const industryId = directory.body.items[0].industryId as string;
+
+    const started = await request(app).post("/api/v1/industry-research").send({
+      industryId,
+      intent: "分析产业链结构、重点公司与关键趋势",
+      explicitWebSearch: true,
+    });
+    expect(started.status).toBe(201);
+    expect(started.body).toMatchObject({
+      type: "industry",
+      status: "waiting",
+      industry: { industryId, name: "人工智能" },
+      task: {
+        type: "industry_research",
+        currentStep: "load_industry_context",
+      },
+    });
+    const conversationId = started.body.conversationId as string;
+
+    platform.close();
+    modules.splice(modules.indexOf(platform), 1);
+    const reopened = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+      industryResearch: createDeterministicIndustryResearchAdapter(),
+      search: createDeterministicSearchAdapter(),
+    });
+    modules.push(reopened);
+    const restarted = createApp(store, createDemoServices(store), {
+      researchPlatform: reopened,
+    });
+    for (let index = 0; index < 20; index += 1) {
+      if ((await reopened.runPendingSteps()) === 0) break;
+    }
+
+    const completed = await request(restarted).get(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    expect(completed.status).toBe(200);
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      industry: { industryId, name: "人工智能" },
+      industryResearch: {
+        industryId,
+        triggerReason: "user_requested",
+        summary: expect.stringContaining("人工智能"),
+        sources: [expect.objectContaining({
+          sourceType: "web",
+          title: "人工智能公开信息",
+          site: "example.com",
+          url: "https://example.com/companies/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD",
+          accessStatus: "accessible",
+          retrievedAt: "2026-08-24T00:00:00.000Z",
+        })],
+      },
+      task: {
+        status: "completed",
+        resultStatus: "validated",
+        steps: expect.arrayContaining([
+          expect.objectContaining({ name: "analyze_industry", status: "completed" }),
+        ]),
+      },
+    });
+
+    const detail = await request(restarted).get(`/api/v1/industries/${industryId}`);
+    expect(detail.body.researchRecords).toEqual([
+      expect.objectContaining({
+        conversationId,
+        status: "completed",
+        summary: expect.stringContaining("人工智能"),
+      }),
+    ]);
+  });
 });
 
 async function seedIndustry(
@@ -142,6 +315,8 @@ async function fixture() {
   const platform = createPlatformModule({
     dataRoot,
     analysis: createDeterministicAnalysisAdapter(),
+    industryResearch: createDeterministicIndustryResearchAdapter(),
+    search: createDeterministicSearchAdapter(),
   });
   modules.push(platform);
   const store = new Store({

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { FeishuCardMessenger } from '../src/direct-feishu-intake.js';
 import { IntakeService, jobKey } from '../src/intake-service.js';
 import { MemoryJobStore } from '../src/job-store.js';
 import type { IntakeAttachment, IntakeTurn, Messenger, PlatformClient, SendCardInput } from '../src/types.js';
@@ -105,8 +106,80 @@ describe('intake service', () => {
       ]);
       expect(outcomes.map((item) => item.completionCardMs)).toEqual([600, 600]);
       expect(sent.map((item) => item.responseKind)).toEqual(['final', 'final']);
+      expect(sent.map((item) => item.fileKey)).toEqual(['one', 'two']);
       expect(sent[0]?.timeoutMs).toBeUndefined();
       expect(JSON.stringify(sent[0]?.card)).toContain('深度分析继续运行');
+    } finally { temp.cleanup(); }
+  });
+
+  it('binds a shared processing card to only one attachment in a multi-attachment turn', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    const messenger: Messenger = {
+      sendCard: vi.fn(async () => ({ messageId: 'om_second_card' })),
+      updateCard: vi.fn(async () => undefined),
+    };
+    const input = turn(attachment('one'), attachment('two'));
+    input.statusCardMessageId = 'om_shared_status';
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path), platform, messenger, store: new MemoryJobStore(),
+      });
+      await service.ingestTurn(input);
+
+      expect(messenger.updateCard).toHaveBeenCalledOnce();
+      expect(messenger.updateCard).toHaveBeenCalledWith(expect.objectContaining({
+        cardMessageId: 'om_shared_status',
+      }));
+      expect(messenger.sendCard).toHaveBeenCalledOnce();
+      expect(messenger.sendCard).toHaveBeenCalledWith(expect.objectContaining({
+        messageId: 'om_message',
+        fileKey: 'two',
+        responseKind: 'final',
+      }));
+    } finally { temp.cleanup(); }
+  });
+
+  it('delivers a completion card after an earlier failure UUID was deduplicated', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    vi.mocked(platform.upload)
+      .mockRejectedValueOnce(new Error('temporary_upload_failure'))
+      .mockResolvedValueOnce({
+        conversation: conversation('conversation-one', 'processing'),
+        reusedDocument: false,
+      });
+    const delivered = new Map<string, string>();
+    const reply = vi.fn(async (input: {
+      uuid: string;
+      content: string;
+    }) => {
+      if (!delivered.has(input.uuid)) delivered.set(input.uuid, input.content);
+      return { messageId: `om_card_${delivered.size}` };
+    });
+    const messenger = new FeishuCardMessenger({
+      reply,
+      update: vi.fn(async () => undefined),
+    });
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path),
+        platform,
+        messenger,
+        store: new MemoryJobStore(),
+        setTimer: () => undefined,
+      });
+
+      await expect(service.ingestTurn(turn(attachment('one')))).resolves.toMatchObject([
+        { status: 'failed' },
+      ]);
+      await expect(service.ingestTurn(turn(attachment('one')))).resolves.toMatchObject([
+        { status: 'completed' },
+      ]);
+
+      expect(delivered.size).toBe(2);
+      expect([...delivered.values()].some((content) => content.includes('材料处理失败'))).toBe(true);
+      expect([...delivered.values()].some((content) => content.includes('BP 导入 · 事实核验'))).toBe(true);
     } finally { temp.cleanup(); }
   });
 

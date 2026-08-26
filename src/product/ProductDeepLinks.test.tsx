@@ -94,11 +94,15 @@ describe("飞书卡片实体深链", () => {
 function industryClient(): IndustryDirectoryClient {
   return {
     list: vi.fn(),
+    uploadDocument: vi.fn(),
+    setWatched: vi.fn(),
     get: vi.fn().mockResolvedValue({
       industryId: "industry-1",
       name: "人工智能",
       summary: "人工智能产业",
       status: "active",
+      watched: false,
+      version: 1,
       materialCount: 0,
       companyCount: 1,
       updatedAt: "2026-08-26T00:00:00.000Z",

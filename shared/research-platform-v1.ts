@@ -163,6 +163,15 @@ export interface CompanyResearchRecordV1 {
   updatedAt: string;
 }
 
+export interface IndustryResearchRecordV1 {
+  conversationId: string;
+  runId: string;
+  intent: string;
+  status: CompanyConversationStatusV1;
+  summary?: string;
+  updatedAt: string;
+}
+
 export interface CompanyRelationV1 {
   relationId: string;
   direction: "outgoing" | "incoming";
@@ -200,9 +209,26 @@ export interface IndustryDirectoryItemV1 {
   name: string;
   summary: string;
   status: "draft" | "active";
+  watched: boolean;
+  version: number;
   materialCount: number;
   companyCount: number;
   updatedAt: string;
+}
+
+export interface PlatformNotificationV1 {
+  notificationId: string;
+  kind: "candidate" | "task_failed" | "research_completed";
+  title: string;
+  description: string;
+  targetUrl: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+export interface PlatformNotificationListV1 {
+  items: PlatformNotificationV1[];
+  unreadCount: number;
 }
 
 export interface IndustryDirectoryResponseV1 {
@@ -243,6 +269,7 @@ export interface IndustryCompanyPlacementV1 {
 export interface IndustryDetailResponseV1 extends IndustryDirectoryItemV1 {
   nodes: IndustryNodeV1[];
   materials: IndustryMaterialV1[];
+  researchRecords: IndustryResearchRecordV1[];
   companies: IndustryCompanyPlacementV1[];
 }
 

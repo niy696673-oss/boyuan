@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
@@ -80,6 +80,101 @@ describe("持久行业目录页面", () => {
     fireEvent.click(screen.getByRole("button", { name: /^材料/ }));
     expect(screen.getAllByText("未关联公司")).toHaveLength(2);
   });
+
+  it("概览和材料表按 API 状态诚实展示处理进度", async () => {
+    const client = fakeClient();
+    const detail = industryDetail();
+    const statuses = [
+      ["processing", "处理中"],
+      ["waiting", "待处理"],
+      ["pending_confirmation", "待处理"],
+      ["failed", "失败"],
+      ["completed", "已完成"],
+    ] as const;
+    detail.materials = statuses.map(([status], index) => ({
+      conversationId: `conversation-status-${index}`,
+      documentId: `document-status-${index}`,
+      fileName: `${status}材料.pdf`,
+      status,
+      sourceChannel: "web",
+      updatedAt: `2026-08-26T0${index}:00:00.000Z`,
+    }));
+    vi.mocked(client.get).mockResolvedValue(detail);
+
+    render(
+      <MemoryRouter initialEntries={["/industry/industry-1"]}>
+        <Routes>
+          <Route path="/industry/:id" element={<IndustryDetailPage data={bootstrap()} industryClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "人工智能" });
+    for (const [status, label] of statuses) {
+      expect(
+        screen.getByRole("button", { name: new RegExp(`${status}材料.*${label}`) }),
+      ).toBeTruthy();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /^材料/ }));
+    for (const [status, label] of statuses) {
+      expect(
+        screen.getByRole("button", { name: new RegExp(`${status}材料.*${label}`) }),
+      ).toBeTruthy();
+    }
+    expect(screen.queryByText("已分析")).toBeNull();
+  });
+
+  it("上传后立即刷新时仍展示 API 返回的处理中状态", async () => {
+    const client = fakeClient();
+    const initial = industryDetail();
+    const refreshed = industryDetail();
+    refreshed.materials = [
+      {
+        conversationId: "conversation-uploading",
+        documentId: "document-uploading",
+        fileName: "新上传行业材料.pdf",
+        status: "processing",
+        sourceChannel: "web",
+        updatedAt: "2026-08-26T03:00:00.000Z",
+      },
+      ...refreshed.materials,
+    ];
+    vi.mocked(client.get)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(refreshed);
+    vi.mocked(client.uploadDocument).mockResolvedValue({
+      reusedDocument: false,
+      conversation: { conversationId: "conversation-uploading" },
+    } as Awaited<ReturnType<IndustryDirectoryClient["uploadDocument"]>>);
+
+    render(
+      <MemoryRouter initialEntries={["/industry/industry-1"]}>
+        <Routes>
+          <Route path="/industry/:id" element={<IndustryDetailPage data={bootstrap()} industryClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "人工智能" });
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: {
+        files: [
+          new File(["fixture"], "新上传行业材料.pdf", {
+            type: "application/pdf",
+          }),
+        ],
+      },
+    });
+
+    await waitFor(() => expect(client.get).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByRole("button", {
+        name: /新上传行业材料\.pdf.*处理中/,
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText("已分析")).toBeNull();
+  });
 });
 
 function fakeClient(): IndustryDirectoryClient {
@@ -91,6 +186,8 @@ function fakeClient(): IndustryDirectoryClient {
         name: detail.name,
         summary: detail.summary,
         status: detail.status,
+        watched: detail.watched,
+        version: detail.version,
         materialCount: detail.materialCount,
         companyCount: detail.companyCount,
         updatedAt: detail.updatedAt,
@@ -99,6 +196,8 @@ function fakeClient(): IndustryDirectoryClient {
       unclassifiedMaterialCount: 3,
     }),
     get: vi.fn().mockResolvedValue(detail),
+    uploadDocument: vi.fn(),
+    setWatched: vi.fn().mockResolvedValue(detail),
   };
 }
 
@@ -108,6 +207,8 @@ function industryDetail(): IndustryDetailResponseV1 {
     name: "人工智能",
     summary: "人工智能产业链",
     status: "active" as const,
+    watched: false,
+    version: 1,
     materialCount: 2,
     companyCount: 1,
     updatedAt: "2026-08-26T00:00:00.000Z",
@@ -120,6 +221,7 @@ function industryDetail(): IndustryDetailResponseV1 {
         position: 1,
       },
     ],
+    researchRecords: [],
     materials: [
       {
         conversationId: "conversation-1",

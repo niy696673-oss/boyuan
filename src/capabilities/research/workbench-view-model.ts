@@ -1,17 +1,41 @@
 import type { ResearchTask } from "../../types";
 import type {
+  AnalysisSection,
   ConversationDetail,
   ConversationSummary,
   ConversationStatus,
+  ExternalResearchSource,
+  PlatformEvidence,
   TaskStep,
 } from "./types";
+
+export interface WorkbenchExternalResearch {
+  requested: boolean;
+  executed: boolean;
+  status: "not_requested" | "pending" | "completed" | "failed";
+  failureDetail?: string;
+  query?: string;
+  sources: ExternalResearchSource[];
+}
 
 export interface WorkbenchResearch {
   task: ResearchTask;
   platformConversationId: string;
   platformStatus: ConversationStatus;
+  materialDocumentId: string;
   materialFileName: string;
   pendingCandidateCount: number;
+  analysisSections?: AnalysisSection[];
+  internalMaterialEvidence?: PlatformEvidence[];
+  externalResearch?: WorkbenchExternalResearch;
+  industry?: {
+    id: string;
+    name: string;
+    parentId: null;
+    level: 0;
+    description: string;
+    source: string;
+  };
 }
 
 export function toWorkbenchConversation(
@@ -20,6 +44,7 @@ export function toWorkbenchConversation(
   return {
     platformConversationId: conversation.conversationId,
     platformStatus: conversation.status,
+    materialDocumentId: conversation.document.documentId,
     materialFileName: conversation.document.fileName,
     pendingCandidateCount: 0,
     task: {
@@ -55,6 +80,10 @@ const stepNames: Record<string, string> = {
   execute_external_search: "执行 Exa 外部核验",
   analyze_company: "AI 公司研究",
   generate_research_candidates: "生成研究候选",
+  load_industry_context: "加载行业材料与产业链",
+  plan_industry_search: "规划行业外部核验",
+  execute_industry_search: "执行 Exa 行业检索",
+  analyze_industry: "AI 行业研究",
 };
 
 export function toWorkbenchResearch(
@@ -71,11 +100,96 @@ export function toWorkbenchResearch(
     .join("\n");
 
   const summary = toWorkbenchConversation(conversation);
+  const researchRecord = conversation.companyResearch || conversation.industryResearch;
+  const internalMaterialEvidence = uniqueEvidence(
+    conversation.analysisSections.flatMap((section) =>
+      section.evidence.filter((evidence) => evidence.sourceType === "material"),
+    ),
+  );
+  const externalSources = uniqueExternalSources([
+    ...(researchRecord?.sources || []),
+    ...conversation.analysisSections.flatMap((section) =>
+      section.evidence
+        .filter(
+          (evidence): evidence is PlatformEvidence & { sourceType: "web" } =>
+            evidence.sourceType === "web",
+        )
+        .map((evidence) => ({ ...evidence, accessStatus: "metadata_only" as const })),
+    ),
+  ]);
+  const externalSearchExecuted = conversation.task.steps.some(
+    (step) =>
+      ["execute_external_search", "execute_industry_search"].includes(step.name) &&
+      step.status === "completed",
+  );
+  const failedExternalSearchStep = conversation.task.steps.find(
+    (step) =>
+      ["execute_external_search", "execute_industry_search"].includes(step.name) &&
+      step.status === "failed",
+  );
+  const externalSearchRequested = Boolean(
+    researchRecord &&
+      (researchRecord.explicitWebSearch ||
+        (researchRecord.triggerReason && researchRecord.triggerReason !== "not_needed")),
+  );
+  const externalSearchFailed = Boolean(
+    researchRecord &&
+      (failedExternalSearchStep ||
+        (externalSearchRequested &&
+          !externalSearchExecuted &&
+          externalSources.length === 0 &&
+          conversation.task.status === "failed")),
+  );
   return {
     ...summary,
+    ...(conversation.industry
+      ? {
+          industry: {
+            id: conversation.industry.industryId,
+            name: conversation.industry.name,
+            parentId: null,
+            level: 0,
+            description: conversation.industry.summary,
+            source: "研究平台 SQLite",
+          },
+        }
+      : {}),
     pendingCandidateCount: conversation.candidates.filter((candidate) =>
       ["pending", "conflicted"].includes(candidate.status),
     ).length,
+    analysisSections: conversation.analysisSections.map((section) => ({
+      ...section,
+      evidence: section.evidence.filter(
+        (evidence) => evidence.sourceType === "material",
+      ),
+    })),
+    internalMaterialEvidence,
+    ...(researchRecord
+      ? {
+          externalResearch: {
+            requested: externalSearchRequested,
+            executed: externalSearchExecuted || externalSources.length > 0,
+            status: externalSearchFailed
+              ? "failed"
+              : externalSearchExecuted || externalSources.length > 0
+                ? "completed"
+                : externalSearchRequested
+                  ? "pending"
+                  : "not_requested",
+            ...(externalSearchFailed
+              ? {
+                  failureDetail: failedExternalSearchStep?.errorCode
+                    ? `外部检索步骤失败：${failedExternalSearchStep.errorCode}`
+                    : "研究任务在外部检索完成前失败",
+                }
+              : {}),
+            ...(researchRecord.publicQuery
+              ? { query: researchRecord.publicQuery }
+              : {}),
+            sources: externalSources,
+          },
+        }
+      : {}),
     task: {
       ...summary.task,
       steps: conversation.task.steps.map(toWorkbenchStep),
@@ -91,6 +205,20 @@ export function toWorkbenchResearch(
         : {}),
     },
   };
+}
+
+function uniqueEvidence(items: PlatformEvidence[]): PlatformEvidence[] {
+  return [...new Map(items.map((item) => [item.evidenceId, item])).values()];
+}
+
+function uniqueExternalSources(
+  items: ExternalResearchSource[],
+): ExternalResearchSource[] {
+  const unique = new Map<string, ExternalResearchSource>();
+  for (const item of items) {
+    if (!unique.has(item.evidenceId)) unique.set(item.evidenceId, item);
+  }
+  return [...unique.values()];
 }
 
 function workbenchStatus(status: ConversationStatus): ResearchTask["status"] {

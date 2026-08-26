@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -53,6 +53,9 @@ export function IndustriesPage({
   const [unclassifiedMaterialCount, setUnclassifiedMaterialCount] = useState(0);
   const [loadError, setLoadError] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [uploadIndustryId, setUploadIndustryId] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,6 +73,12 @@ export function IndustriesPage({
       });
     return () => controller.abort();
   }, [industryClient, refreshKey]);
+
+  useEffect(() => {
+    if (!uploadIndustryId && details?.[0]) {
+      setUploadIndustryId(details[0].industryId);
+    }
+  }, [details, uploadIndustryId]);
 
   const catalogData = useMemo(
     () => industryBootstrap(data, details || []),
@@ -115,6 +124,21 @@ export function IndustriesPage({
       );
     } finally {
       setAnalyzing(false);
+    }
+  };
+  const uploadIndustryMaterial = async (file?: File) => {
+    if (!file || !uploadIndustryId || uploading) return;
+    setUploading(true);
+    setAnalysisNotice(`正在上传 ${file.name}…`);
+    try {
+      await industryClient.uploadDocument(uploadIndustryId, file);
+      setAnalysisNotice(`${file.name} 已保存并绑定当前行业，后台分析已开始。`);
+      setRefreshKey((key) => key + 1);
+    } catch (error) {
+      setAnalysisNotice(error instanceof Error ? error.message : "行业材料上传失败");
+    } finally {
+      setUploading(false);
+      if (uploadRef.current) uploadRef.current.value = "";
     }
   };
   if (loadError) return <IndustryLoadState title="行业目录加载失败" />;
@@ -166,10 +190,29 @@ export function IndustriesPage({
             <p>基于已有 BP 建立正式行业分类、产业环节和公司映射。</p>
           </div>
           <div>
-            <button>
+            <select
+              aria-label="上传目标行业"
+              value={uploadIndustryId}
+              onChange={(event) => setUploadIndustryId(event.target.value)}
+            >
+              {details.map((detail) => (
+                <option key={detail.industryId} value={detail.industryId}>{detail.name}</option>
+              ))}
+            </select>
+            <button
+              disabled={!uploadIndustryId || uploading}
+              onClick={() => uploadRef.current?.click()}
+            >
               <Upload />
-              上传行业材料
+              {uploading ? "上传中…" : "上传行业材料"}
             </button>
+            <input
+              ref={uploadRef}
+              hidden
+              type="file"
+              accept=".pdf,.docx,.txt,.md"
+              onChange={(event) => void uploadIndustryMaterial(event.target.files?.[0])}
+            />
             {canAnalyze && (
               <button
                 className="primary"
@@ -262,7 +305,9 @@ export function IndustriesPage({
                       {industry.name} · {new Date(material.updatedAt).toLocaleDateString("zh-CN")}
                     </small>
                   </span>
-                  <em>已分析</em>
+                  <em className={`by-status ${industryMaterialStatus(material.status).tone}`}>
+                    {industryMaterialStatus(material.status).label}
+                  </em>
                   <ChevronRight />
                 </button>
               ))}
@@ -345,6 +390,7 @@ export function IndustryDetailPage({ data, industryClient = defaultIndustryClien
   const { id } = useParams();
   const [detail, setDetail] = useState<IndustryDetailResponseV1 | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "not-found" | "error">("loading");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!id) {
@@ -363,27 +409,40 @@ export function IndustryDetailPage({ data, industryClient = defaultIndustryClien
         setState(error instanceof ResearchPlatformApiError && error.status === 404 ? "not-found" : "error");
       });
     return () => controller.abort();
-  }, [id, industryClient]);
+  }, [id, industryClient, refreshKey]);
 
   if (state === "loading") return <IndustryLoadState title="正在加载行业资料…" />;
   if (state === "not-found") return <IndustryLoadState title="找不到这个行业" description="该行业可能不存在，或已经被合并。" />;
   if (state === "error" || !detail) return <IndustryLoadState title="行业资料加载失败" />;
   const persistentData = industryBootstrap(data, [detail]);
-  return <IndustryDetailContent data={persistentData} detail={detail} industry={persistentData.industryNodes[0]} />;
+  return <IndustryDetailContent
+    data={persistentData}
+    detail={detail}
+    industry={persistentData.industryNodes[0]}
+    industryClient={industryClient}
+    onRefresh={() => setRefreshKey((key) => key + 1)}
+  />;
 }
 
 function IndustryDetailContent({
   data,
   detail,
   industry,
+  industryClient,
+  onRefresh,
 }: {
   data: Bootstrap;
   detail: IndustryDetailResponseV1;
   industry: IndustryNode;
+  industryClient: IndustryDirectoryClient;
+  onRefresh: () => void;
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") === "chain" ? "产业链" : "概览");
+  const [busyAction, setBusyAction] = useState<"upload" | "watch" | "">("");
+  const [notice, setNotice] = useState("");
+  const uploadRef = useRef<HTMLInputElement>(null);
   const descendants = useMemo(
     () => collectDescendants(data.industryNodes, industry.id),
     [data.industryNodes, industry.id],
@@ -417,6 +476,40 @@ function IndustryDetailContent({
     if (name === "产业链") next.set("tab", "chain");
     else next.delete("tab");
     setSearchParams(next, { replace: true });
+  };
+  const upload = async (file?: File) => {
+    if (!file || busyAction) return;
+    setBusyAction("upload");
+    setNotice(`正在上传 ${file.name}…`);
+    try {
+      await industryClient.uploadDocument(detail.industryId, file);
+      setNotice("行业材料已保存，后台分析已开始。");
+      selectTab("材料");
+      onRefresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "行业材料上传失败");
+    } finally {
+      setBusyAction("");
+      if (uploadRef.current) uploadRef.current.value = "";
+    }
+  };
+  const toggleWatch = async () => {
+    if (busyAction) return;
+    setBusyAction("watch");
+    setNotice("");
+    try {
+      const updated = await industryClient.setWatched(
+        detail.industryId,
+        !detail.watched,
+        detail.version,
+      );
+      setNotice(updated.watched ? "已订阅行业更新。" : "已取消行业订阅。");
+      onRefresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "订阅状态保存失败");
+    } finally {
+      setBusyAction("");
+    }
   };
   return (
     <div className="by-industry-detail">
@@ -452,19 +545,34 @@ function IndustryDetailContent({
           </div>
         </dl>
         <div>
-          <button>
+          <button
+            aria-pressed={detail.watched}
+            disabled={Boolean(busyAction)}
+            onClick={() => void toggleWatch()}
+          >
             <Bell />
-            订阅更新
+            {detail.watched ? "已订阅" : "订阅更新"}
           </button>
-          <button>
+          <button disabled={Boolean(busyAction)} onClick={() => uploadRef.current?.click()}>
             <Upload />
-            上传材料
+            {busyAction === "upload" ? "上传中…" : "上传材料"}
           </button>
-          <button className="primary">
+          <input
+            ref={uploadRef}
+            hidden
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            onChange={(event) => void upload(event.target.files?.[0])}
+          />
+          <button
+            className="primary"
+            onClick={() => navigate(`/?industryId=${encodeURIComponent(detail.industryId)}`)}
+          >
             <Sparkles />
             发起研究
           </button>
         </div>
+        {notice && <p role="status">{notice}</p>}
       </header>
       <nav className="by-detail-tabs">
         {tabs.map(([name, count]) => (
@@ -487,7 +595,13 @@ function IndustryDetailContent({
           onOpenTree={() => selectTab("产业链")}
         />
       )}
-      {tab === "材料" && <IndustryMaterials materials={materials} />}
+      {tab === "材料" && (
+        <IndustryMaterials
+          materials={materials}
+          onUpload={() => uploadRef.current?.click()}
+          onOpen={(conversationId) => navigate(`/?conversationId=${encodeURIComponent(conversationId)}`)}
+        />
+      )}
       {tab === "产业链" && (
         <IndustryTree industry={industry} nodes={descendants} data={data} />
       )}
@@ -535,9 +649,9 @@ function IndustryOverview({
                 {material.updatedAt}
               </small>
             </span>
-            <em>
-              <Check />
-              已分析
+            <em className={`by-status ${industryMaterialStatus(material.status).tone}`}>
+              {material.status === "completed" && <Check />}
+              {industryMaterialStatus(material.status).label}
             </em>
             <ChevronRight />
           </button>
@@ -591,21 +705,41 @@ function IndustryOverview({
 
 function IndustryMaterials({
   materials,
+  onUpload,
+  onOpen,
 }: {
   materials: Array<{ material: IndustryMaterialV1; company?: Company }>;
+  onUpload: () => void;
+  onOpen: (conversationId: string) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [source, setSource] = useState<"全部" | "网页" | "飞书">("全部");
+  const filtered = materials.filter(({ material, company }) => {
+    const matchesQuery = !query.trim() || [
+      material.fileName,
+      company?.standardName ?? "",
+      ...(company?.aliases ?? []),
+    ].some((value) => value.toLowerCase().includes(query.trim().toLowerCase()));
+    const matchesSource = source === "全部"
+      || (source === "飞书" ? material.sourceChannel === "feishu" : material.sourceChannel === "web");
+    return matchesQuery && matchesSource;
+  });
   return (
     <section className="by-industry-material-page">
       <header>
         <label>
           <Search />
-          <input placeholder="搜索行业材料" />
+          <input
+            value={query}
+            placeholder="搜索行业材料"
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </label>
-        <button>
+        <button onClick={() => setSource((current) => current === "全部" ? "网页" : current === "网页" ? "飞书" : "全部")}>
           <Filter />
-          筛选
+          {source === "全部" ? "筛选" : source}
         </button>
-        <button className="primary">
+        <button className="primary" onClick={onUpload}>
           <Upload />
           上传材料
         </button>
@@ -618,21 +752,33 @@ function IndustryMaterials({
           <span>关联公司</span>
           <span>处理状态</span>
         </div>
-        {materials.map(({ material, company }) => (
-          <button key={`${material.conversationId}-${material.documentId}`}>
+        {filtered.map(({ material, company }) => (
+          <button key={`${material.conversationId}-${material.documentId}`} onClick={() => onOpen(material.conversationId)}>
             <span>
               <FileText />
               <strong>{material.fileName}</strong>
             </span>
             <span>行业材料</span>
-            <span>{material.updatedAt}</span>
+            <span>{material.sourceChannel === "feishu" ? "飞书" : "网页上传"}</span>
             <span>{company ? company.aliases[0] || company.standardName : "未关联公司"}</span>
-            <span className="success">已分析</span>
+            <span className={`by-status ${industryMaterialStatus(material.status).tone}`}>
+              {industryMaterialStatus(material.status).label}
+            </span>
           </button>
         ))}
+        {!filtered.length && <p>没有符合当前搜索和来源筛选的行业材料。</p>}
       </div>
     </section>
   );
+}
+
+function industryMaterialStatus(
+  status: IndustryMaterialV1["status"],
+): { label: "处理中" | "待处理" | "失败" | "已完成"; tone: "running" | "warning" | "danger" | "success" } {
+  if (status === "completed") return { label: "已完成", tone: "success" };
+  if (status === "failed") return { label: "失败", tone: "danger" };
+  if (status === "processing") return { label: "处理中", tone: "running" };
+  return { label: "待处理", tone: "warning" };
 }
 
 function IndustryTree({

@@ -99,7 +99,9 @@ export interface SendCardInput {
   chatId: string;
   sessionId: string;
   messageId: string;
+  fileKey: string;
   responseKind: 'loading' | 'final';
+  cardKind: 'loading' | 'completion' | 'failure';
   card: JsonObject;
   timeoutMs?: number;
 }

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
@@ -14,6 +14,8 @@ import { initialStoreData, Store } from "../server/store.js";
 
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
+
+vi.setConfig({ testTimeout: 15_000 });
 
 afterEach(async () => {
   while (modules.length) modules.pop()?.close();

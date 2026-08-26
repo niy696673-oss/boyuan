@@ -17,7 +17,15 @@ describe("ResearchPlatformClient", () => {
         Response.json({ conversationId: "conversation/one" }),
       )
       .mockResolvedValueOnce(
+        Response.json([
+          { sourceId: "source/one", title: "白杨智能 BP.pdf" },
+        ]),
+      )
+      .mockResolvedValueOnce(
         Response.json({ conversationId: "company-research/one" }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ conversationId: "industry-research/one" }),
       );
     const client = createResearchPlatformClient(fetcher);
     const file = new File(["fixture"], "白杨智能 BP.txt", {
@@ -26,9 +34,15 @@ describe("ResearchPlatformClient", () => {
 
     await client.uploadDocument(file);
     await client.getConversation("conversation/one");
+    await client.getCompanyResearchWorkflowSources?.("company/one");
     await client.startCompanyResearch({
       companyName: "白杨智能有限公司",
       intent: "核验最新业务",
+      explicitWebSearch: true,
+    });
+    await client.startIndustryResearch({
+      industryId: "industry/one",
+      intent: "分析产业链趋势",
       explicitWebSearch: true,
     });
 
@@ -44,12 +58,29 @@ describe("ResearchPlatformClient", () => {
     );
     expect(fetcher).toHaveBeenNthCalledWith(
       3,
+      "/api/v1/companies/company%2Fone/workflow-sources",
+      expect.objectContaining({ headers: { accept: "application/json" } }),
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      4,
       "/api/v1/company-research",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
           companyName: "白杨智能有限公司",
           intent: "核验最新业务",
+          explicitWebSearch: true,
+        }),
+      }),
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/industry-research",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          industryId: "industry/one",
+          intent: "分析产业链趋势",
           explicitWebSearch: true,
         }),
       }),

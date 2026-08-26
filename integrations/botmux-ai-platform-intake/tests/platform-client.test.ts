@@ -33,6 +33,7 @@ describe('HTTP platform client', () => {
       expect(result.conversation.conversationId).toBe('conversation-stream');
       expect(headers['x-boyuan-intake-key']).toBe('platform-secret-123456');
       expect(headers['x-boyuan-message-id']).toBe('om_message');
+      expect(headers['x-boyuan-file-key']).toBe('key');
       expect(headers['x-boyuan-sender-id']).toBe('ou_sender');
       expect(received).toContain('streamed-content');
       expect(received).toContain('filename="stream.pdf"');
