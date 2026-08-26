@@ -73,11 +73,12 @@ export class DirectFeishuFileIngress {
   }
 
   async #enqueue(message: FeishuFileMessage): Promise<void> {
-    let active = this.#active.get(message.messageId);
+    const key = `${message.messageId}\0${message.fileKey}`;
+    let active = this.#active.get(key);
     if (!active) {
       active = this.#ingest(message);
-      this.#active.set(message.messageId, active);
-      void active.finally(() => this.#active.delete(message.messageId)).catch(() => undefined);
+      this.#active.set(key, active);
+      void active.finally(() => this.#active.delete(key)).catch(() => undefined);
     }
     await active;
   }
@@ -90,7 +91,9 @@ export class DirectFeishuFileIngress {
         chatId: message.chatId,
         sessionId,
         messageId: message.messageId,
+        fileKey: message.fileKey,
         responseKind: 'loading',
+        cardKind: 'loading',
         card: processingCard(message.fileName),
       });
       if (!status?.messageId) throw new Error('status_card_message_id_missing');
@@ -130,7 +133,17 @@ export class FeishuCardMessenger implements Messenger {
   }
 
   async sendCard(input: SendCardInput): Promise<{ messageId: string }> {
-    const uuid = createHash('sha256').update('boyuan-luna-card\0').update(input.messageId).digest('hex').slice(0, 50);
+    const uuid = createHash('sha256')
+      .update('boyuan-luna-card\0')
+      .update(input.messageId)
+      .update('\0')
+      .update(input.fileKey)
+      .update('\0')
+      .update(input.responseKind)
+      .update('\0')
+      .update(input.cardKind)
+      .digest('hex')
+      .slice(0, 50);
     return this.#transport.reply({
       messageId: input.messageId,
       messageType: 'interactive',

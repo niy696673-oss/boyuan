@@ -1,4 +1,5 @@
 import type { QuickCardAnalysisResult } from './quick-card/contracts.js';
+import type { CompanyResearchWorkflowSkill } from './research/contracts.js';
 
 export type SourceChannel = 'web' | 'feishu';
 export type ConversationType = 'material' | 'company' | 'industry';
@@ -62,11 +63,13 @@ export interface ConversationSummary {
 export interface ConversationDetail extends ConversationSummary {
   task: AnalysisTaskRecord;
   company?: CompanyRecord;
+  industry?: IndustryRecord;
   companyMatch?: CompanyMatchCase;
   analysisSections: AnalysisSectionRecord[];
   candidates: KnowledgeCandidateRecord[];
   companyList?: CompanyListRecord;
   companyResearch?: CompanyResearchRecord;
+  industryResearch?: IndustryResearchRecord;
   conversationReuse?: ConversationReuseSuggestion;
   threadMaterials?: CompanyMaterialRecord[];
 }
@@ -244,9 +247,21 @@ export interface IndustryRecord {
   name: string;
   summary: string;
   status: 'draft' | 'active';
+  watched: boolean;
+  version: number;
   materialCount: number;
   companyCount: number;
   updatedAt: string;
+}
+
+export interface PlatformNotification {
+  notificationId: string;
+  kind: 'candidate' | 'task_failed' | 'research_completed';
+  title: string;
+  description: string;
+  targetUrl: string;
+  createdAt: string;
+  readAt?: string;
 }
 
 export interface IndustryNodeRecord {
@@ -264,6 +279,7 @@ export interface IndustryMaterialRecord extends CompanyMaterialRecord {
 export interface IndustryDetail extends IndustryRecord {
   nodes: IndustryNodeRecord[];
   materials: IndustryMaterialRecord[];
+  researchRecords: IndustryResearchSummary[];
   companies: Array<{
     company: CompanyRecord;
     nodeId?: string;
@@ -272,6 +288,15 @@ export interface IndustryDetail extends IndustryRecord {
     status: 'candidate' | 'confirmed' | 'conflicted';
     evidence?: EvidenceRecord;
   }>;
+}
+
+export interface IndustryResearchSummary {
+  conversationId: string;
+  runId: string;
+  intent: string;
+  status: ConversationStatus;
+  summary?: string;
+  updatedAt: string;
 }
 
 export interface SemanticSearchMatch {
@@ -333,6 +358,21 @@ export interface CompanyResearchRecord {
   intent: string;
   explicitWebSearch: boolean;
   triggerReason?: 'user_requested' | 'information_missing' | 'possibly_outdated' | 'internal_conflict' | 'not_needed';
+  publicQuery?: string;
+  summary?: string;
+  sources: Array<EvidenceRecord & { accessStatus: 'accessible' | 'metadata_only' }>;
+  workflowSkill?: CompanyResearchWorkflowSkill;
+  workflowScope?: CompanyResearchWorkflowRequest['scope'];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IndustryResearchRecord {
+  runId: string;
+  industryId: string;
+  intent: string;
+  explicitWebSearch: boolean;
+  triggerReason: 'user_requested' | 'not_needed';
   publicQuery?: string;
   summary?: string;
   sources: Array<EvidenceRecord & { accessStatus: 'accessible' | 'metadata_only' }>;
@@ -423,12 +463,21 @@ export interface IngestDocumentInput {
   purpose?: 'material' | 'company_list';
   senderId?: string;
   sourceMessageId?: string;
+  sourceAttachmentKey?: string;
   content: AsyncIterable<Uint8Array | string>;
 }
 
 export interface IngestDocumentResult {
   conversation: ConversationDetail;
   reusedDocument: boolean;
+}
+
+export interface DocumentContentRecord {
+  documentId: string;
+  fileName: string;
+  mimeType?: string;
+  bytes: number;
+  content: AsyncIterable<Uint8Array>;
 }
 
 export interface IngestCompanyNamesInput {
@@ -456,12 +505,52 @@ export interface StartCompanyResearchInput {
   companyName?: string;
   intent: string;
   explicitWebSearch: boolean;
+  workflow?: CompanyResearchWorkflowRequest;
+}
+
+export interface CompanyResearchWorkflowRequest {
+  skill: CompanyResearchWorkflowSkill;
+  scope: {
+    asOfDate: string;
+    transactionSide: string;
+    stage: string;
+    audience: string;
+    confidentiality: 'public' | 'internal' | 'restricted';
+    decisionOwner: string;
+    mode?: 'one-minute' | 'preliminary' | 're-screen' | 'gp-fit';
+    mandate?: string;
+  };
+  inputScopeApproval: {
+    approved: true;
+    approvedBy: string;
+    approvedAt: string;
+    sourceIds: string[];
+  };
+  methodAssumptionApproval?: {
+    approved: true;
+    approvedBy: string;
+    approvedAt: string;
+  };
+}
+
+export interface CompanyResearchWorkflowSourceRecord {
+  sourceId: string;
+  title: string;
+  locator?: string;
+}
+
+export interface StartIndustryResearchInput {
+  industryId: string;
+  intent: string;
+  explicitWebSearch: boolean;
 }
 
 export interface PlatformModule {
   ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;
+  ingestIndustryDocument(industryId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult>;
+  getDocumentContent(documentId: string): Promise<DocumentContentRecord>;
   quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult>;
   listConversations(): Promise<ConversationSummary[]>;
   getConversation(conversationId: string): Promise<ConversationDetail>;
@@ -473,15 +562,22 @@ export interface PlatformModule {
   restoreKnowledge(knowledgeId: string, expectedCompanyVersion: number): Promise<CompanyDetail>;
   listCompanies(): Promise<CompanyCardRecord[]>;
   getCompany(companyId: string): Promise<CompanyDetail>;
+  getCompanyResearchWorkflowSources(
+    companyId: string,
+  ): Promise<CompanyResearchWorkflowSourceRecord[]>;
   setCompanyWatched(companyId: string, watched: boolean, expectedVersion: number): Promise<CompanyDetail>;
   listIndustries(): Promise<IndustryRecord[]>;
   countUnclassifiedIndustryMaterials(): Promise<number>;
   getIndustry(industryId: string): Promise<IndustryDetail>;
+  setIndustryWatched(industryId: string, watched: boolean, expectedVersion: number): Promise<IndustryDetail>;
   search(query: string): Promise<GlobalSearchResults>;
+  listNotifications(): Promise<PlatformNotification[]>;
+  markNotificationRead(notificationId: string): Promise<PlatformNotification>;
   getCompanyList(listId: string): Promise<CompanyListRecord>;
   confirmCompanyListRows(input: ConfirmCompanyListRowsInput): Promise<CompanyListRecord>;
   startCompanyListResearch(input: StartCompanyListResearchInput): Promise<CompanyListRecord>;
   startCompanyResearch(input: StartCompanyResearchInput): Promise<ConversationDetail>;
+  startIndustryResearch(input: StartIndustryResearchInput): Promise<ConversationDetail>;
   listAdminOverview(): Promise<AdminOverview>;
   retryTask(taskId: string): Promise<ConversationDetail>;
   runPendingSteps(limit?: number): Promise<number>;

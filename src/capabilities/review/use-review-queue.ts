@@ -8,6 +8,7 @@ import type { ReviewQueueClient } from "./client";
 export function useReviewQueue(
   client: ReviewQueueClient,
   onCountChange?: (count: number) => void,
+  requestedCandidateId?: string,
 ) {
   const [items, setItems] = useState<ReviewQueueItem[] | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -34,6 +35,16 @@ export function useReviewQueue(
       });
     return () => controller.abort();
   }, [client, onCountChange]);
+
+  useEffect(() => {
+    if (
+      requestedCandidateId &&
+      items?.some((item) => item.candidateId === requestedCandidateId)
+    ) {
+      setSelectedId(requestedCandidateId);
+      setNotice("");
+    }
+  }, [items, requestedCandidateId]);
 
   const select = (candidateId: string) => {
     setSelectedId(candidateId);

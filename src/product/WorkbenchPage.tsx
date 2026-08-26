@@ -25,7 +25,6 @@ import {
   Network,
   Paperclip,
   Plus,
-  RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
@@ -39,36 +38,61 @@ import {
 } from "../capabilities/companies/client";
 import { companyDirectoryView } from "../capabilities/companies/view-model";
 import {
+  createIndustryDirectoryClient,
+  type IndustryDirectoryClient,
+} from "../capabilities/industries/client";
+import {
   createResearchPlatformClient,
+  type PrivateMarketWorkflowSkill,
   type ResearchPlatformClient,
 } from "../capabilities/research/client";
 import type {
+  AnalysisSection,
   ConversationDetail,
   ConversationStatus,
+  PlatformEvidence,
 } from "../capabilities/research/types";
 import {
   toWorkbenchConversation,
   toWorkbenchResearch,
+  type WorkbenchExternalResearch,
 } from "../capabilities/research/workbench-view-model";
 import type { Company, Evidence, IndustryNode, ResearchTask } from "../types";
+import type { IndustryDirectoryItemV1 } from "../../shared/research-platform-v1";
+import { AuthenticatedDocumentDownload } from "./AuthenticatedDocumentDownload";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 type ContextType = "材料" | "公司" | "行业";
+type WorkflowComposerState = {
+  skill: PrivateMarketWorkflowSkill | "";
+  inputScopeApproved: boolean;
+  stage: string;
+  audience: string;
+  transactionSide: string;
+  confidentiality: "public" | "internal" | "restricted";
+  screenMode: "one-minute" | "preliminary" | "re-screen" | "gp-fit";
+  mandate: string;
+};
 type ActiveResearch = {
   task: ResearchTask;
   company?: Company;
   industry?: IndustryNode;
   platformConversationId?: string;
   platformStatus?: ConversationStatus;
+  materialDocumentId?: string;
   materialFileName?: string;
   pendingCandidateCount?: number;
+  analysisSections?: AnalysisSection[];
+  internalMaterialEvidence?: PlatformEvidence[];
+  externalResearch?: WorkbenchExternalResearch;
 } | null;
 
 type ConversationRow = NonNullable<ActiveResearch>;
 
 const defaultResearchClient = createResearchPlatformClient();
 const defaultCompanyClient = createCompanyDirectoryClient();
+const defaultIndustryClient = createIndustryDirectoryClient();
 const terminalPlatformStatuses = new Set<ConversationStatus>([
   "pending_confirmation",
   "completed",
@@ -80,6 +104,7 @@ export function WorkbenchPage({
   reload,
   researchClient = defaultResearchClient,
   companyClient = defaultCompanyClient,
+  industryClient = defaultIndustryClient,
   persistentPendingCount,
   initialConversationId,
 }: {
@@ -87,6 +112,7 @@ export function WorkbenchPage({
   reload: () => void;
   researchClient?: ResearchPlatformClient;
   companyClient?: CompanyDirectoryClient;
+  industryClient?: IndustryDirectoryClient;
   persistentPendingCount?: number;
   initialConversationId?: string;
 }) {
@@ -95,11 +121,26 @@ export function WorkbenchPage({
   const pageRef = useRef<HTMLDivElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const appliedCompanyId = useRef<string | null>(null);
+  const appliedIndustryId = useRef<string | null>(null);
   const [activeResearch, setActiveResearch] = useState<ActiveResearch>(null);
   const [context, setContext] = useState<ContextType>("材料");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedIndustryId, setSelectedIndustryId] = useState("");
   const [query, setQuery] = useState("");
+  const [workflowSkill, setWorkflowSkill] = useState<
+    PrivateMarketWorkflowSkill | ""
+  >("");
+  const [workflowScopeApproved, setWorkflowScopeApproved] = useState(false);
+  const [workflowStage, setWorkflowStage] = useState("");
+  const [workflowAudience, setWorkflowAudience] = useState("内部投资团队");
+  const [workflowSide, setWorkflowSide] = useState("company");
+  const [workflowConfidentiality, setWorkflowConfidentiality] = useState<
+    "public" | "internal" | "restricted"
+  >("restricted");
+  const [screenMode, setScreenMode] = useState<
+    "one-minute" | "preliminary" | "re-screen" | "gp-fit"
+  >("preliminary");
+  const [screenMandate, setScreenMandate] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [activeStep, setActiveStep] = useState(0);
@@ -115,9 +156,23 @@ export function WorkbenchPage({
   const [directoryCompanies, setDirectoryCompanies] = useState<Company[] | null>(
     null,
   );
+  const [directoryIndustries, setDirectoryIndustries] = useState<
+    IndustryDirectoryItemV1[] | null
+  >(null);
   const workbenchData = useMemo<Bootstrap>(
-    () => ({ ...data, companies: directoryCompanies || [] }),
-    [data, directoryCompanies],
+    () => ({
+      ...data,
+      companies: directoryCompanies || [],
+      industryNodes: (directoryIndustries || []).map((industry) => ({
+        id: industry.industryId,
+        name: industry.name,
+        parentId: null,
+        level: 0,
+        description: industry.summary,
+        source: "研究平台 SQLite",
+      })),
+    }),
+    [data, directoryCompanies, directoryIndustries],
   );
   const openedInitialConversation = useRef<string | undefined>(undefined);
 
@@ -150,6 +205,19 @@ export function WorkbenchPage({
   }, [companyClient]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    void industryClient
+      .list(controller.signal)
+      .then((response) => setDirectoryIndustries(response.items))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setNotice(error instanceof Error ? error.message : "无法读取行业目录");
+        }
+      });
+    return () => controller.abort();
+  }, [industryClient]);
+
+  useEffect(() => {
     const companyId = searchParams.get("companyId");
     if (
       !companyId ||
@@ -167,6 +235,24 @@ export function WorkbenchPage({
     setSelectedCompanyId(companyId);
     setNotice("");
   }, [directoryCompanies, searchParams]);
+
+  useEffect(() => {
+    const industryId = searchParams.get("industryId");
+    if (
+      !industryId ||
+      !directoryIndustries ||
+      appliedIndustryId.current === industryId
+    ) return;
+    appliedIndustryId.current = industryId;
+    if (!directoryIndustries.some((industry) => industry.industryId === industryId)) {
+      setNotice("链接中的行业已不存在，请重新选择");
+      return;
+    }
+    setActiveResearch(null);
+    setContext("行业");
+    setSelectedIndustryId(industryId);
+    setNotice("");
+  }, [directoryIndustries, searchParams]);
 
   const loadPlatformConversations = useCallback(
     async (signal?: AbortSignal) => {
@@ -385,12 +471,89 @@ export function WorkbenchPage({
           setNotice("选择的公司已不存在，请刷新后重试");
           return;
         }
+        if (workflowSkill) {
+          if (!workflowScopeApproved) {
+            setNotice("运行投研 Skill 前，请确认本次输入材料范围");
+            return;
+          }
+          if (!workflowStage.trim() || !workflowAudience.trim()) {
+            setNotice("请填写融资/交易阶段和结果受众");
+            return;
+          }
+          if (workflowSkill === "screen-deal" && !screenMandate.trim()) {
+            setNotice("项目初筛需要填写本次投资 mandate");
+            return;
+          }
+        }
+        let workflowSourceIds: string[] = [];
+        if (workflowSkill) {
+          const loadWorkflowSources =
+            researchClient.getCompanyResearchWorkflowSources;
+          if (!loadWorkflowSources) {
+            setNotice("当前运行时无法冻结投研材料范围，请刷新后重试");
+            return;
+          }
+          const workflowSources = await loadWorkflowSources(company.id);
+          if (workflowSources.length === 0) {
+            setNotice("当前公司没有可授权的已解析材料，无法运行投研 Skill");
+            return;
+          }
+          workflowSourceIds = workflowSources.map((source) => source.sourceId);
+        }
+        const approvedAt = new Date().toISOString();
         const conversation = await researchClient.startCompanyResearch({
           companyId: company.id,
           intent: query.trim(),
-          explicitWebSearch: true,
+          explicitWebSearch: !workflowSkill,
+          ...(workflowSkill
+            ? {
+                workflow: {
+                  skill: workflowSkill,
+                  scope: {
+                    asOfDate: approvedAt.slice(0, 10),
+                    transactionSide: workflowSide,
+                    stage: workflowStage.trim(),
+                    audience: workflowAudience.trim(),
+                    confidentiality: workflowConfidentiality,
+                    decisionOwner: data.user.name,
+                    ...(workflowSkill === "screen-deal"
+                      ? {
+                          mode: screenMode,
+                          mandate: screenMandate.trim(),
+                        }
+                      : {}),
+                  },
+                  inputScopeApproval: {
+                    approved: true,
+                    approvedBy: data.user.name,
+                    approvedAt,
+                    sourceIds: workflowSourceIds,
+                  },
+                },
+              }
+            : {}),
         });
         setActiveResearch({ ...toWorkbenchResearch(conversation), company });
+        syncPlatformConversation(conversation);
+        setQuery("");
+        setWorkflowScopeApproved(false);
+        await loadPlatformConversations();
+        return;
+      }
+      if (context === "行业") {
+        const industry = workbenchData.industryNodes.find(
+          (item) => item.id === selectedIndustryId,
+        );
+        if (!industry) {
+          setNotice("选择的行业已不存在，请刷新后重试");
+          return;
+        }
+        const conversation = await researchClient.startIndustryResearch({
+          industryId: industry.id,
+          intent: query.trim(),
+          explicitWebSearch: true,
+        });
+        setActiveResearch({ ...toWorkbenchResearch(conversation), industry });
         syncPlatformConversation(conversation);
         setQuery("");
         await loadPlatformConversations();
@@ -399,14 +562,13 @@ export function WorkbenchPage({
       const result = await api.research({
         query: query.trim(),
         contextType: context,
-        industryId: context === "行业" ? selectedIndustryId : undefined,
       });
       setActiveResearch(result);
       setQuery("");
       reload();
     } catch (error) {
       setNotice(
-        error instanceof ApiError
+        error instanceof ApiError || error instanceof Error
           ? error.message
           : "研究任务创建失败，请稍后重试",
       );
@@ -439,6 +601,27 @@ export function WorkbenchPage({
     await loadPlatformConversations();
   };
 
+  const workflowComposer: WorkflowComposerState = {
+    skill: workflowSkill,
+    inputScopeApproved: workflowScopeApproved,
+    stage: workflowStage,
+    audience: workflowAudience,
+    transactionSide: workflowSide,
+    confidentiality: workflowConfidentiality,
+    screenMode,
+    mandate: screenMandate,
+  };
+  const applyWorkflowComposer = (next: WorkflowComposerState) => {
+    setWorkflowSkill(next.skill);
+    setWorkflowScopeApproved(next.inputScopeApproved);
+    setWorkflowStage(next.stage);
+    setWorkflowAudience(next.audience);
+    setWorkflowSide(next.transactionSide);
+    setWorkflowConfidentiality(next.confidentiality);
+    setScreenMode(next.screenMode);
+    setScreenMandate(next.mandate);
+  };
+
   return (
     <div className="by-workbench" ref={pageRef}>
       <ConversationRail
@@ -453,6 +636,8 @@ export function WorkbenchPage({
           setNotice("");
           setSelectedCompanyId("");
           setSelectedIndustryId("");
+          setWorkflowSkill("");
+          setWorkflowScopeApproved(false);
         }}
         onOpen={(research) => void openConversation(research)}
       />
@@ -476,6 +661,7 @@ export function WorkbenchPage({
               query={query}
               busy={busy}
               notice={notice}
+              workflow={workflowComposer}
               onContext={(next) => {
                 setContext(next);
                 setNotice("");
@@ -483,6 +669,7 @@ export function WorkbenchPage({
               onCompany={setSelectedCompanyId}
               onIndustry={setSelectedIndustryId}
               onQuery={setQuery}
+              onWorkflow={applyWorkflowComposer}
               onSubmit={runResearch}
               onUpload={() => uploadRef.current?.click()}
             />
@@ -541,14 +728,17 @@ export function WorkbenchPage({
             query={query}
             busy={busy}
             notice={notice}
+            workflow={workflowComposer}
             uploadRef={uploadRef}
             onContext={setContext}
             onCompany={setSelectedCompanyId}
             onIndustry={setSelectedIndustryId}
             onQuery={setQuery}
+            onWorkflow={applyWorkflowComposer}
             onSubmit={runResearch}
             onUploadFiles={uploadFiles}
             onEvidence={setSelectedEvidence}
+            onReviewCandidates={() => navigate("/confirmations")}
           />
           <TaskRail
             task={activeResearch.task}
@@ -593,13 +783,29 @@ function ConversationRail({
   onNew: () => void;
   onOpen: (research: ConversationRow) => void;
 }) {
+  const [search, setSearch] = useState("");
+  const normalizedSearch = search.trim().toLocaleLowerCase("zh-CN");
   const visibleTasks = conversations.filter(({ task }) => {
-    if (filter === "全部") return true;
-    if (task.contextType) return task.contextType === filter;
-    if (filter === "公司") return Boolean(task.companyId);
-    if (filter === "行业")
-      return Boolean(task.industryId) || /行业|产业链/.test(task.query);
-    return !task.companyId || /材料|BP|名单/.test(task.query);
+    const matchesFilter = (() => {
+      if (filter === "全部") return true;
+      if (task.contextType) return task.contextType === filter;
+      if (filter === "公司") return Boolean(task.companyId);
+      if (filter === "行业")
+        return Boolean(task.industryId) || /行业|产业链/.test(task.query);
+      return !task.companyId || /材料|BP|名单/.test(task.query);
+    })();
+    if (!matchesFilter || !normalizedSearch) return matchesFilter;
+    return [
+      task.query,
+      task.createdBy,
+      task.contextType,
+      task.companyId,
+      task.industryId,
+    ]
+      .filter(Boolean)
+      .some((value) =>
+        String(value).toLocaleLowerCase("zh-CN").includes(normalizedSearch),
+      );
   });
   return (
     <aside className="by-conversation-rail" aria-label="研究对话">
@@ -609,7 +815,12 @@ function ConversationRail({
       </button>
       <label className="by-rail-search">
         <Search />
-        <input placeholder="搜索对话或来源" />
+        <input
+          aria-label="搜索对话或来源"
+          placeholder="搜索对话或来源"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
       </label>
       <div className="by-rail-filters">
         {(["全部", "材料", "公司", "行业"] as const).map((item) => (
@@ -791,14 +1002,17 @@ function ActiveConversation({
   query,
   busy,
   notice,
+  workflow,
   uploadRef,
   onContext,
   onCompany,
   onIndustry,
   onQuery,
+  onWorkflow,
   onSubmit,
   onUploadFiles,
   onEvidence,
+  onReviewCandidates,
 }: {
   research: NonNullable<ActiveResearch>;
   data: Bootstrap;
@@ -808,14 +1022,17 @@ function ActiveConversation({
   query: string;
   busy: boolean;
   notice: string;
+  workflow: WorkflowComposerState;
   uploadRef: React.RefObject<HTMLInputElement | null>;
   onContext: (context: ContextType) => void;
   onCompany: (companyId: string) => void;
   onIndustry: (industryId: string) => void;
   onQuery: (query: string) => void;
+  onWorkflow: (workflow: WorkflowComposerState) => void;
   onSubmit: () => void;
   onUploadFiles: (files: File[]) => void;
   onEvidence: (evidence: Evidence) => void;
+  onReviewCandidates: () => void;
 }) {
   const { company, industry, task } = research;
   const industryCompanyIds = new Set(
@@ -837,12 +1054,17 @@ function ActiveConversation({
     data.companies
       .filter((candidate) => industryCompanyIds.has(candidate.id))
       .flatMap((candidate) => candidate.evidence);
+  const internalMaterialEvidence = research.internalMaterialEvidence || [];
   const companyName = company
     ? company.aliases[0] || company.standardName
     : undefined;
   const primaryEvidence = evidence[0];
+  const primaryPlatformEvidence = internalMaterialEvidence[0];
+  const originalDocumentId =
+    primaryPlatformEvidence?.documentId || research.materialDocumentId;
   const primaryFileName =
     primaryEvidence?.fileName ||
+    primaryPlatformEvidence?.fileName ||
     research.materialFileName ||
     `${industry?.name || companyName || "当前对象"}研究材料`;
   const industryName =
@@ -855,6 +1077,20 @@ function ActiveConversation({
       .find(Boolean);
   const externalClaims =
     company?.claims.filter((claim) => claim.type === "external_view") || [];
+  const externalSources = (research.externalResearch?.sources || []).filter(
+    (source) => source.sourceType === "web",
+  );
+  const externalSearchState = research.externalResearch?.status === "failed"
+    ? "检索失败"
+    : externalSources.length
+      ? `已完成 · ${externalSources.length} 条来源`
+      : research.externalResearch?.executed
+      ? "已完成 · 0 条来源"
+      : research.externalResearch?.requested
+        ? "检索中"
+        : externalClaims.length
+          ? "已完成"
+          : "未执行";
   const pendingCount =
     research.pendingCandidateCount ??
     company?.claims.filter((claim) =>
@@ -883,7 +1119,7 @@ function ActiveConversation({
           <div>
             <h1>{primaryFileName}</h1>
             <p>
-              来源：<strong>{primaryEvidence ? "机构材料" : "研究任务"}</strong>
+              来源：<strong>{primaryEvidence || primaryPlatformEvidence ? "机构材料" : "研究任务"}</strong>
               <span />
               创建时间：{new Date(task.createdAt).toLocaleString("zh-CN")}
               {companyName && (
@@ -904,14 +1140,13 @@ function ActiveConversation({
             <Check />
             已自动归档
           </span>
-          <button>
-            <ExternalLink />
-            打开原文
-          </button>
-          <button>
-            <RefreshCw />
-            更换公司
-          </button>
+          {originalDocumentId && (
+            <AuthenticatedDocumentDownload
+              className="by-context-action"
+              documentId={originalDocumentId}
+              fileName={primaryFileName}
+            />
+          )}
         </header>
 
         <div className="by-conversation-stream">
@@ -919,12 +1154,18 @@ function ActiveConversation({
             icon={<FileText />}
             title="原始材料"
             state={
-              primaryEvidence || platformMaterialStored ? "已保存" : "等待上传"
+              primaryEvidence || primaryPlatformEvidence || platformMaterialStored
+                ? "已保存"
+                : "等待上传"
             }
           >
             <button
               className="by-file-row"
-              onClick={() => evidence[0] && onEvidence(evidence[0])}
+              onClick={() => {
+                if (primaryEvidence) onEvidence(primaryEvidence);
+                else if (primaryPlatformEvidence)
+                  onEvidence(platformEvidenceForDrawer(primaryPlatformEvidence));
+              }}
             >
               <FileText />
               <span>
@@ -932,6 +1173,8 @@ function ActiveConversation({
                 <small>
                   {primaryEvidence
                     ? `${primaryEvidence.sourceDate} · 原始证据`
+                    : primaryPlatformEvidence
+                      ? `${platformEvidenceLocator(primaryPlatformEvidence)} · 冻结材料证据`
                     : platformMaterialStored
                       ? "已由研究平台持久保存"
                       : "尚未关联原始材料"}
@@ -968,6 +1211,36 @@ function ActiveConversation({
                     "当前尚未形成分析摘要。补充材料后，系统将生成带有证据引用的内容。"}
                 </p>
               </section>
+              {!!research.analysisSections?.length && (
+                <section>
+                  <h3>分析结论与内部材料证据</h3>
+                  <div className="by-platform-analysis-sections">
+                    {research.analysisSections.map((section) => (
+                      <article key={section.key}>
+                        <strong>{section.title}</strong>
+                        <p>{section.summary}</p>
+                        {!!section.evidence.length && (
+                          <div className="by-material-evidence-links">
+                            {section.evidence.map((item) => (
+                              <button
+                                type="button"
+                                key={item.evidenceId}
+                                onClick={() =>
+                                  onEvidence(platformEvidenceForDrawer(item))
+                                }
+                              >
+                                <FileSearch />
+                                <span>{item.fileName || "内部材料"}</span>
+                                <code>{item.evidenceId}</code>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
               <section>
                 <h3>核心信息</h3>
                 <div className="by-analysis-columns">
@@ -1014,7 +1287,11 @@ function ActiveConversation({
                   {!pendingCount && <li>暂无待验证事项</li>}
                 </ul>
               </section>
-              <button className="by-candidate-entry">
+              <button
+                type="button"
+                className="by-candidate-entry"
+                onClick={onReviewCandidates}
+              >
                 {pendingCount} 条候选知识待确认
                 <ChevronRight />
               </button>
@@ -1023,10 +1300,43 @@ function ActiveConversation({
           <TimelineItem
             icon={<Globe2 />}
             title="Web Search 核验"
-            state={externalClaims.length ? "已完成" : "暂无外部候选"}
-            source="外部候选"
+            state={externalSearchState}
+            source="Exa 外部来源"
           >
             <article className="by-web-card">
+              {research.externalResearch?.status === "failed" && (
+                <p className="by-inline-empty">
+                  {research.externalResearch.failureDetail || "外部信息核验执行失败"}
+                  。可在下方重新输入原研究问题并发送，以创建新的研究任务重试。
+                </p>
+              )}
+              {externalSources.map((source) => {
+                const safeUrl = safeExternalUrl(source.url);
+                const sourceLabel =
+                  source.title || safeUrl || source.site || "公开来源";
+                return (
+                  <div key={source.evidenceId}>
+                    <span>{source.site || "外部网站"}</span>
+                    <p>
+                      <strong>{sourceLabel}</strong>
+                      {safeUrl && <small>{safeUrl}</small>}
+                    </p>
+                    <time>{externalSourceStatus(source)}</time>
+                    {safeUrl ? (
+                      <a
+                        aria-label={`打开外部来源：${sourceLabel}`}
+                        href={safeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink />
+                      </a>
+                    ) : (
+                      <span aria-label="来源地址不可打开">—</span>
+                    )}
+                  </div>
+                );
+              })}
               {externalClaims.map((claim) => (
                 <div key={claim.id}>
                   <span>外部来源</span>
@@ -1035,11 +1345,17 @@ function ActiveConversation({
                   <ExternalLink />
                 </div>
               ))}
-              {!externalClaims.length && (
+              {!externalSources.length &&
+                !externalClaims.length &&
+                research.externalResearch?.status !== "failed" && (
                 <p className="by-inline-empty">
-                  尚未执行外部信息核验，系统不会生成虚构来源。
+                  {research.externalResearch?.executed
+                    ? "外部信息核验已执行，本次未返回可展示来源。"
+                    : research.externalResearch?.requested
+                      ? "外部信息核验正在执行，来源返回后会在此展示。"
+                      : "尚未执行外部信息核验，系统不会生成虚构来源。"}
                 </p>
-              )}
+                )}
               {externalClaims.some((claim) => claim.status === "disputed") && (
                 <button>
                   <CircleAlert />
@@ -1064,11 +1380,13 @@ function ActiveConversation({
           query={query}
           busy={busy}
           notice={notice}
+          workflow={workflow}
           compact
           onContext={onContext}
           onCompany={onCompany}
           onIndustry={onIndustry}
           onQuery={onQuery}
+          onWorkflow={onWorkflow}
           onSubmit={onSubmit}
           onUpload={() => uploadRef.current?.click()}
         />
@@ -1085,6 +1403,48 @@ function ActiveConversation({
       </div>
     </section>
   );
+}
+
+function platformEvidenceForDrawer(evidence: PlatformEvidence): Evidence {
+  return {
+    id: evidence.evidenceId,
+    documentId: evidence.documentId || "",
+    fileName: evidence.fileName || evidence.title || "内部材料证据",
+    excerpt: evidence.quote,
+    ...(evidence.page === undefined ? {} : { page: evidence.page }),
+    sourceDate: evidence.publishedAt || evidence.retrievedAt || "日期未记录",
+    visibility: "organization",
+  };
+}
+
+function platformEvidenceLocator(evidence: PlatformEvidence): string {
+  if (evidence.page !== undefined) return `第 ${evidence.page} 页`;
+  if (evidence.paragraph !== undefined) return `第 ${evidence.paragraph} 段`;
+  if (evidence.sheet) {
+    return [evidence.sheet, evidence.cellRange].filter(Boolean).join(" · ");
+  }
+  return evidence.evidenceId;
+}
+
+function safeExternalUrl(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function externalSourceStatus(
+  source: WorkbenchExternalResearch["sources"][number],
+): string {
+  const access =
+    source.accessStatus === "accessible" ? "已获取" : "仅元数据";
+  if (!source.retrievedAt) return `${access} · 时间未记录`;
+  return `${access} · ${new Date(source.retrievedAt).toLocaleDateString("zh-CN")}`;
 }
 
 function TimelineItem({
@@ -1199,11 +1559,13 @@ function ResearchComposer({
   query,
   busy,
   notice,
+  workflow,
   compact = false,
   onContext,
   onCompany,
   onIndustry,
   onQuery,
+  onWorkflow,
   onSubmit,
   onUpload,
 }: {
@@ -1214,11 +1576,13 @@ function ResearchComposer({
   query: string;
   busy: boolean;
   notice: string;
+  workflow: WorkflowComposerState;
   compact?: boolean;
   onContext: (context: ContextType) => void;
   onCompany: (companyId: string) => void;
   onIndustry: (industryId: string) => void;
   onQuery: (query: string) => void;
+  onWorkflow: (workflow: WorkflowComposerState) => void;
   onSubmit: () => void;
   onUpload: () => void;
 }) {
@@ -1285,6 +1649,144 @@ function ResearchComposer({
           </span>
         )}
       </div>
+      {context === "公司" && (
+        <div className="by-workflow-config">
+          <div className="by-workflow-skills" aria-label="投研 Skill">
+            {([
+              ["", "常规研究"],
+              ["diagnose-bp", "BP 材料完整性复核"],
+              ["screen-deal", "项目初筛"],
+              ["extract-risk-flags", "风险提取"],
+            ] as const).map(([skill, label]) => (
+              <button
+                type="button"
+                className={workflow.skill === skill ? "active" : ""}
+                key={skill || "default"}
+                onClick={() => onWorkflow({
+                  ...workflow,
+                  skill,
+                  inputScopeApproved: false,
+                })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {workflow.skill && (
+            <div className="by-workflow-scope">
+              <label>
+                <span>交易侧</span>
+                <select
+                  aria-label="交易侧"
+                  value={workflow.transactionSide}
+                  onChange={(event) => onWorkflow({
+                    ...workflow,
+                    transactionSide: event.target.value,
+                    inputScopeApproved: false,
+                  })}
+                >
+                  <option value="company">公司</option>
+                  <option value="fa">FA</option>
+                  <option value="gp">GP / 投资方</option>
+                  <option value="lp">LP</option>
+                  <option value="unknown">待确认</option>
+                </select>
+              </label>
+              <label>
+                <span>融资/交易阶段</span>
+                <input
+                  aria-label="融资或交易阶段"
+                  value={workflow.stage}
+                  onChange={(event) => onWorkflow({
+                    ...workflow,
+                    stage: event.target.value,
+                    inputScopeApproved: false,
+                  })}
+                  placeholder="例如：A 轮初筛"
+                />
+              </label>
+              <label>
+                <span>结果受众</span>
+                <input
+                  aria-label="结果受众"
+                  value={workflow.audience}
+                  onChange={(event) => onWorkflow({
+                    ...workflow,
+                    audience: event.target.value,
+                    inputScopeApproved: false,
+                  })}
+                />
+              </label>
+              <label>
+                <span>保密级别</span>
+                <select
+                  aria-label="保密级别"
+                  value={workflow.confidentiality}
+                  onChange={(event) => onWorkflow({
+                    ...workflow,
+                    confidentiality: event.target.value as WorkflowComposerState["confidentiality"],
+                    inputScopeApproved: false,
+                  })}
+                >
+                  <option value="restricted">受限</option>
+                  <option value="internal">内部</option>
+                  <option value="public">公开</option>
+                </select>
+              </label>
+              {workflow.skill === "screen-deal" && (
+                <>
+                  <label>
+                    <span>初筛模式</span>
+                    <select
+                      aria-label="初筛模式"
+                      value={workflow.screenMode}
+                      onChange={(event) => onWorkflow({
+                        ...workflow,
+                        screenMode: event.target.value as WorkflowComposerState["screenMode"],
+                        inputScopeApproved: false,
+                      })}
+                    >
+                      <option value="one-minute">一分钟</option>
+                      <option value="preliminary">初步初筛</option>
+                      <option value="re-screen">重新初筛</option>
+                      <option value="gp-fit">GP 匹配</option>
+                    </select>
+                  </label>
+                  <label className="wide">
+                    <span>投资 mandate</span>
+                    <input
+                      aria-label="投资 mandate"
+                      value={workflow.mandate}
+                      onChange={(event) => onWorkflow({
+                        ...workflow,
+                        mandate: event.target.value,
+                        inputScopeApproved: false,
+                      })}
+                      placeholder="阶段、行业、地域、票面与排除项"
+                    />
+                  </label>
+                </>
+              )}
+              <label className="by-scope-approval wide">
+                <input
+                  type="checkbox"
+                  checked={workflow.inputScopeApproved}
+                  onChange={(event) => onWorkflow({
+                    ...workflow,
+                    inputScopeApproved: event.target.checked,
+                  })}
+                />
+                <span>
+                  我确认提交时冻结并仅使用当前公司的已授权关联材料来源
+                </span>
+              </label>
+              <p className="wide">
+                这是单独选择的内部投研产物，不替代标准 BP 深度分析；如需公开信息，请切换“常规研究”单独执行。输出仅供内部决策支持，评分方法、严重度、投资决定和对外发布仍需相应负责人确认。
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       <textarea
         aria-label="研究问题"
         value={query}
@@ -1488,14 +1990,15 @@ function EvidenceDrawer({
           <blockquote>{evidence.excerpt}</blockquote>
         </section>
         <div className="by-drawer-actions">
-          <button>
-            <CircleAlert />
-            标记证据不支持
-          </button>
-          <button className="primary">
-            <ExternalLink />
-            打开原文
-          </button>
+          {evidence.documentId ? (
+            <AuthenticatedDocumentDownload
+              className="primary"
+              documentId={evidence.documentId}
+              fileName={evidence.fileName}
+            />
+          ) : (
+            <span>原始文件不可用，仍可使用上方证据定位与摘录。</span>
+          )}
         </div>
       </aside>
     </div>

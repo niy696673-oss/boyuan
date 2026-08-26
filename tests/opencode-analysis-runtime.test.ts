@@ -245,6 +245,48 @@ describe("OpenCode BP 分析接缝", () => {
     });
   });
 
+  it.each([
+    [
+      "Sequential Thinking 先于 BP Skill",
+      [
+        completedTool("sequential-thinking_sequentialthinking"),
+        completedTool("skill", { name: "boyuan-bp-deep-analysis" }),
+      ],
+      "opencode_required_tool_missing",
+    ],
+    [
+      "BP Skill 后加载其他 Skill",
+      [
+        completedTool("skill", { name: "boyuan-bp-deep-analysis" }),
+        completedTool("skill", { name: "diagnose-bp" }),
+        completedTool("sequential-thinking_sequentialthinking"),
+      ],
+      "opencode_unexpected_skill_used",
+    ],
+    [
+      "BP Skill 被重复加载",
+      [
+        completedTool("skill", { name: "boyuan-bp-deep-analysis" }),
+        completedTool("skill", { name: "boyuan-bp-deep-analysis" }),
+        completedTool("sequential-thinking_sequentialthinking"),
+      ],
+      "opencode_unexpected_skill_used",
+    ],
+    [
+      "BP Skill 后调用额外工具",
+      [
+        completedTool("skill", { name: "boyuan-bp-deep-analysis" }),
+        completedTool("sequential-thinking_sequentialthinking"),
+        completedTool("web_search"),
+      ],
+      "opencode_unexpected_tool_used",
+    ],
+  ])("拒绝%s", async (_label, toolParts, code) => {
+    const adapter = analysisAdapterWithToolTrace(toolParts);
+
+    await expect(adapter.analyze(input)).rejects.toMatchObject({ code });
+  });
+
   it("分析超时后终止仍在运行的 OpenCode 会话", async () => {
     const requests: string[] = [];
     const adapter = createOpenCodeAnalysisAdapter({
@@ -347,6 +389,59 @@ function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
     headers: { "content-type": "application/json" },
+  });
+}
+
+function completedTool(tool: string, input: Record<string, unknown> = {}) {
+  return {
+    type: "tool",
+    tool,
+    state: { status: "completed", input },
+  };
+}
+
+function analysisAdapterWithToolTrace(
+  toolParts: Array<ReturnType<typeof completedTool>>,
+) {
+  let userMessageId = "";
+  return createOpenCodeAnalysisAdapter({
+    baseUrl: new URL("http://127.0.0.1:4173/opencode-api/"),
+    directory: "/workspace/boyuan",
+    requiredCapabilities: requiredCapabilities(),
+    fetcher: async (request, init = {}) => {
+      const url = new URL(String(request));
+      if (url.pathname.endsWith("/skill")) {
+        return jsonResponse([{ name: "boyuan-bp-deep-analysis" }]);
+      }
+      if (url.pathname.endsWith("/mcp")) {
+        return jsonResponse({ "sequential-thinking": { status: "connected" } });
+      }
+      if (url.pathname === "/opencode-api/session") {
+        return jsonResponse({ id: "session-tool-trace" });
+      }
+      if (url.pathname.endsWith("/prompt_async")) {
+        userMessageId = String(JSON.parse(String(init.body)).messageID);
+        return new Response(null, { status: 204 });
+      }
+      if (url.pathname.endsWith("/session/status")) {
+        return jsonResponse({ "session-tool-trace": { type: "idle" } });
+      }
+      if (url.pathname.endsWith("/message") && init.method === "GET") {
+        return jsonResponse([
+          {
+            info: {
+              id: "assistant-tool-trace",
+              parentID: userMessageId,
+              role: "assistant",
+              providerID: "openai",
+              modelID: "gpt-5.6-sol",
+            },
+            parts: [...toolParts, { type: "text", text: validAnalysisJson() }],
+          },
+        ]);
+      }
+      return new Response(null, { status: 404 });
+    },
   });
 }
 

@@ -8,6 +8,9 @@ import type { WebSearchPort } from "../search/contracts.js";
 import { createDeterministicSearchAdapter } from "../search/deterministic-search.js";
 import { createExaSearchAdapter } from "../search/exa-search.js";
 import type { CompanyResearchPort } from "./contracts.js";
+import type { IndustryResearchPort } from "../industry-research/contracts.js";
+import { createDeterministicIndustryResearchAdapter } from "../industry-research/deterministic-industry-research.js";
+import { createOpenCodeIndustryResearchAdapter } from "../industry-research/opencode-industry-research.js";
 import { createDeterministicResearchAdapter } from "./deterministic-research.js";
 import { createOpenCodeResearchAdapter } from "./opencode-research.js";
 
@@ -20,6 +23,7 @@ export interface RuntimeResearchOptions {
 
 export interface RuntimeResearchAdapters {
   research: CompanyResearchPort;
+  industryResearch: IndustryResearchPort;
   search: WebSearchPort;
 }
 
@@ -46,6 +50,12 @@ export function createRuntimeResearchAdapters(
     );
   }
 
+  const industryResearch = researchMode === "deterministic"
+    ? createDeterministicIndustryResearchAdapter()
+    : createOpenCodeIndustryResearchAdapter(
+        runtimeOpenCodeOptions(environment, options),
+      );
+
   const search =
     searchMode === "deterministic"
       ? createDeterministicSearchAdapter()
@@ -63,5 +73,5 @@ export function createRuntimeResearchAdapters(
     );
   }
 
-  return { research, search };
+  return { research, industryResearch, search };
 }

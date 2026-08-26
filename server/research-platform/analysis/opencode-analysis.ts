@@ -86,21 +86,14 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
         throw error;
       }
       if (response.info.error) throw new AnalysisAdapterError('opencode_message_error', 'OpenCode analysis message failed');
-      const successfulToolParts = turnMessages.flatMap((message) => message.parts).filter((part) => (
+      const toolParts = turnMessages.flatMap((message) => message.parts).filter((part) => (
+        part.type === 'tool' && part.tool
+      ));
+      if (required) assertRequiredToolTrace(toolParts, required);
+      const successfulToolParts = toolParts.filter((part) => (
         part.type === 'tool' && part.tool && part.state?.status === 'completed'
       ));
       const toolUsage = [...new Set(successfulToolParts.flatMap((part) => part.tool ? [part.tool] : []))];
-      const skillLoaded = !required || successfulToolParts.some((part) => (
-        part.tool === 'skill' && part.state?.input?.name === required.skillName
-      ));
-      const mcpToolUsed = !required
-        || successfulToolParts.some((part) => part.tool === required.mcpTool);
-      const missingTool = !skillLoaded ? `skill:${required?.skillName}`
-        : !mcpToolUsed ? required?.mcpTool
-          : undefined;
-      if (missingTool) {
-        throw new AnalysisAdapterError('opencode_required_tool_missing', `OpenCode analysis did not call required tool: ${missingTool}`);
-      }
       const rawText = response.parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim();
       const parsed = parseAnalysisJson(rawText);
       return {
@@ -115,6 +108,47 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
       };
     },
   };
+}
+
+function assertRequiredToolTrace(
+  toolParts: OpenCodeSessionMessage['parts'],
+  required: OpenCodeRequiredCapabilities,
+): void {
+  const firstTool = toolParts[0];
+  if (
+    firstTool?.tool !== 'skill'
+    || firstTool.state?.status !== 'completed'
+    || firstTool.state.input?.name !== required.skillName
+  ) {
+    throw new AnalysisAdapterError(
+      'opencode_required_tool_missing',
+      `OpenCode analysis did not first call required tool: skill:${required.skillName}`,
+    );
+  }
+  const unexpectedSkill = toolParts.slice(1).find((part) => part.tool === 'skill');
+  if (unexpectedSkill) {
+    throw new AnalysisAdapterError(
+      'opencode_unexpected_skill_used',
+      `OpenCode analysis loaded an additional skill: ${String(unexpectedSkill.state?.input?.name ?? 'unknown')}`,
+    );
+  }
+  const unexpectedTool = toolParts.find((part) => (
+    part.tool !== 'skill' && part.tool !== required.mcpTool
+  ));
+  if (unexpectedTool) {
+    throw new AnalysisAdapterError(
+      'opencode_unexpected_tool_used',
+      `OpenCode analysis used a disallowed tool: ${unexpectedTool.tool ?? 'unknown'}`,
+    );
+  }
+  if (!toolParts.some((part) => (
+    part.tool === required.mcpTool && part.state?.status === 'completed'
+  ))) {
+    throw new AnalysisAdapterError(
+      'opencode_required_tool_missing',
+      `OpenCode analysis did not call required tool: ${required.mcpTool}`,
+    );
+  }
 }
 
 async function waitForAsyncTurn(input: {

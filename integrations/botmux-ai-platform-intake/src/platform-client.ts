@@ -42,6 +42,7 @@ export class HttpPlatformClient implements PlatformClient {
         'content-length': String(before.byteLength + attachment.size + after.byteLength),
         'x-boyuan-intake-key': this.#intakeKey,
         'x-boyuan-message-id': input.messageId,
+        'x-boyuan-file-key': attachment.fileKey,
         ...(input.senderId ? { 'x-boyuan-sender-id': input.senderId } : {}),
       },
       body,

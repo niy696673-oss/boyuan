@@ -47,12 +47,17 @@ export function createFeishuIntakeRouter(
           request.header("x-boyuan-sender-id"),
           "sender",
         );
+        const sourceAttachmentKey = optionalMetadataHeader(
+          request.header("x-boyuan-file-key"),
+          "file key",
+        );
         try {
           const result = await platform.ingestDocument({
             fileName: normalizeUploadedFileName(request.file.originalname),
             mimeType: request.file.mimetype,
             sourceChannel: "feishu",
             sourceMessageId,
+            ...(sourceAttachmentKey ? { sourceAttachmentKey } : {}),
             ...(senderId ? { senderId } : {}),
             content: createReadStream(request.file.path),
           });

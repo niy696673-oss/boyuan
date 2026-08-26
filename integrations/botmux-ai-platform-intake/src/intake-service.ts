@@ -79,12 +79,20 @@ export class IntakeService {
 
   async ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]> {
     const outcomes: IntakeOutcome[] = [];
-    for (const attachment of turn.attachments) {
+    const { statusCardMessageId: sharedStatusCardMessageId, ...turnWithoutStatusCard } = turn;
+    for (const [index, attachment] of turn.attachments.entries()) {
+      const attachmentTurn: IntakeTurn = {
+        ...turnWithoutStatusCard,
+        attachments: [attachment],
+        ...(index === 0 && sharedStatusCardMessageId
+          ? { statusCardMessageId: sharedStatusCardMessageId }
+          : {}),
+      };
       try {
         const key = jobKey(turn.messageId, attachment.fileKey);
         let active = this.#active.get(key);
         if (!active) {
-          active = this.#acceptOne(turn, attachment);
+          active = this.#acceptOne(attachmentTurn, attachment);
           this.#active.set(key, active);
           void active.finally(() => this.#active.delete(key)).catch(() => undefined);
         }
@@ -94,14 +102,16 @@ export class IntakeService {
         outcomes.push({ fileKey: attachment.fileKey, fileName: attachment.name, status: 'failed', error: message });
         if (!this.#store.get(jobKey(turn.messageId, attachment.fileKey))) {
           const card = failureCard(attachment.name);
-          if (turn.statusCardMessageId && this.#messenger.updateCard) {
-            await this.#messenger.updateCard({ cardMessageId: turn.statusCardMessageId, card }).catch(() => undefined);
+          if (attachmentTurn.statusCardMessageId && this.#messenger.updateCard) {
+            await this.#messenger.updateCard({ cardMessageId: attachmentTurn.statusCardMessageId, card }).catch(() => undefined);
           } else {
             await this.#messenger.sendCard({
               chatId: turn.chatId,
               sessionId: turn.sessionId,
               messageId: turn.messageId,
+              fileKey: attachment.fileKey,
               responseKind: 'final',
+              cardKind: 'failure',
               card,
             }).catch(() => undefined);
           }
@@ -267,7 +277,9 @@ export class IntakeService {
           chatId: job.chatId,
           sessionId: job.sessionId,
           messageId: job.messageId,
+          fileKey: job.fileKey,
           responseKind: 'final',
+          cardKind: 'completion',
           card,
         });
       }

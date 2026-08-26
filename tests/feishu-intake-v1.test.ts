@@ -26,6 +26,60 @@ afterEach(async () => {
 });
 
 describe("飞书材料接入新工作台", () => {
+  it("同一条飞书消息按附件标识分别接入，并只复用重试的附件", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-v1-"));
+    roots.push(dataRoot);
+    const platform = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+    });
+    modules.push(platform);
+    const store = new Store({
+      initialData: initialStoreData(),
+      persistToDisk: false,
+    });
+    const app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform,
+      feishuIntakeKey: "test-feishu-intake-key-123",
+    });
+
+    const first = await request(app)
+      .post("/api/v1/feishu/documents")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
+      .set("x-boyuan-message-id", "om_multi_attachment")
+      .set("x-boyuan-file-key", "file_first")
+      .attach("file", Buffer.from("第一家公司商业计划书"), "第一份 BP.txt");
+    const second = await request(app)
+      .post("/api/v1/feishu/documents")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
+      .set("x-boyuan-message-id", "om_multi_attachment")
+      .set("x-boyuan-file-key", "file_second")
+      .attach("file", Buffer.from("第二家公司商业计划书"), "第二份 BP.txt");
+    const firstRetry = await request(app)
+      .post("/api/v1/feishu/documents")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
+      .set("x-boyuan-message-id", "om_multi_attachment")
+      .set("x-boyuan-file-key", "file_first")
+      .attach("file", Buffer.from("重试内容不应生成新对话"), "第一份重试 BP.txt");
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(firstRetry.status).toBe(201);
+    expect(first.body.reusedDocument).toBe(false);
+    expect(second.body.reusedDocument).toBe(false);
+    expect(second.body.conversation.conversationId).not.toBe(
+      first.body.conversation.conversationId,
+    );
+    expect(firstRetry.body).toMatchObject({
+      reusedDocument: true,
+      conversation: {
+        conversationId: first.body.conversation.conversationId,
+        title: "第一份 BP.txt",
+      },
+    });
+    expect(await platform.listConversations()).toHaveLength(2);
+  });
+
   it("使用独立密钥创建飞书对话，并在深度任务运行期间返回快速卡", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-v1-"));
     roots.push(dataRoot);
@@ -127,6 +181,7 @@ describe("飞书材料接入新工作台", () => {
       competitorNames: ["Google DeepMind", "Anduril", "Shield AI"],
       confidenceLevel: "中",
       navigation: {},
+      providerId: "openai",
       modelId: "gpt-5.6-luna",
     });
 
@@ -142,7 +197,9 @@ describe("飞书材料接入新工作台", () => {
       task: { status: "completed" },
     });
 
+    const [company] = await platform.listCompanies();
     const [industry] = await platform.listIndustries();
+    expect(company).toBeTruthy();
     expect(industry).toBeTruthy();
     const linkedQuick = await request(app)
       .post(
@@ -150,7 +207,8 @@ describe("飞书材料接入新工作台", () => {
       )
       .set("x-boyuan-intake-key", "test-feishu-intake-key-123");
     expect(linkedQuick.status).toBe(200);
-    expect(linkedQuick.body.navigation).toMatchObject({
+    expect(linkedQuick.body.navigation).toEqual({
+      companyId: company.companyId,
       industryId: industry.industryId,
     });
   });
@@ -181,7 +239,7 @@ describe("飞书材料接入新工作台", () => {
     expect(response.body).toEqual({ error: "feishu_intake_unavailable" });
   });
 
-  it("保留研究平台中产品 UI 使用的持久产业链 ID", async () => {
+  it("保留新 UI 公司关系与行业产业链深链所需的持久实体 ID", async () => {
     const platform = {
       quickAnalyzeConversation: async () => ({
         companyName: "白杨智能",

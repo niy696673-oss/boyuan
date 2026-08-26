@@ -29,7 +29,13 @@ const researchPlatform = createPlatformModule({
   }),
   ...researchAdapters,
 });
-const researchWorker = createPlatformWorker(researchPlatform);
+const researchWorker = createPlatformWorker(researchPlatform, {
+  concurrency: positiveIntegerEnvironment(
+    process.env.BOYUAN_RESEARCH_WORKER_CONCURRENCY,
+    1,
+    8,
+  ),
+});
 const app = express();
 app.use(createHttpLogger(config));
 app.use(
@@ -52,3 +58,16 @@ async function shutdown() {
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+
+function positiveIntegerEnvironment(
+  value: string | undefined,
+  fallback: number,
+  maximum: number,
+): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error("BOYUAN_RESEARCH_WORKER_CONCURRENCY must be an integer between 1 and 8");
+  }
+  return parsed;
+}

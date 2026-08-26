@@ -17,6 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:intake-plugin": "npm --prefix integrations/botmux-ai-platform-intake run check",
+    "test:e2e": "playwright test",
+    "test:e2e:serve": "node scripts/playwright-server.mjs",
     "seed": "tsx server/seed.ts",
     "import:knowledge": "tsx server/import-directory.ts"
   },
@@ -50,6 +52,7 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
     "@types/cors": "latest",

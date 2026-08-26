@@ -1,3 +1,5 @@
+import type { IndustryDirectoryItemV1 } from "../../../shared/research-platform-v1";
+
 export type ConversationStatus =
   "processing" | "waiting" | "pending_confirmation" | "completed" | "failed";
 
@@ -98,6 +100,53 @@ export interface PlatformEvidence {
   retrievedAt?: string;
 }
 
+export interface ExternalResearchSource extends PlatformEvidence {
+  sourceType: "web";
+  accessStatus: "accessible" | "metadata_only";
+}
+
+export interface CompanyResearch {
+  runId: string;
+  companyId?: string;
+  intent: string;
+  explicitWebSearch: boolean;
+  triggerReason?:
+    | "user_requested"
+    | "information_missing"
+    | "possibly_outdated"
+    | "internal_conflict"
+    | "not_needed";
+  publicQuery?: string;
+  summary?: string;
+  sources: ExternalResearchSource[];
+  workflowSkill?: "diagnose-bp" | "screen-deal" | "extract-risk-flags";
+  workflowScope?: {
+    asOfDate: string;
+    transactionSide: string;
+    stage: string;
+    audience: string;
+    confidentiality: "public" | "internal" | "restricted";
+    decisionOwner: string;
+    mode?: "one-minute" | "preliminary" | "re-screen" | "gp-fit";
+    mandate?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IndustryResearch {
+  runId: string;
+  industryId: string;
+  intent: string;
+  explicitWebSearch: boolean;
+  triggerReason: "user_requested" | "not_needed";
+  publicQuery?: string;
+  summary?: string;
+  sources: ExternalResearchSource[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AnalysisSection {
   key: string;
   title: string;
@@ -121,9 +170,12 @@ export interface KnowledgeCandidate {
 export interface ConversationDetail extends ConversationSummary {
   task: AnalysisTask & { steps: TaskStep[] };
   company?: PlatformCompany;
+  industry?: IndustryDirectoryItemV1;
   analysisSections: AnalysisSection[];
   candidates: KnowledgeCandidate[];
   companyList?: import("../../../shared/research-platform-v1").CompanyListRecordV1;
+  companyResearch?: CompanyResearch;
+  industryResearch?: IndustryResearch;
 }
 
 export interface UploadResult {

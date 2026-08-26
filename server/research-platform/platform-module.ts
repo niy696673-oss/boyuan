@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { mkdir, open, rename, rm, stat } from 'node:fs/promises';
-import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { AnalysisAdapterError, type MaterialAnalysisPort } from './analysis/contracts.js';
 import { BP_SECTION_TITLES } from './analysis/contracts.js';
@@ -26,6 +26,7 @@ import type {
   ConversationStatus,
   ConversationSummary,
   DecideCandidateInput,
+  DocumentContentRecord,
   DocumentRecord,
   EvidenceRecord,
   GlobalSearchResults,
@@ -33,9 +34,11 @@ import type {
   IngestDocumentResult,
   IngestCompanyNamesInput,
   KnowledgeCandidateRecord,
+  PlatformNotification,
   KnowledgeRecord,
   IndustryDetail,
   IndustryRecord,
+  IndustryResearchRecord,
   PlatformModule,
   ResolveCompanyMatchInput,
   ResolveConversationReuseInput,
@@ -43,6 +46,7 @@ import type {
   SourceChannel,
   StartCompanyListResearchInput,
   StartCompanyResearchInput,
+  StartIndustryResearchInput,
   TaskStatus,
   TaskStepRecord,
   TaskStepStatus,
@@ -50,9 +54,22 @@ import type {
 import { PlatformConflictError, PlatformInputError, PlatformNotFoundError } from './contracts.js';
 import { createDocumentParser } from './parsers/document-parser.js';
 import { DocumentParserError, type DocumentParser, type ParsedBlock } from './parsers/contracts.js';
-import type { QuickCardAnalysisPort, QuickCardAnalysisResult, QuickCardExtractionResult } from './quick-card/contracts.js';
-import type { CompanyResearchPort } from './research/contracts.js';
+import type {
+  QuickCardAnalysisPort,
+  QuickCardAnalysisResult,
+  QuickCardExtractionResult,
+} from './quick-card/contracts.js';
+import type {
+  CompanyResearchPort,
+  CompanyResearchWorkflowContext,
+  CompanyResearchWorkflowSkill,
+} from './research/contracts.js';
+import type {
+  IndustryResearchMaterial,
+  IndustryResearchPort,
+} from './industry-research/contracts.js';
 import { researchSearchTrigger } from './research/search-policy.js';
+import { validateWorkflowResearchOutput } from './research/workflow-policy.js';
 import { SearchAdapterError, type SearchTriggerReason, type WebSearchPort, type WebSearchResultItem } from './search/contracts.js';
 import { createDeterministicSemanticSearchAdapter } from './semantic-search/deterministic-semantic-search.js';
 import type { SemanticCorpusItem, SemanticSearchPort } from './semantic-search/contracts.js';
@@ -78,7 +95,18 @@ const RESEARCH_STEPS = [
   'generate_research_candidates',
 ] as const;
 
-const SUPPORTED_STEP_HANDLERS = new Set<string>([...PIPELINE_STEPS.slice(1), ...RESEARCH_STEPS]);
+const INDUSTRY_RESEARCH_STEPS = [
+  'load_industry_context',
+  'plan_industry_search',
+  'execute_industry_search',
+  'analyze_industry',
+] as const;
+
+const SUPPORTED_STEP_HANDLERS = new Set<string>([
+  ...PIPELINE_STEPS.slice(1),
+  ...RESEARCH_STEPS,
+  ...INDUSTRY_RESEARCH_STEPS,
+]);
 const DEFAULT_LEASE_MS = 30_000;
 const MAX_AI_BLOCKS = 200;
 const MAX_AI_BLOCK_CHARACTERS = 8_000;
@@ -90,6 +118,7 @@ interface PlatformModuleOptions {
   analysis?: MaterialAnalysisPort;
   quickCardAnalysis?: QuickCardAnalysisPort;
   research?: CompanyResearchPort;
+  industryResearch?: IndustryResearchPort;
   search?: WebSearchPort;
   semanticSearch?: SemanticSearchPort;
   companyListExtraction?: CompanyListExtractionPort;
@@ -114,11 +143,21 @@ interface ResearchFinalizeInput {
   ambiguousOptions: string[];
   intent: string;
   explicitWebSearch: boolean;
+  workflow?: NonNullable<StartCompanyResearchInput['workflow']>;
+}
+
+interface IndustryResearchFinalizeInput {
+  industryId: string;
+  industryName: string;
+  intent: string;
+  explicitWebSearch: boolean;
 }
 
 interface FinalizeOptions {
   boundCompanyId?: string;
+  boundIndustryId?: string;
   research?: ResearchFinalizeInput;
+  industryResearch?: IndustryResearchFinalizeInput;
 }
 
 interface ConversationRow {
@@ -221,6 +260,7 @@ class SqlitePlatformModule implements PlatformModule {
   readonly #analysis?: MaterialAnalysisPort;
   readonly #quickCardAnalysis?: QuickCardAnalysisPort;
   readonly #research?: CompanyResearchPort;
+  readonly #industryResearch?: IndustryResearchPort;
   readonly #search?: WebSearchPort;
   readonly #semanticSearch: SemanticSearchPort;
   readonly #companyListExtraction: CompanyListExtractionPort;
@@ -248,6 +288,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#analysis = options.analysis;
     this.#quickCardAnalysis = options.quickCardAnalysis;
     this.#research = options.research;
+    this.#industryResearch = options.industryResearch;
     this.#search = options.search;
     this.#semanticSearch = options.semanticSearch ?? createDeterministicSemanticSearchAdapter();
     this.#companyListExtraction = options.companyListExtraction ?? createDeterministicCompanyListExtractionAdapter();
@@ -262,7 +303,7 @@ class SqlitePlatformModule implements PlatformModule {
     if (replay) return replay;
     const staged = await this.#stage(input);
     return this.#exclusive(async () => {
-      const concurrentReplay = await this.#idempotentIngestResult(input);
+      const concurrentReplay = await this.#idempotentIngestResult(input, staged.sha256);
       if (concurrentReplay) {
         await rm(staged.directory, { recursive: true, force: true });
         return concurrentReplay;
@@ -278,6 +319,13 @@ class SqlitePlatformModule implements PlatformModule {
     return this.#exclusive(() => this.#finalize(input, staged, { boundCompanyId: companyId }));
   }
 
+  async ingestIndustryDocument(industryId: string, input: IngestDocumentInput): Promise<IngestDocumentResult> {
+    this.#assertOpen();
+    this.#industryRecord(industryId);
+    const staged = await this.#stage(input);
+    return this.#exclusive(() => this.#finalize(input, staged, { boundIndustryId: industryId }));
+  }
+
   async ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult> {
     const content = input.namesText.trim();
     if (!content) throw new PlatformInputError('company_names_required', '请提供包含公司名称的文本');
@@ -289,6 +337,46 @@ class SqlitePlatformModule implements PlatformModule {
       purpose: 'company_list',
       content: singleChunk(Buffer.from(content, 'utf8')),
     });
+  }
+
+  async getDocumentContent(documentId: string): Promise<DocumentContentRecord> {
+    this.#assertOpen();
+    const document = this.#db.prepare(`
+      SELECT document_id, file_name, mime_type, storage_path
+      FROM documents WHERE document_id = ?
+    `).get(documentId) as {
+      document_id: string;
+      file_name: string;
+      mime_type: string | null;
+      storage_path: string;
+    } | undefined;
+    if (!document) {
+      throw new PlatformNotFoundError(`document content not found: ${documentId}`);
+    }
+
+    try {
+      const configuredPath = this.#resolveStoragePath(document.storage_path);
+      const realPath = realpathSync(configuredPath);
+      const relativeToDocuments = relative(this.#documentsRoot, realPath);
+      if (
+        !relativeToDocuments
+        || relativeToDocuments.startsWith('..')
+        || isAbsolute(relativeToDocuments)
+      ) {
+        throw new Error('document_storage_path_invalid');
+      }
+      const file = await stat(realPath);
+      if (!file.isFile()) throw new Error('document_storage_not_file');
+      return {
+        documentId: document.document_id,
+        fileName: document.file_name,
+        ...(document.mime_type ? { mimeType: document.mime_type } : {}),
+        bytes: file.size,
+        content: createReadStream(realPath),
+      };
+    } catch {
+      throw new PlatformNotFoundError(`document content unavailable: ${documentId}`);
+    }
   }
 
   async quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult> {
@@ -322,8 +410,11 @@ class SqlitePlatformModule implements PlatformModule {
       SELECT company_id FROM conversation_companies
       WHERE conversation_id = ? AND role = 'primary'
     `).get(conversationId) as { company_id: string } | undefined;
-    const matches = extraction.companyName === '材料未披露' ? [] : this.#matchCompanies(extraction.companyName);
-    const companyId = attached?.company_id ?? (matches.length === 1 ? matches[0] : undefined);
+    const matches = extraction.companyName === '材料未披露'
+      ? []
+      : this.#matchCompanies(extraction.companyName);
+    const companyId = attached?.company_id
+      ?? (matches.length === 1 ? matches[0] : undefined);
     const placement = companyId ? this.#db.prepare(`
       SELECT ci.industry_id FROM company_industries ci
       JOIN industries i ON i.industry_id = ci.industry_id
@@ -360,19 +451,25 @@ class SqlitePlatformModule implements PlatformModule {
     `).all(row.task_id) as unknown as StepRow[];
     const companyLink = this.#db.prepare("SELECT company_id FROM conversation_companies WHERE conversation_id = ? AND role = 'primary'")
       .get(conversationId) as { company_id: string } | undefined;
+    const industryLink = this.#db.prepare(
+      "SELECT industry_id FROM conversation_industries WHERE conversation_id = ? AND role = 'primary'",
+    ).get(conversationId) as { industry_id: string } | undefined;
     const companyMatch = this.#companyMatchCase(conversationId);
     const companyList = this.#companyListByConversation(conversationId);
     const companyResearch = this.#companyResearchByTask(row.task_id);
+    const industryResearch = this.#industryResearchByTask(row.task_id);
     const conversationReuse = this.#conversationReuseSuggestion(conversationId);
     return {
       ...summary,
       task: { ...summary.task, steps: steps.map(toStepRecord) },
       ...(companyLink ? { company: this.#companyRecord(companyLink.company_id) } : {}),
+      ...(industryLink ? { industry: this.#industryRecord(industryLink.industry_id) } : {}),
       ...(companyMatch ? { companyMatch } : {}),
       analysisSections: this.#analysisSections(row.task_id),
       candidates: this.#candidateRecords('WHERE kc.task_id = ?', row.task_id),
       ...(companyList ? { companyList } : {}),
       ...(companyResearch ? { companyResearch } : {}),
+      ...(industryResearch ? { industryResearch } : {}),
       ...(conversationReuse ? { conversationReuse } : {}),
       threadMaterials: this.#threadMaterials(row.thread_id),
     };
@@ -740,6 +837,16 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
+  async getCompanyResearchWorkflowSources(companyId: string) {
+    this.#assertOpen();
+    this.#companyRecord(companyId);
+    return this.#companyResearchWorkflowMaterials(companyId).map((material) => ({
+      sourceId: material.sourceId,
+      title: material.title,
+      ...(material.locator ? { locator: material.locator } : {}),
+    }));
+  }
+
   async setCompanyWatched(companyId: string, watched: boolean, expectedVersion: number): Promise<CompanyDetail> {
     this.#assertOpen();
     const before = this.#companyRecord(companyId);
@@ -811,6 +918,21 @@ class SqlitePlatformModule implements PlatformModule {
       company_id: string; node_id: string | null; node_name: string | null; position_label: string;
       status: string; evidence_id: string | null;
     }>;
+    const researchRows = this.#db.prepare(`
+      SELECT c.conversation_id, c.status, r.run_id, r.intent, r.summary, r.updated_at
+      FROM industry_research_runs r
+      JOIN analysis_tasks t ON t.task_id = r.task_id
+      JOIN conversations c ON c.conversation_id = t.conversation_id
+      WHERE r.industry_id = ?
+      ORDER BY r.updated_at DESC, r.run_id DESC
+    `).all(industryId) as unknown as Array<{
+      conversation_id: string;
+      status: string;
+      run_id: string;
+      intent: string;
+      summary: string | null;
+      updated_at: string;
+    }>;
     return {
       ...industry,
       nodes: nodes.map((node) => ({
@@ -830,6 +952,14 @@ class SqlitePlatformModule implements PlatformModule {
         updatedAt: item.updated_at,
         ...(item.evidence_id ? { evidence: this.#evidenceById(item.evidence_id) } : {}),
       })),
+      researchRecords: researchRows.map((item) => ({
+        conversationId: item.conversation_id,
+        runId: item.run_id,
+        intent: item.intent,
+        status: item.status as ConversationStatus,
+        ...(item.summary ? { summary: item.summary } : {}),
+        updatedAt: item.updated_at,
+      })),
       companies: companyRows.map((item) => ({
         company: this.#companyRecord(item.company_id),
         ...(item.node_id ? { nodeId: item.node_id } : {}),
@@ -839,6 +969,34 @@ class SqlitePlatformModule implements PlatformModule {
         ...(item.evidence_id ? { evidence: this.#evidenceById(item.evidence_id) } : {}),
       })),
     };
+  }
+
+  async setIndustryWatched(
+    industryId: string,
+    watched: boolean,
+    expectedVersion: number,
+  ): Promise<IndustryDetail> {
+    this.#assertOpen();
+    const before = this.#industryRecord(industryId);
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      const changed = this.#db.prepare(`
+        UPDATE industries SET watched = ?, version = version + 1, updated_at = ?
+        WHERE industry_id = ? AND version = ?
+      `).run(watched ? 1 : 0, now, industryId, expectedVersion);
+      if (changed.changes !== 1) {
+        throw new PlatformConflictError('version_conflict', '行业档案已变更，请刷新后重试');
+      }
+      this.#audit(
+        'industry.watch.set',
+        'industry',
+        industryId,
+        { watched: before.watched, version: before.version },
+        { watched, version: expectedVersion + 1 },
+        now,
+      );
+    });
+    return this.getIndustry(industryId);
   }
 
   async search(query: string): Promise<GlobalSearchResults> {
@@ -883,10 +1041,94 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
+  async listNotifications(): Promise<PlatformNotification[]> {
+    this.#assertOpen();
+    const candidates = this.#db.prepare(`
+      SELECT kc.candidate_id, kc.statement, kc.updated_at, companies.canonical_name
+      FROM knowledge_candidates kc
+      JOIN companies ON companies.company_id = kc.company_id
+      WHERE kc.status IN ('pending', 'conflicted')
+      ORDER BY kc.updated_at DESC LIMIT 30
+    `).all() as unknown as Array<{
+      candidate_id: string; statement: string; updated_at: string; canonical_name: string;
+    }>;
+    const failedTasks = this.#db.prepare(`
+      SELECT tasks.task_id, tasks.updated_at, conversations.title, conversations.conversation_id
+      FROM analysis_tasks tasks
+      JOIN conversations ON conversations.conversation_id = tasks.conversation_id
+      WHERE tasks.status = 'failed'
+      ORDER BY tasks.updated_at DESC LIMIT 20
+    `).all() as unknown as Array<{
+      task_id: string; updated_at: string; title: string; conversation_id: string;
+    }>;
+    const completedResearch = this.#db.prepare(`
+      SELECT tasks.task_id, tasks.updated_at, conversations.title, conversations.conversation_id
+      FROM analysis_tasks tasks
+      JOIN conversations ON conversations.conversation_id = tasks.conversation_id
+      WHERE tasks.status = 'completed'
+        AND tasks.task_type IN ('company_research', 'industry_research')
+      ORDER BY tasks.updated_at DESC LIMIT 20
+    `).all() as unknown as Array<{
+      task_id: string; updated_at: string; title: string; conversation_id: string;
+    }>;
+    const readRows = this.#db.prepare('SELECT notification_id, read_at FROM notification_reads')
+      .all() as unknown as Array<{ notification_id: string; read_at: string }>;
+    const reads = new Map(readRows.map((item) => [item.notification_id, item.read_at]));
+    return [
+      ...candidates.map((item): PlatformNotification => notificationWithRead({
+        notificationId: `candidate:${item.candidate_id}`,
+        kind: 'candidate',
+        title: `${item.canonical_name}有待确认知识`,
+        description: item.statement.slice(0, 160),
+        targetUrl: `/confirmations?candidateId=${encodeURIComponent(item.candidate_id)}`,
+        createdAt: item.updated_at,
+      }, reads)),
+      ...failedTasks.map((item): PlatformNotification => notificationWithRead({
+        notificationId: `task:${item.task_id}:failed`,
+        kind: 'task_failed',
+        title: `${item.title}处理失败`,
+        description: '打开研究对话查看失败步骤并重试。',
+        targetUrl: `/?conversationId=${encodeURIComponent(item.conversation_id)}`,
+        createdAt: item.updated_at,
+      }, reads)),
+      ...completedResearch.map((item): PlatformNotification => notificationWithRead({
+        notificationId: `task:${item.task_id}:completed`,
+        kind: 'research_completed',
+        title: `${item.title}已完成`,
+        description: '研究结果已经保存，可以查看来源和待确认知识。',
+        targetUrl: `/?conversationId=${encodeURIComponent(item.conversation_id)}`,
+        createdAt: item.updated_at,
+      }, reads)),
+    ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async markNotificationRead(notificationId: string): Promise<PlatformNotification> {
+    this.#assertOpen();
+    const notification = (await this.listNotifications())
+      .find((item) => item.notificationId === notificationId);
+    if (!notification) {
+      throw new PlatformNotFoundError(`notification not found: ${notificationId}`);
+    }
+    const readAt = this.#now().toISOString();
+    this.#db.prepare(`
+      INSERT INTO notification_reads (notification_id, read_at)
+      VALUES (?, ?)
+      ON CONFLICT(notification_id) DO UPDATE SET read_at = excluded.read_at
+    `).run(notificationId, readAt);
+    return { ...notification, readAt };
+  }
+
   async startCompanyResearch(input: StartCompanyResearchInput): Promise<ConversationDetail> {
     this.#assertOpen();
     const intent = input.intent.trim();
     if (!intent || intent.length > 500) throw new PlatformInputError('invalid_research_intent', '研究意图不能为空且不能超过 500 字');
+    const workflow = normalizeCompanyResearchWorkflow(input.workflow);
+    if (workflow && input.explicitWebSearch) {
+      throw new PlatformInputError(
+        'workflow_external_search_must_be_separate',
+        '投研 Skill 仅使用已授权材料和正式知识；公开信息请另行发起常规研究',
+      );
+    }
     let companyId = input.companyId;
     let companyName: string;
     let ambiguousOptions: string[] = [];
@@ -899,7 +1141,24 @@ class SqlitePlatformModule implements PlatformModule {
       if (matches.length > 1) ambiguousOptions = matches;
       else companyId = matches[0] ?? this.#createCompany(companyName);
     }
-    const payload = Buffer.from(JSON.stringify({ companyName, intent, explicitWebSearch: input.explicitWebSearch }), 'utf8');
+    if (workflow) {
+      if (!companyId) {
+        throw new PlatformInputError(
+          'workflow_company_required',
+          '投研 Skill 必须绑定已确认的公司主体',
+        );
+      }
+      this.#companyResearchWorkflowMaterialsForSourceIds(
+        companyId,
+        workflow.inputScopeApproval.sourceIds,
+      );
+    }
+    const payload = Buffer.from(JSON.stringify({
+      companyName,
+      intent,
+      explicitWebSearch: input.explicitWebSearch,
+      ...(workflow ? { workflow } : {}),
+    }), 'utf8');
     const documentInput: IngestDocumentInput = {
       fileName: `公司研究请求-${this.#now().toISOString().replace(/[-:]/gu, '').slice(0, 15)}.json`,
       mimeType: 'application/json',
@@ -912,6 +1171,42 @@ class SqlitePlatformModule implements PlatformModule {
         ...(companyId ? { companyId } : {}),
         companyName,
         ambiguousOptions,
+        intent,
+        explicitWebSearch: input.explicitWebSearch,
+        ...(workflow ? { workflow } : {}),
+      },
+    }));
+    return result.conversation;
+  }
+
+  async startIndustryResearch(input: StartIndustryResearchInput): Promise<ConversationDetail> {
+    this.#assertOpen();
+    const intent = input.intent.trim();
+    if (!intent || intent.length > 500) {
+      throw new PlatformInputError(
+        'invalid_research_intent',
+        '研究意图不能为空且不能超过 500 字',
+      );
+    }
+    const industry = this.#industryRecord(input.industryId);
+    const payload = Buffer.from(JSON.stringify({
+      industryId: industry.industryId,
+      industryName: industry.name,
+      intent,
+      explicitWebSearch: input.explicitWebSearch,
+    }), 'utf8');
+    const documentInput: IngestDocumentInput = {
+      fileName: `行业研究请求-${this.#now().toISOString().replace(/[-:]/gu, '').slice(0, 15)}.json`,
+      mimeType: 'application/json',
+      sourceChannel: 'web',
+      content: singleChunk(payload),
+    };
+    const staged = await this.#stage(documentInput);
+    const result = await this.#exclusive(() => this.#finalize(documentInput, staged, {
+      boundIndustryId: industry.industryId,
+      industryResearch: {
+        industryId: industry.industryId,
+        industryName: industry.name,
         intent,
         explicitWebSearch: input.explicitWebSearch,
       },
@@ -1226,12 +1521,52 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
-  async #idempotentIngestResult(input: IngestDocumentInput): Promise<IngestDocumentResult | undefined> {
+  async #idempotentIngestResult(
+    input: IngestDocumentInput,
+    contentSha256?: string,
+  ): Promise<IngestDocumentResult | undefined> {
     if (!input.sourceMessageId) return undefined;
-    const existing = this.#db.prepare(`
+    const sourceMessageId = input.sourceMessageId;
+    const attachmentKey = input.sourceAttachmentKey ?? '';
+    const lookup = this.#db.prepare(`
       SELECT conversation_id FROM intake_idempotency
-      WHERE source_channel = ? AND source_message_id = ?
-    `).get(input.sourceChannel, input.sourceMessageId) as { conversation_id: string } | undefined;
+      WHERE source_channel = ? AND source_message_id = ? AND source_attachment_key = ?
+    `);
+    let existing = lookup.get(
+      input.sourceChannel,
+      sourceMessageId,
+      attachmentKey,
+    ) as { conversation_id: string } | undefined;
+    if (!existing && attachmentKey && contentSha256) {
+      existing = this.#transaction(() => {
+        const concurrentExact = lookup.get(
+          input.sourceChannel,
+          sourceMessageId,
+          attachmentKey,
+        ) as { conversation_id: string } | undefined;
+        if (concurrentExact) return concurrentExact;
+        const legacy = this.#db.prepare(`
+          SELECT intake.conversation_id, document.sha256
+          FROM intake_idempotency intake
+          JOIN conversations conversation
+            ON conversation.conversation_id = intake.conversation_id
+          JOIN documents document
+            ON document.document_id = conversation.primary_document_id
+          WHERE intake.source_channel = ? AND intake.source_message_id = ?
+            AND intake.source_attachment_key = ''
+        `).get(input.sourceChannel, sourceMessageId) as {
+          conversation_id: string;
+          sha256: string;
+        } | undefined;
+        if (!legacy || legacy.sha256 !== contentSha256) return undefined;
+        const claimed = this.#db.prepare(`
+          UPDATE intake_idempotency SET source_attachment_key = ?
+          WHERE source_channel = ? AND source_message_id = ?
+            AND source_attachment_key = ''
+        `).run(attachmentKey, input.sourceChannel, sourceMessageId);
+        return claimed.changes === 1 ? legacy : undefined;
+      });
+    }
     if (!existing) return undefined;
     return {
       conversation: await this.getConversation(existing.conversation_id),
@@ -1240,7 +1575,7 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async #finalize(input: IngestDocumentInput, staged: StagedFile, options: FinalizeOptions = {}): Promise<IngestDocumentResult> {
-    const { boundCompanyId, research } = options;
+    const { boundCompanyId, boundIndustryId, research, industryResearch } = options;
     const now = this.#now().toISOString();
     const existing = this.#db.prepare('SELECT document_id FROM documents WHERE sha256 = ?').get(staged.sha256) as { document_id: string } | undefined;
     const documentId = existing?.document_id ?? this.#nextId();
@@ -1258,7 +1593,15 @@ class SqlitePlatformModule implements PlatformModule {
       const receiptId = this.#nextId();
       const conversationId = this.#nextId();
       const taskId = this.#nextId();
-      const taskType = research ? 'company_research' : input.purpose === 'company_list' || isCompanyListFile(staged.fileName) ? 'company_list_processing' : 'material_analysis';
+      const taskType = research
+        ? 'company_research'
+        : industryResearch
+          ? 'industry_research'
+          : boundIndustryId
+            ? 'material_analysis'
+            : input.purpose === 'company_list' || isCompanyListFile(staged.fileName)
+            ? 'company_list_processing'
+            : 'material_analysis';
       const researchPending = Boolean(research && !research.companyId && research.ambiguousOptions.length > 1);
       this.#transaction(() => {
         if (!existing && storagePath) {
@@ -1269,11 +1612,11 @@ class SqlitePlatformModule implements PlatformModule {
             ) VALUES (?, ?, ?, ?, ?, ?, 'queued', 'stored', ?)
           `).run(documentId, staged.fileName, staged.mimeType ?? null, staged.bytes, staged.sha256, storagePath, now);
         }
-        if (research) {
+        if (research || industryResearch) {
           this.#db.prepare(`
-            UPDATE documents SET parse_status = 'parsed', archive_status = 'archived', material_type = 'company_research_query'
+            UPDATE documents SET parse_status = 'parsed', archive_status = 'archived', material_type = ?
             WHERE document_id = ?
-          `).run(documentId);
+          `).run(research ? 'company_research_query' : 'industry_research_query', documentId);
         }
         this.#db.prepare(`
           INSERT INTO receipt_events (
@@ -1293,11 +1636,19 @@ class SqlitePlatformModule implements PlatformModule {
         `).run(
           conversationId,
           conversationId,
-          research ? `${research.companyName}公司研究` : staged.fileName,
-          research ? 'company' : 'material',
+          research
+            ? `${research.companyName}公司研究`
+            : industryResearch
+              ? `${industryResearch.industryName}行业研究`
+              : staged.fileName,
+          research ? 'company' : industryResearch ? 'industry' : 'material',
           documentId,
           input.sourceChannel,
-          researchPending ? 'pending_confirmation' : research ? 'waiting' : 'processing',
+          researchPending
+            ? 'pending_confirmation'
+            : research || industryResearch
+              ? 'waiting'
+              : 'processing',
           now,
           now,
         );
@@ -1311,12 +1662,36 @@ class SqlitePlatformModule implements PlatformModule {
             VALUES (?, ?, 'primary', ?)
           `).run(conversationId, boundCompanyId, now);
         }
+        if (boundIndustryId) {
+          this.#db.prepare(`
+            INSERT OR IGNORE INTO conversation_industries (
+              conversation_id, industry_id, role, created_at
+            ) VALUES (?, ?, 'primary', ?)
+          `).run(conversationId, boundIndustryId, now);
+          if (!industryResearch) {
+            this.#db.prepare(`
+              INSERT OR IGNORE INTO industry_materials (
+                industry_id, conversation_id, document_id, evidence_id, created_at
+              ) VALUES (?, ?, ?, NULL, ?)
+            `).run(boundIndustryId, conversationId, documentId, now);
+          }
+          this.#db.prepare(
+            'UPDATE industries SET updated_at = ? WHERE industry_id = ?',
+          ).run(now, boundIndustryId);
+        }
         if (input.sourceMessageId) {
           this.#db.prepare(`
             INSERT INTO intake_idempotency (
-              source_channel, source_message_id, conversation_id, created_at
-            ) VALUES (?, ?, ?, ?)
-          `).run(input.sourceChannel, input.sourceMessageId, conversationId, now);
+              source_channel, source_message_id, source_attachment_key,
+              conversation_id, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+          `).run(
+            input.sourceChannel,
+            input.sourceMessageId,
+            input.sourceAttachmentKey ?? '',
+            conversationId,
+            now,
+          );
         }
         this.#db.prepare(`
           INSERT INTO analysis_tasks (
@@ -1326,8 +1701,16 @@ class SqlitePlatformModule implements PlatformModule {
           taskId,
           conversationId,
           taskType,
-          researchPending ? 'pending_confirmation' : research ? 'waiting' : 'queued',
-          research ? 'resolve_company' : 'verify_storage',
+          researchPending
+            ? 'pending_confirmation'
+            : research || industryResearch
+              ? 'waiting'
+              : 'queued',
+          research
+            ? 'resolve_company'
+            : industryResearch
+              ? 'load_industry_context'
+              : 'verify_storage',
           now,
           now,
         );
@@ -1336,14 +1719,20 @@ class SqlitePlatformModule implements PlatformModule {
             step_id, task_id, step_name, position, status, attempts, started_at, finished_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        const steps = research ? RESEARCH_STEPS : PIPELINE_STEPS;
+        const steps = research
+          ? RESEARCH_STEPS
+          : industryResearch
+            ? INDUSTRY_RESEARCH_STEPS
+            : PIPELINE_STEPS;
         steps.forEach((name, index) => {
-          const status: TaskStepStatus = research
+          const status: TaskStepStatus = research || industryResearch
             ? index === 0 ? (researchPending ? 'pending_confirmation' : 'queued') : 'blocked'
             : index === 0 ? 'completed' : index === 1 ? 'queued' : 'blocked';
           insertStep.run(
-            this.#nextId(), taskId, name, index + 1, status, !research && index === 0 ? 1 : 0,
-            !research && index === 0 ? now : null, !research && index === 0 ? now : null,
+            this.#nextId(), taskId, name, index + 1, status,
+            !research && !industryResearch && index === 0 ? 1 : 0,
+            !research && !industryResearch && index === 0 ? now : null,
+            !research && !industryResearch && index === 0 ? now : null,
           );
         });
         if (research) {
@@ -1357,11 +1746,32 @@ class SqlitePlatformModule implements PlatformModule {
           }
           this.#db.prepare(`
             INSERT INTO company_research_runs (
-              run_id, task_id, company_id, intent, explicit_search, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              run_id, task_id, company_id, intent, explicit_search,
+              workflow_skill, workflow_context_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             this.#nextId(), taskId, research.companyId ?? null, research.intent,
-            research.explicitWebSearch ? 1 : 0, now, now,
+            research.explicitWebSearch ? 1 : 0,
+            research.workflow?.skill ?? null,
+            research.workflow ? JSON.stringify(research.workflow) : null,
+            now,
+            now,
+          );
+        }
+        if (industryResearch) {
+          this.#db.prepare(`
+            INSERT INTO industry_research_runs (
+              run_id, task_id, industry_id, intent, explicit_search,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            this.#nextId(),
+            taskId,
+            industryResearch.industryId,
+            industryResearch.intent,
+            industryResearch.explicitWebSearch ? 1 : 0,
+            now,
+            now,
           );
         }
       });
@@ -1485,6 +1895,10 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async #executeStep(step: ClaimedStep): Promise<StepOutcome> {
+    if (step.name === 'load_industry_context') return this.#loadIndustryResearchContext(step);
+    if (step.name === 'plan_industry_search') return this.#planIndustrySearch(step);
+    if (step.name === 'execute_industry_search') return this.#executeIndustrySearch(step);
+    if (step.name === 'analyze_industry') return this.#analyzeIndustry(step);
     if (step.name === 'resolve_company') return this.#resolveResearchCompany(step);
     if (step.name === 'load_company_knowledge') return this.#loadResearchKnowledge(step);
     if (step.name === 'plan_external_search') return this.#planExternalSearch(step);
@@ -1566,6 +1980,13 @@ class SqlitePlatformModule implements PlatformModule {
 
   async #classifyMaterial(step: ClaimedStep): Promise<StepOutcome> {
     const target = this.#pipelineTarget(step.taskId);
+    if (this.#isBoundIndustryMaterialTask(step.taskId)) {
+      this.#db.prepare(`
+        UPDATE documents SET material_type = COALESCE(material_type, 'industry_material')
+        WHERE document_id = ?
+      `).run(target.documentId);
+      return 'completed';
+    }
     if (this.#taskType(step.taskId) === 'company_list_processing') {
       this.#db.prepare("UPDATE documents SET material_type = 'company_list' WHERE document_id = ?").run(target.documentId);
       return 'completed';
@@ -1580,6 +2001,7 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async #identifyCompany(step: ClaimedStep): Promise<StepOutcome> {
+    if (this.#isBoundIndustryMaterialTask(step.taskId)) return 'skipped';
     const target = this.#pipelineTarget(step.taskId);
     if (this.#documentMaterialType(target.documentId) === 'company_list') return this.#identifyCompanyList(target);
     const attached = this.#db.prepare('SELECT company_id FROM conversation_companies WHERE conversation_id = ? AND role = ?')
@@ -1613,6 +2035,7 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async #suggestConversationReuse(step: ClaimedStep): Promise<StepOutcome> {
+    if (this.#isBoundIndustryMaterialTask(step.taskId)) return 'skipped';
     const target = this.#pipelineTarget(step.taskId);
     if (this.#taskType(step.taskId) !== 'material_analysis' || this.#documentMaterialType(target.documentId) === 'company_list') return 'skipped';
     const conversation = this.#db.prepare(`
@@ -1678,6 +2101,7 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async #analyzeMaterial(step: ClaimedStep): Promise<StepOutcome> {
+    if (this.#isBoundIndustryMaterialTask(step.taskId)) return 'skipped';
     const target = this.#pipelineTarget(step.taskId);
     if (this.#documentMaterialType(target.documentId) === 'company_list') return 'skipped';
     if (!this.#analysis) throw new AnalysisAdapterError('analysis_adapter_unavailable', 'OpenCode analysis adapter is not configured');
@@ -1769,6 +2193,11 @@ class SqlitePlatformModule implements PlatformModule {
 
   async #generateCandidates(step: ClaimedStep): Promise<StepOutcome> {
     const pipelineTarget = this.#pipelineTarget(step.taskId);
+    if (this.#isBoundIndustryMaterialTask(step.taskId)) {
+      this.#db.prepare("UPDATE documents SET archive_status = 'archived' WHERE document_id = ?")
+        .run(pipelineTarget.documentId);
+      return 'skipped';
+    }
     if (this.#documentMaterialType(pipelineTarget.documentId) === 'company_list') {
       this.#db.prepare("UPDATE documents SET archive_status = 'archived' WHERE document_id = ?").run(pipelineTarget.documentId);
       return 'skipped';
@@ -1854,16 +2283,23 @@ class SqlitePlatformModule implements PlatformModule {
 
   async #planExternalSearch(step: ClaimedStep): Promise<StepOutcome> {
     const run = this.#db.prepare(`
-      SELECT r.company_id, r.explicit_search, c.canonical_name
+      SELECT r.company_id, r.explicit_search, r.workflow_skill, c.canonical_name
       FROM company_research_runs r JOIN companies c ON c.company_id = r.company_id
       WHERE r.task_id = ?
-    `).get(step.taskId) as { company_id: string; explicit_search: number; canonical_name: string } | undefined;
+    `).get(step.taskId) as {
+      company_id: string;
+      explicit_search: number;
+      workflow_skill: string | null;
+      canonical_name: string;
+    } | undefined;
     if (!run) throw new Error('company_research_run_missing');
     const knowledge = this.#db.prepare(`
       SELECT status, created_at FROM knowledge
       WHERE company_id = ? AND status IN ('current', 'disputed') ORDER BY created_at DESC
     `).all(run.company_id) as unknown as Array<{ status: string; created_at: string }>;
-    const trigger = researchSearchTrigger(Boolean(run.explicit_search), knowledge, this.#now());
+    const trigger = run.workflow_skill
+      ? 'not_needed'
+      : researchSearchTrigger(Boolean(run.explicit_search), knowledge, this.#now());
     const query = trigger === 'not_needed' ? undefined : `${run.canonical_name} 公司 最新 业务 产品 融资`;
     this.#db.prepare(`
       UPDATE company_research_runs SET trigger_reason = ?, public_query = ?, updated_at = ? WHERE task_id = ?
@@ -1917,14 +2353,16 @@ class SqlitePlatformModule implements PlatformModule {
   async #analyzeCompany(step: ClaimedStep): Promise<StepOutcome> {
     if (!this.#research) throw new AnalysisAdapterError('research_adapter_unavailable', 'OpenCode research adapter is not configured');
     const run = this.#db.prepare(`
-      SELECT r.run_id, r.company_id, r.intent, r.trigger_reason, r.summary, t.conversation_id, t.session_id,
-        c.canonical_name
+      SELECT r.run_id, r.company_id, r.intent, r.trigger_reason, r.summary,
+        r.workflow_skill, r.workflow_context_json,
+        t.conversation_id, t.session_id, c.canonical_name
       FROM company_research_runs r
       JOIN analysis_tasks t ON t.task_id = r.task_id
       JOIN companies c ON c.company_id = r.company_id
       WHERE r.task_id = ?
     `).get(step.taskId) as {
       run_id: string; company_id: string; intent: string; trigger_reason: string | null; summary: string | null;
+      workflow_skill: string | null; workflow_context_json: string | null;
       conversation_id: string; session_id: string | null; canonical_name: string;
     } | undefined;
     if (!run) throw new Error('company_research_run_missing');
@@ -1940,7 +2378,31 @@ class SqlitePlatformModule implements PlatformModule {
       WHERE task_id = ? AND status IN ('pending', 'conflicted') ORDER BY created_at
     `).all(step.taskId) as unknown as Array<{ knowledge_type: string; statement: string }>;
     const webResults = this.#researchWebResults(run.run_id);
-    const result = await this.#research.analyze({
+    const workflowRequest = run.workflow_context_json
+      ? JSON.parse(run.workflow_context_json) as NonNullable<StartCompanyResearchInput['workflow']>
+      : undefined;
+    const workflowMaterials = workflowRequest
+      ? this.#companyResearchWorkflowMaterialsForSourceIds(
+          run.company_id,
+          workflowRequest.inputScopeApproval.sourceIds,
+        )
+      : [];
+    const workflowContext: CompanyResearchWorkflowContext | undefined = workflowRequest
+      ? {
+          scope: workflowRequest.scope,
+          gates: {
+            inputScopeApproval: {
+              ...workflowRequest.inputScopeApproval,
+            },
+            ...(workflowRequest.methodAssumptionApproval
+              ? { methodAssumptionApproval: workflowRequest.methodAssumptionApproval }
+              : {}),
+            externalReleaseApproval: { approved: false },
+          },
+          materials: workflowMaterials,
+        }
+      : undefined;
+    const analyzedResult = await this.#research.analyze({
       taskId: step.taskId,
       conversationId: run.conversation_id,
       companyId: run.company_id,
@@ -1956,8 +2418,15 @@ class SqlitePlatformModule implements PlatformModule {
       })),
       pendingCandidates: pending.map((item) => ({ knowledgeType: item.knowledge_type, statement: item.statement })),
       webResults,
+      ...(run.workflow_skill
+        ? { workflowSkill: run.workflow_skill as CompanyResearchWorkflowSkill }
+        : {}),
+      ...(workflowContext ? { workflowContext } : {}),
       ...(run.session_id ? { sessionId: run.session_id } : {}),
     });
+    const result = workflowContext
+      ? validateWorkflowResearchOutput(analyzedResult, workflowContext)
+      : analyzedResult;
     const knownUrls = new Set(webResults.map((item) => item.url));
     for (const [index, candidate] of result.candidates.entries()) {
       if (candidate.evidenceUrls.length === 0 || candidate.evidenceUrls.some((url) => !knownUrls.has(url))) {
@@ -1984,8 +2453,11 @@ class SqlitePlatformModule implements PlatformModule {
         INSERT INTO analysis_sections (section_id, task_id, section_key, summary, block_ids_json, created_at)
         VALUES (?, ?, 'company_research', ?, '[]', ?)
       `).run(sectionId, step.taskId, result.summary, now);
-      for (const source of this.#researchSourceRows(run.run_id)) {
-        this.#db.prepare('INSERT INTO analysis_section_evidence (section_id, evidence_id) VALUES (?, ?)').run(sectionId, source.evidence_id);
+      const sectionEvidenceIds = workflowContext
+        ? workflowContext.materials.map((material) => material.sourceId)
+        : this.#researchSourceRows(run.run_id).map((source) => source.evidence_id);
+      for (const evidenceId of sectionEvidenceIds) {
+        this.#db.prepare('INSERT INTO analysis_section_evidence (section_id, evidence_id) VALUES (?, ?)').run(sectionId, evidenceId);
       }
     });
     return 'completed';
@@ -2031,6 +2503,215 @@ class SqlitePlatformModule implements PlatformModule {
     return 'completed';
   }
 
+  async #loadIndustryResearchContext(step: ClaimedStep): Promise<StepOutcome> {
+    const run = this.#db.prepare(`
+      SELECT r.industry_id
+      FROM industry_research_runs r
+      WHERE r.task_id = ?
+    `).get(step.taskId) as { industry_id: string } | undefined;
+    if (!run) throw new Error('industry_research_run_missing');
+    this.#industryRecord(run.industry_id);
+    return 'completed';
+  }
+
+  async #planIndustrySearch(step: ClaimedStep): Promise<StepOutcome> {
+    const run = this.#db.prepare(`
+      SELECT r.industry_id, r.explicit_search, i.name
+      FROM industry_research_runs r
+      JOIN industries i ON i.industry_id = r.industry_id
+      WHERE r.task_id = ?
+    `).get(step.taskId) as {
+      industry_id: string;
+      explicit_search: number;
+      name: string;
+    } | undefined;
+    if (!run) throw new Error('industry_research_run_missing');
+    const trigger = run.explicit_search ? 'user_requested' : 'not_needed';
+    const query = run.explicit_search
+      ? `${run.name} 行业 产业链 市场 趋势 重点公司`
+      : undefined;
+    this.#db.prepare(`
+      UPDATE industry_research_runs
+      SET trigger_reason = ?, public_query = ?, updated_at = ?
+      WHERE task_id = ?
+    `).run(trigger, query ?? null, this.#now().toISOString(), step.taskId);
+    return 'completed';
+  }
+
+  async #executeIndustrySearch(step: ClaimedStep): Promise<StepOutcome> {
+    const run = this.#db.prepare(`
+      SELECT r.run_id, r.trigger_reason, r.public_query, r.search_executed_at,
+        i.name
+      FROM industry_research_runs r
+      JOIN industries i ON i.industry_id = r.industry_id
+      WHERE r.task_id = ?
+    `).get(step.taskId) as {
+      run_id: string;
+      trigger_reason: string;
+      public_query: string | null;
+      search_executed_at: string | null;
+      name: string;
+    } | undefined;
+    if (!run) throw new Error('industry_research_run_missing');
+    if (run.trigger_reason === 'not_needed') return 'skipped';
+    if (run.search_executed_at) return 'completed';
+    if (!run.public_query) throw new Error('industry_research_public_query_missing');
+    if (!this.#search) {
+      throw new SearchAdapterError(
+        'search_adapter_unavailable',
+        'Exa search adapter is not configured',
+      );
+    }
+    const results = await this.#search.search({
+      companyName: run.name,
+      reason: 'user_requested',
+      query: run.public_query,
+      maxResults: 5,
+    });
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      for (const [index, result] of results.entries()) {
+        const evidenceId = this.#nextId();
+        const quote = result.highlights.join('\n').trim() || result.title;
+        this.#db.prepare(`
+          INSERT INTO evidence (
+            evidence_id, source_type, quote, title, site, url,
+            published_at, retrieved_at, created_at
+          ) VALUES (?, 'web', ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          evidenceId,
+          quote,
+          result.title,
+          result.site,
+          result.url,
+          result.publishedAt ?? null,
+          result.retrievedAt,
+          now,
+        );
+        this.#db.prepare(`
+          INSERT INTO industry_web_search_results (
+            result_id, run_id, evidence_id, rank, access_status
+          ) VALUES (?, ?, ?, ?, ?)
+        `).run(
+          this.#nextId(),
+          run.run_id,
+          evidenceId,
+          index + 1,
+          result.accessStatus,
+        );
+      }
+      this.#db.prepare(`
+        UPDATE industry_research_runs
+        SET search_executed_at = ?, updated_at = ?
+        WHERE run_id = ?
+      `).run(now, now, run.run_id);
+    });
+    return 'completed';
+  }
+
+  async #analyzeIndustry(step: ClaimedStep): Promise<StepOutcome> {
+    if (!this.#industryResearch) {
+      throw new AnalysisAdapterError(
+        'industry_research_adapter_unavailable',
+        'OpenCode industry research adapter is not configured',
+      );
+    }
+    const run = this.#db.prepare(`
+      SELECT r.run_id, r.industry_id, r.intent, r.summary,
+        t.conversation_id, t.session_id, i.name, i.summary AS industry_summary
+      FROM industry_research_runs r
+      JOIN analysis_tasks t ON t.task_id = r.task_id
+      JOIN industries i ON i.industry_id = r.industry_id
+      WHERE r.task_id = ?
+    `).get(step.taskId) as {
+      run_id: string;
+      industry_id: string;
+      intent: string;
+      summary: string | null;
+      conversation_id: string;
+      session_id: string | null;
+      name: string;
+      industry_summary: string;
+    } | undefined;
+    if (!run) throw new Error('industry_research_run_missing');
+    if (run.summary) return 'completed';
+    const nodes = this.#db.prepare(`
+      SELECT stage, name, description
+      FROM industry_nodes
+      WHERE industry_id = ?
+      ORDER BY node_order, node_id
+    `).all(run.industry_id) as unknown as Array<{
+      stage: 'upstream' | 'midstream' | 'downstream';
+      name: string;
+      description: string | null;
+    }>;
+    const materials = this.#industryResearchMaterials(run.industry_id);
+    const webResults = this.#industryResearchWebResults(run.run_id);
+    const result = await this.#industryResearch.analyze({
+      taskId: step.taskId,
+      conversationId: run.conversation_id,
+      industryId: run.industry_id,
+      industryName: run.name,
+      intent: run.intent,
+      industrySummary: run.industry_summary,
+      nodes: nodes.map((node) => ({
+        stage: node.stage,
+        name: node.name,
+        ...(node.description ? { description: node.description } : {}),
+      })),
+      materials,
+      webResults,
+      ...(run.session_id ? { sessionId: run.session_id } : {}),
+    });
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      this.#db.prepare(`
+        UPDATE analysis_tasks
+        SET provider_id = ?, model_id = ?, session_id = ?,
+          result_status = 'validated', updated_at = ?
+        WHERE task_id = ?
+      `).run(
+        result.providerId,
+        result.modelId,
+        result.sessionId,
+        now,
+        step.taskId,
+      );
+      this.#db.prepare(`
+        UPDATE industry_research_runs
+        SET summary = ?, raw_text = ?, updated_at = ?
+        WHERE run_id = ?
+      `).run(result.summary, result.rawText, now, run.run_id);
+      this.#db.prepare(`
+        INSERT INTO analysis_runs (
+          run_id, task_id, raw_text, candidate_drafts_json, created_at
+        ) VALUES (?, ?, ?, '[]', ?)
+        ON CONFLICT(task_id) DO UPDATE SET
+          raw_text = excluded.raw_text,
+          candidate_drafts_json = excluded.candidate_drafts_json,
+          created_at = excluded.created_at
+      `).run(this.#nextId(), step.taskId, result.rawText, now);
+      const sectionId = this.#nextId();
+      this.#db.prepare(`
+        INSERT INTO analysis_sections (
+          section_id, task_id, section_key, summary, block_ids_json, created_at
+        ) VALUES (?, ?, 'industry_research', ?, '[]', ?)
+      `).run(sectionId, step.taskId, result.summary, now);
+      const evidenceIds = new Set([
+        ...materials.map((material) => material.evidenceId),
+        ...this.#industryResearchSourceRows(run.run_id)
+          .map((source) => source.evidence_id),
+      ]);
+      for (const evidenceId of evidenceIds) {
+        this.#db.prepare(`
+          INSERT OR IGNORE INTO analysis_section_evidence (section_id, evidence_id)
+          VALUES (?, ?)
+        `).run(sectionId, evidenceId);
+      }
+    });
+    return 'completed';
+  }
+
   #pipelineTarget(taskId: string): PipelineTarget {
     const target = this.#db.prepare(`
       SELECT
@@ -2055,6 +2736,23 @@ class SqlitePlatformModule implements PlatformModule {
     const row = this.#db.prepare('SELECT task_type FROM analysis_tasks WHERE task_id = ?').get(taskId) as { task_type: string } | undefined;
     if (!row) throw new Error('analysis_task_missing');
     return row.task_type as AnalysisTaskRecord['type'];
+  }
+
+  #isBoundIndustryMaterialTask(taskId: string): boolean {
+    return Boolean(this.#db.prepare(`
+      SELECT 1 AS present
+      FROM analysis_tasks task
+      JOIN conversation_industries industry
+        ON industry.conversation_id = task.conversation_id
+        AND industry.role = 'primary'
+      WHERE task.task_id = ? AND task.task_type = 'material_analysis'
+        AND NOT EXISTS (
+          SELECT 1 FROM conversation_companies company
+          WHERE company.conversation_id = task.conversation_id
+            AND company.role = 'primary'
+        )
+      LIMIT 1
+    `).get(taskId));
   }
 
   async #identifyCompanyList(target: PipelineTarget): Promise<StepOutcome> {
@@ -2418,9 +3116,11 @@ class SqlitePlatformModule implements PlatformModule {
 
   #industryRecord(industryId: string): IndustryRecord {
     const row = this.#db.prepare(`
-      SELECT industry_id, name, summary, status, updated_at FROM industries WHERE industry_id = ?
+      SELECT industry_id, name, summary, status, watched, version, updated_at
+      FROM industries WHERE industry_id = ?
     `).get(industryId) as {
-      industry_id: string; name: string; summary: string; status: string; updated_at: string;
+      industry_id: string; name: string; summary: string; status: string;
+      watched: number; version: number; updated_at: string;
     } | undefined;
     if (!row) throw new PlatformNotFoundError(`industry not found: ${industryId}`);
     const counts = this.#db.prepare(`
@@ -2433,6 +3133,8 @@ class SqlitePlatformModule implements PlatformModule {
       name: row.name,
       summary: row.summary,
       status: row.status as IndustryRecord['status'],
+      watched: Boolean(row.watched),
+      version: row.version,
       materialCount: counts.material_count,
       companyCount: counts.company_count,
       updatedAt: row.updated_at,
@@ -2573,11 +3275,12 @@ class SqlitePlatformModule implements PlatformModule {
   #companyResearchByTask(taskId: string): CompanyResearchRecord | undefined {
     const run = this.#db.prepare(`
       SELECT run_id, company_id, intent, explicit_search, trigger_reason, public_query,
-        summary, created_at, updated_at
+        summary, workflow_skill, workflow_context_json, created_at, updated_at
       FROM company_research_runs WHERE task_id = ?
     `).get(taskId) as {
       run_id: string; company_id: string | null; intent: string; explicit_search: number;
       trigger_reason: string | null; public_query: string | null; summary: string | null;
+      workflow_skill: string | null; workflow_context_json: string | null;
       created_at: string; updated_at: string;
     } | undefined;
     if (!run) return undefined;
@@ -2589,6 +3292,16 @@ class SqlitePlatformModule implements PlatformModule {
       ...(run.trigger_reason ? { triggerReason: run.trigger_reason as CompanyResearchRecord['triggerReason'] } : {}),
       ...(run.public_query ? { publicQuery: run.public_query } : {}),
       ...(run.summary ? { summary: run.summary } : {}),
+      ...(run.workflow_skill
+        ? { workflowSkill: run.workflow_skill as CompanyResearchWorkflowSkill }
+        : {}),
+      ...(run.workflow_context_json
+        ? {
+            workflowScope: (
+              JSON.parse(run.workflow_context_json) as NonNullable<StartCompanyResearchInput['workflow']>
+            ).scope,
+          }
+        : {}),
       sources: this.#researchSourceRows(run.run_id).map((source) => {
         const evidence = this.#evidenceRecords('WHERE e.evidence_id = ?', source.evidence_id)[0];
         if (!evidence) throw new Error('research_evidence_missing');
@@ -2597,6 +3310,271 @@ class SqlitePlatformModule implements PlatformModule {
       createdAt: run.created_at,
       updatedAt: run.updated_at,
     };
+  }
+
+  #industryResearchByTask(taskId: string): IndustryResearchRecord | undefined {
+    const run = this.#db.prepare(`
+      SELECT run_id, industry_id, intent, explicit_search, trigger_reason,
+        public_query, summary, created_at, updated_at
+      FROM industry_research_runs
+      WHERE task_id = ?
+    `).get(taskId) as {
+      run_id: string;
+      industry_id: string;
+      intent: string;
+      explicit_search: number;
+      trigger_reason: string | null;
+      public_query: string | null;
+      summary: string | null;
+      created_at: string;
+      updated_at: string;
+    } | undefined;
+    if (!run) return undefined;
+    return {
+      runId: run.run_id,
+      industryId: run.industry_id,
+      intent: run.intent,
+      explicitWebSearch: Boolean(run.explicit_search),
+      triggerReason: run.trigger_reason === 'not_needed'
+        ? 'not_needed'
+        : 'user_requested',
+      ...(run.public_query ? { publicQuery: run.public_query } : {}),
+      ...(run.summary ? { summary: run.summary } : {}),
+      sources: this.#industryResearchSourceRows(run.run_id).map((source) => {
+        const evidence = this.#evidenceRecords(
+          'WHERE e.evidence_id = ?',
+          source.evidence_id,
+        )[0];
+        if (!evidence) throw new Error('industry_research_evidence_missing');
+        return { ...evidence, accessStatus: source.access_status };
+      }),
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+    };
+  }
+
+  #industryResearchSourceRows(runId: string): Array<{
+    evidence_id: string;
+    url: string;
+    access_status: 'accessible' | 'metadata_only';
+  }> {
+    return this.#db.prepare(`
+      SELECT w.evidence_id, e.url, w.access_status
+      FROM industry_web_search_results w
+      JOIN evidence e ON e.evidence_id = w.evidence_id
+      WHERE w.run_id = ? AND e.url IS NOT NULL
+      ORDER BY w.rank, w.result_id
+    `).all(runId) as unknown as Array<{
+      evidence_id: string;
+      url: string;
+      access_status: 'accessible' | 'metadata_only';
+    }>;
+  }
+
+  #industryResearchWebResults(runId: string): WebSearchResultItem[] {
+    const rows = this.#db.prepare(`
+      SELECT e.title, e.url, e.site, e.quote, e.published_at,
+        e.retrieved_at, w.access_status
+      FROM industry_web_search_results w
+      JOIN evidence e ON e.evidence_id = w.evidence_id
+      WHERE w.run_id = ?
+      ORDER BY w.rank, w.result_id
+    `).all(runId) as unknown as Array<{
+      title: string | null;
+      url: string | null;
+      site: string | null;
+      quote: string;
+      published_at: string | null;
+      retrieved_at: string | null;
+      access_status: string;
+    }>;
+    return rows.flatMap((row) => row.url && row.site ? [{
+      title: row.title ?? row.site,
+      url: row.url,
+      site: row.site,
+      highlights: row.access_status === 'accessible' ? [row.quote] : [],
+      accessStatus: row.access_status as WebSearchResultItem['accessStatus'],
+      ...(row.published_at ? { publishedAt: row.published_at } : {}),
+      retrievedAt: row.retrieved_at ?? this.#now().toISOString(),
+    }] : []);
+  }
+
+  #industryResearchMaterials(industryId: string): IndustryResearchMaterial[] {
+    const rows = this.#db.prepare(`
+      SELECT im.conversation_id, im.document_id, d.file_name
+      FROM industry_materials im
+      JOIN documents d ON d.document_id = im.document_id
+      WHERE im.industry_id = ?
+      ORDER BY im.created_at DESC, im.conversation_id DESC
+    `).all(industryId) as unknown as Array<{
+      conversation_id: string;
+      document_id: string;
+      file_name: string;
+    }>;
+    const materials: IndustryResearchMaterial[] = [];
+    let characters = 0;
+    const now = this.#now().toISOString();
+    for (const row of rows) {
+      for (const block of this.#loadParsedBlocks(row.document_id)) {
+        if (materials.length >= 40 || characters >= 32_000) return materials;
+        const excerpt = block.text.slice(0, Math.min(4_000, 32_000 - characters));
+        if (!excerpt.trim()) continue;
+        const evidenceId = this.#evidenceForBlock(row.document_id, block, now);
+        this.#db.prepare(`
+          UPDATE industry_materials
+          SET evidence_id = ?
+          WHERE industry_id = ? AND conversation_id = ? AND document_id = ?
+            AND evidence_id IS NULL
+        `).run(
+          evidenceId,
+          industryId,
+          row.conversation_id,
+          row.document_id,
+        );
+        materials.push({
+          evidenceId,
+          fileName: row.file_name,
+          excerpt,
+          ...(parsedBlockLocator(block) ? { locator: parsedBlockLocator(block) } : {}),
+        });
+        characters += excerpt.length;
+      }
+    }
+    return materials;
+  }
+
+  #companyResearchWorkflowMaterials(
+    companyId: string,
+  ): CompanyResearchWorkflowContext['materials'] {
+    const rows = this.#db.prepare(`
+      SELECT c.conversation_id, d.document_id, d.file_name
+      FROM conversation_companies link
+      JOIN conversations c ON c.conversation_id = link.conversation_id
+      JOIN documents d ON d.document_id = c.primary_document_id
+      WHERE link.company_id = ?
+        AND link.role = 'primary'
+        AND c.conversation_type = 'material'
+      ORDER BY c.updated_at DESC, c.conversation_id DESC
+    `).all(companyId) as unknown as Array<{
+      conversation_id: string;
+      document_id: string;
+      file_name: string;
+    }>;
+    const materials: CompanyResearchWorkflowContext['materials'] = [];
+    let characters = 0;
+    const now = this.#now().toISOString();
+    for (const row of rows) {
+      for (const block of this.#loadParsedBlocks(row.document_id)) {
+        if (materials.length >= MAX_AI_BLOCKS || characters >= MAX_AI_TOTAL_CHARACTERS) {
+          return materials;
+        }
+        const excerpt = block.text.slice(
+          0,
+          Math.min(MAX_AI_BLOCK_CHARACTERS, MAX_AI_TOTAL_CHARACTERS - characters),
+        );
+        if (!excerpt.trim()) continue;
+        const sourceId = this.#evidenceForBlock(row.document_id, block, now);
+        materials.push({
+          sourceId,
+          title: row.file_name,
+          excerpt,
+          ...(parsedBlockLocator(block) ? { locator: parsedBlockLocator(block) } : {}),
+          evidenceState: 'user-provided',
+        });
+        characters += excerpt.length;
+      }
+    }
+    return materials;
+  }
+
+  #companyResearchWorkflowMaterialsForSourceIds(
+    companyId: string,
+    sourceIds: readonly string[],
+  ): CompanyResearchWorkflowContext['materials'] {
+    if (sourceIds.length === 0 || sourceIds.length > MAX_AI_BLOCKS) {
+      throw new PlatformInputError(
+        'workflow_material_scope_invalid',
+        '已审批的材料来源范围为空或超过单次分析上限',
+      );
+    }
+    const placeholders = sourceIds.map(() => '?').join(', ');
+    const rows = this.#db.prepare(`
+      SELECT DISTINCT
+        e.evidence_id, e.quote, d.file_name,
+        pb.page, pb.paragraph, pb.heading_path_json,
+        pb.sheet, pb.row_number, pb.cell_range
+      FROM evidence e
+      JOIN parsed_blocks pb ON pb.block_id = e.block_id
+      JOIN documents d ON d.document_id = e.document_id
+      JOIN conversations c ON c.primary_document_id = d.document_id
+      JOIN conversation_companies link ON link.conversation_id = c.conversation_id
+      WHERE link.company_id = ?
+        AND link.role = 'primary'
+        AND c.conversation_type = 'material'
+        AND e.source_type = 'material'
+        AND e.evidence_id IN (${placeholders})
+    `).all(companyId, ...sourceIds) as unknown as Array<{
+      evidence_id: string;
+      quote: string;
+      file_name: string;
+      page: number | null;
+      paragraph: number | null;
+      heading_path_json: string | null;
+      sheet: string | null;
+      row_number: number | null;
+      cell_range: string | null;
+    }>;
+    const byId = new Map(rows.map((row) => [row.evidence_id, row]));
+    const missingSourceId = sourceIds.find((sourceId) => !byId.has(sourceId));
+    if (missingSourceId) {
+      throw new PlatformInputError(
+        'workflow_material_scope_invalid',
+        `材料来源不属于当前公司或已不可用：${missingSourceId}`,
+      );
+    }
+    let characters = 0;
+    return sourceIds.map((sourceId) => {
+      const row = byId.get(sourceId);
+      if (!row) throw new Error('workflow_material_scope_missing');
+      const remaining = MAX_AI_TOTAL_CHARACTERS - characters;
+      if (remaining <= 0) {
+        throw new PlatformInputError(
+          'workflow_material_scope_invalid',
+          '已审批的材料来源超过单次分析字符上限',
+        );
+      }
+      const excerpt = row.quote.slice(
+        0,
+        Math.min(MAX_AI_BLOCK_CHARACTERS, remaining),
+      );
+      if (!excerpt.trim()) {
+        throw new PlatformInputError(
+          'workflow_material_scope_invalid',
+          `材料来源没有可用文本：${sourceId}`,
+        );
+      }
+      characters += excerpt.length;
+      const locator = parsedBlockLocator({
+        blockId: sourceId,
+        kind: 'paragraph',
+        text: row.quote,
+        ...(row.page !== null ? { page: row.page } : {}),
+        ...(row.paragraph !== null ? { paragraph: row.paragraph } : {}),
+        ...(row.heading_path_json
+          ? { headingPath: JSON.parse(row.heading_path_json) as string[] }
+          : {}),
+        ...(row.sheet ? { sheet: row.sheet } : {}),
+        ...(row.row_number !== null ? { row: row.row_number } : {}),
+        ...(row.cell_range ? { cellRange: row.cell_range } : {}),
+      });
+      return {
+        sourceId,
+        title: row.file_name,
+        excerpt,
+        ...(locator ? { locator } : {}),
+        evidenceState: 'user-provided' as const,
+      };
+    });
   }
 
   #researchSourceRows(runId: string): Array<{ evidence_id: string; url: string; access_status: 'accessible' | 'metadata_only' }> {
@@ -2854,6 +3832,7 @@ class SqlitePlatformModule implements PlatformModule {
     const seenMaterials = new Set<string>();
 
     for (const row of conversations) {
+      if (row.conversation_type !== 'material') continue;
       const key = `material:${row.conversation_id}:${row.document_id}`;
       if (seenMaterials.has(key)) continue;
       seenMaterials.add(key);
@@ -2909,11 +3888,13 @@ class SqlitePlatformModule implements PlatformModule {
       if (seenConversations.has(row.conversation_id)) continue;
       seenConversations.add(row.conversation_id);
       const sections = this.#analysisSections(row.task_id);
-      const research = this.#companyResearchByTask(row.task_id);
+      const companyResearch = this.#companyResearchByTask(row.task_id);
+      const industryResearch = this.#industryResearchByTask(row.task_id);
       const citations = uniqueEvidence([
         ...sections.flatMap((section) => section.evidence),
         ...(materialEvidence.get(row.document_id)?.slice(0, 1) ?? []),
-        ...(research?.sources ?? []),
+        ...(companyResearch?.sources ?? []),
+        ...(industryResearch?.sources ?? []),
       ]);
       citations.forEach((item) => evidence.set(item.evidenceId, item));
       items.push({
@@ -2925,8 +3906,16 @@ class SqlitePlatformModule implements PlatformModule {
           row.file_name,
           row.material_type ?? '',
           ...sections.map((section) => `${section.title} ${section.summary}`),
-          research?.intent ?? '',
-          research?.summary ?? '',
+          companyResearch?.intent ?? '',
+          companyResearch?.summary ?? '',
+          ...(companyResearch?.sources ?? []).map((source) => semanticText([
+            source.title ?? '', source.site ?? '', source.quote, source.url ?? '',
+          ])),
+          industryResearch?.intent ?? '',
+          industryResearch?.summary ?? '',
+          ...(industryResearch?.sources ?? []).map((source) => semanticText([
+            source.title ?? '', source.site ?? '', source.quote, source.url ?? '',
+          ])),
         ]),
         evidence: citations.map(({ evidenceId, quote }) => ({ evidenceId, quote })),
       });
@@ -3174,6 +4163,10 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateCompanyWatchSchema();
     this.#migrateAnalysisRuntimeSchema();
     this.#migrateIntakeIdempotencySchema();
+    this.#migrateInteractionSchema();
+    this.#migrateResearchProductSchema();
+    this.#migrateSchemaReconciliation();
+    this.#migrateIntakeAttachmentIdempotencySchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -3600,13 +4593,180 @@ class SqlitePlatformModule implements PlatformModule {
         CREATE TABLE intake_idempotency (
           source_channel TEXT NOT NULL,
           source_message_id TEXT NOT NULL,
+          source_attachment_key TEXT NOT NULL DEFAULT '',
           conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
           created_at TEXT NOT NULL,
-          PRIMARY KEY (source_channel, source_message_id),
+          PRIMARY KEY (source_channel, source_message_id, source_attachment_key),
           UNIQUE (conversation_id)
         );
       `);
       this.#db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)').run(this.#now().toISOString());
+    });
+  }
+
+  #migrateInteractionSchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 12',
+    ).get();
+    if (applied) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        ALTER TABLE industries ADD COLUMN watched INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE industries ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+
+        CREATE TABLE notification_reads (
+          notification_id TEXT PRIMARY KEY,
+          read_at TEXT NOT NULL
+        );
+      `);
+      this.#db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)',
+      ).run(this.#now().toISOString());
+    });
+  }
+
+  #migrateResearchProductSchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 13',
+    ).get();
+    if (applied) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        ALTER TABLE company_research_runs ADD COLUMN workflow_skill TEXT;
+        ALTER TABLE company_research_runs ADD COLUMN workflow_context_json TEXT;
+
+        CREATE TABLE conversation_industries (
+          conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+          industry_id TEXT NOT NULL REFERENCES industries(industry_id),
+          role TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (conversation_id, industry_id)
+        );
+
+        INSERT OR IGNORE INTO conversation_industries (
+          conversation_id, industry_id, role, created_at
+        )
+        SELECT conversation_id, industry_id, 'primary', created_at
+        FROM industry_materials;
+
+        CREATE TABLE industry_research_runs (
+          run_id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL UNIQUE REFERENCES analysis_tasks(task_id),
+          industry_id TEXT NOT NULL REFERENCES industries(industry_id),
+          intent TEXT NOT NULL,
+          explicit_search INTEGER NOT NULL,
+          trigger_reason TEXT,
+          public_query TEXT,
+          search_executed_at TEXT,
+          summary TEXT,
+          raw_text TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE industry_web_search_results (
+          result_id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL REFERENCES industry_research_runs(run_id),
+          evidence_id TEXT NOT NULL UNIQUE REFERENCES evidence(evidence_id),
+          rank INTEGER NOT NULL,
+          access_status TEXT NOT NULL,
+          UNIQUE (run_id, rank)
+        );
+
+        CREATE INDEX conversation_industries_industry_idx
+          ON conversation_industries(industry_id, created_at DESC);
+        CREATE INDEX industry_research_runs_industry_idx
+          ON industry_research_runs(industry_id, updated_at DESC);
+        CREATE INDEX industry_web_search_results_run_idx
+          ON industry_web_search_results(run_id, rank);
+      `);
+      this.#db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (13, ?)',
+      ).run(this.#now().toISOString());
+    });
+  }
+
+  #migrateSchemaReconciliation(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 14',
+    ).get();
+    if (applied) return;
+    this.#transaction(() => {
+      const tableExists = (tableName: string): boolean => Boolean(this.#db.prepare(`
+        SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = ?
+      `).get(tableName));
+      const industryColumns = new Set(
+        (this.#db.prepare('PRAGMA table_info(industries)').all() as unknown as Array<{ name: string }>)
+          .map((column) => column.name),
+      );
+
+      if (!tableExists('intake_idempotency')) {
+        this.#db.exec(`
+          CREATE TABLE intake_idempotency (
+            source_channel TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            source_attachment_key TEXT NOT NULL DEFAULT '',
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (source_channel, source_message_id, source_attachment_key),
+            UNIQUE (conversation_id)
+          );
+        `);
+      }
+      if (!industryColumns.has('watched')) {
+        this.#db.exec('ALTER TABLE industries ADD COLUMN watched INTEGER NOT NULL DEFAULT 0;');
+      }
+      if (!industryColumns.has('version')) {
+        this.#db.exec('ALTER TABLE industries ADD COLUMN version INTEGER NOT NULL DEFAULT 1;');
+      }
+      if (!tableExists('notification_reads')) {
+        this.#db.exec(`
+          CREATE TABLE notification_reads (
+            notification_id TEXT PRIMARY KEY,
+            read_at TEXT NOT NULL
+          );
+        `);
+      }
+      this.#db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (14, ?)',
+      ).run(this.#now().toISOString());
+    });
+  }
+
+  #migrateIntakeAttachmentIdempotencySchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 15',
+    ).get();
+    if (applied) return;
+    this.#transaction(() => {
+      const columns = new Set(
+        (this.#db.prepare('PRAGMA table_info(intake_idempotency)').all() as unknown as Array<{ name: string }>)
+          .map((column) => column.name),
+      );
+      if (!columns.has('source_attachment_key')) {
+        this.#db.exec(`
+          ALTER TABLE intake_idempotency RENAME TO intake_idempotency_legacy;
+          CREATE TABLE intake_idempotency (
+            source_channel TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            source_attachment_key TEXT NOT NULL DEFAULT '',
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (source_channel, source_message_id, source_attachment_key),
+            UNIQUE (conversation_id)
+          );
+          INSERT INTO intake_idempotency (
+            source_channel, source_message_id, source_attachment_key,
+            conversation_id, created_at
+          )
+          SELECT source_channel, source_message_id, '', conversation_id, created_at
+          FROM intake_idempotency_legacy;
+          DROP TABLE intake_idempotency_legacy;
+        `);
+      }
+      this.#db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (15, ?)',
+      ).run(this.#now().toISOString());
     });
   }
 }
@@ -3617,16 +4777,156 @@ function relationStatus(value: string): 'candidate' | 'confirmed' | 'conflicted'
   return 'candidate';
 }
 
-function quickCardConfidence(result: QuickCardExtractionResult, companyMatched: boolean): number {
-  const disclosedText = [result.companyIdentity, result.industryTrack, result.financing, result.keyPeople]
-    .filter((value) => value !== '材料未披露').length;
+function notificationWithRead(
+  notification: Omit<PlatformNotification, 'readAt'>,
+  reads: ReadonlyMap<string, string>,
+): PlatformNotification {
+  const readAt = reads.get(notification.notificationId);
+  return { ...notification, ...(readAt ? { readAt } : {}) };
+}
+
+function parsedBlockLocator(block: ParsedBlock): string | undefined {
+  if (block.page !== undefined) return `page:${block.page}`;
+  if (block.sheet && block.cellRange) return `sheet:${block.sheet}:${block.cellRange}`;
+  if (block.sheet && block.row !== undefined) return `sheet:${block.sheet}:row:${block.row}`;
+  if (block.paragraph !== undefined) return `paragraph:${block.paragraph}`;
+  if (block.headingPath?.length) return `heading:${block.headingPath.join(' > ')}`;
+  return undefined;
+}
+
+function normalizeCompanyResearchWorkflow(
+  workflow: StartCompanyResearchInput['workflow'],
+): NonNullable<StartCompanyResearchInput['workflow']> | undefined {
+  if (!workflow) return undefined;
+  if (!['diagnose-bp', 'screen-deal', 'extract-risk-flags'].includes(workflow.skill)) {
+    throw new PlatformInputError(
+      'invalid_workflow_skill',
+      '不支持的投研 Skill',
+    );
+  }
+  const requiredScopeValues = [
+    workflow.scope.asOfDate,
+    workflow.scope.transactionSide,
+    workflow.scope.stage,
+    workflow.scope.audience,
+    workflow.scope.decisionOwner,
+  ];
+  if (requiredScopeValues.some((value) => !value.trim())) {
+    throw new PlatformInputError(
+      'workflow_scope_required',
+      '请完整填写交易侧、阶段、受众、证据日期和决策负责人',
+    );
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(workflow.scope.asOfDate)) {
+    throw new PlatformInputError(
+      'workflow_as_of_date_invalid',
+      '证据截止日期必须使用 YYYY-MM-DD',
+    );
+  }
+  if (!['public', 'internal', 'restricted'].includes(workflow.scope.confidentiality)) {
+    throw new PlatformInputError(
+      'workflow_confidentiality_invalid',
+      '保密级别无效',
+    );
+  }
+  if (
+    workflow.inputScopeApproval.approved !== true
+    || !workflow.inputScopeApproval.approvedBy.trim()
+    || Number.isNaN(Date.parse(workflow.inputScopeApproval.approvedAt))
+    || !Array.isArray(workflow.inputScopeApproval.sourceIds)
+    || workflow.inputScopeApproval.sourceIds.length === 0
+    || workflow.inputScopeApproval.sourceIds.some((sourceId) => !sourceId.trim())
+  ) {
+    throw new PlatformInputError(
+      'workflow_input_scope_approval_required',
+      '运行投研 Skill 前必须确认本次输入材料范围',
+    );
+  }
+  const sourceIds = [
+    ...new Set(
+      workflow.inputScopeApproval.sourceIds.map((sourceId) => sourceId.trim()),
+    ),
+  ];
+  if (sourceIds.length !== workflow.inputScopeApproval.sourceIds.length) {
+    throw new PlatformInputError(
+      'workflow_input_scope_approval_invalid',
+      '输入范围包含重复的材料来源',
+    );
+  }
+  if (workflow.skill === 'screen-deal') {
+    if (
+      !workflow.scope.mode
+      || !['one-minute', 'preliminary', 're-screen', 'gp-fit'].includes(workflow.scope.mode)
+      || !workflow.scope.mandate?.trim()
+    ) {
+      throw new PlatformInputError(
+        'screen_workflow_scope_incomplete',
+        '项目初筛必须明确模式和投资 mandate',
+      );
+    }
+  }
+  if (workflow.methodAssumptionApproval) {
+    if (
+      workflow.methodAssumptionApproval.approved !== true
+      || !workflow.methodAssumptionApproval.approvedBy.trim()
+      || Number.isNaN(Date.parse(workflow.methodAssumptionApproval.approvedAt))
+    ) {
+      throw new PlatformInputError(
+        'workflow_method_approval_invalid',
+        '方法假设审批记录无效',
+      );
+    }
+  }
+  return {
+    skill: workflow.skill,
+    scope: {
+      asOfDate: workflow.scope.asOfDate,
+      transactionSide: workflow.scope.transactionSide.trim(),
+      stage: workflow.scope.stage.trim(),
+      audience: workflow.scope.audience.trim(),
+      confidentiality: workflow.scope.confidentiality,
+      decisionOwner: workflow.scope.decisionOwner.trim(),
+      ...(workflow.scope.mode ? { mode: workflow.scope.mode } : {}),
+      ...(workflow.scope.mandate?.trim() ? { mandate: workflow.scope.mandate.trim() } : {}),
+    },
+    inputScopeApproval: {
+      approved: true,
+      approvedBy: workflow.inputScopeApproval.approvedBy.trim(),
+      approvedAt: new Date(workflow.inputScopeApproval.approvedAt).toISOString(),
+      sourceIds,
+    },
+    ...(workflow.methodAssumptionApproval
+      ? {
+          methodAssumptionApproval: {
+            approved: true,
+            approvedBy: workflow.methodAssumptionApproval.approvedBy.trim(),
+            approvedAt: new Date(workflow.methodAssumptionApproval.approvedAt).toISOString(),
+          },
+        }
+      : {}),
+  };
+}
+
+function quickCardConfidence(
+  result: QuickCardExtractionResult,
+  companyMatched: boolean,
+): number {
+  const disclosedText = [
+    result.companyIdentity,
+    result.industryTrack,
+    result.financing,
+    result.keyPeople,
+  ].filter((value) => value !== '材料未披露').length;
   const disclosedFacts = disclosedText + (result.highlights.length > 0 ? 1 : 0);
-  const mentionedRelationGroups = [result.competitorNames, result.upstreamNames, result.downstreamNames]
-    .filter((values) => values.length > 0).length;
+  const mentionedRelationGroups = [
+    result.competitorNames,
+    result.upstreamNames,
+    result.downstreamNames,
+  ].filter((values) => values.length > 0).length;
   return Math.min(100, Math.round(
     (disclosedFacts / 5) * 70
-    + (companyMatched ? 20 : 0)
-    + (mentionedRelationGroups / 3) * 10,
+      + (companyMatched ? 20 : 0)
+      + (mentionedRelationGroups / 3) * 10,
   ));
 }
 

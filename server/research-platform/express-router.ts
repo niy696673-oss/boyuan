@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import express from "express";
 import multer from "multer";
 import { normalizeUploadedFileName } from "../upload-file-name.js";
@@ -8,6 +9,7 @@ import type {
   DecideCandidateInput,
   KnowledgeCandidateRecord,
   PlatformModule,
+  StartCompanyResearchInput,
 } from "./contracts.js";
 import type {
   CompanyDirectoryResponse,
@@ -51,6 +53,29 @@ export function createResearchPlatformV1Router(
       });
       res.status(201).json(result);
     } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/documents/:documentId/content", async (req, res, next) => {
+    try {
+      const document = await platform.getDocumentContent(
+        String(req.params.documentId),
+      );
+      res.setHeader("content-type", safeContentType(document.mimeType));
+      res.setHeader("content-length", String(document.bytes));
+      res.setHeader(
+        "content-disposition",
+        attachmentContentDisposition(document.fileName),
+      );
+      res.setHeader("cache-control", "private, no-store");
+      res.setHeader("x-content-type-options", "nosniff");
+      await pipeline(Readable.from(document.content), res);
+    } catch (error) {
+      if (res.headersSent) {
+        next(error);
+        return;
+      }
       handlePlatformError(error, res, next);
     }
   });
@@ -134,6 +159,15 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post("/industry-research", async (req, res, next) => {
+    try {
+      const input = industryResearchInput(req.body);
+      res.status(201).json(await platform.startIndustryResearch(input));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.get("/companies", async (_req, res, next) => {
     try {
       const items = await platform.listCompanies();
@@ -154,6 +188,21 @@ export function createResearchPlatformV1Router(
       handlePlatformError(error, res, next);
     }
   });
+
+  router.get(
+    "/companies/:companyId/workflow-sources",
+    async (req, res, next) => {
+      try {
+        res.json(
+          await platform.getCompanyResearchWorkflowSources(
+            req.params.companyId,
+          ),
+        );
+      } catch (error) {
+        handlePlatformError(error, res, next);
+      }
+    },
+  );
 
   router.post(
     "/companies/:companyId/documents",
@@ -221,6 +270,71 @@ export function createResearchPlatformV1Router(
   router.get("/industries/:industryId", async (req, res, next) => {
     try {
       res.json(await platform.getIndustry(String(req.params.industryId)));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post(
+    "/industries/:industryId/documents",
+    upload.single("file"),
+    async (req, res, next) => {
+      try {
+        if (!req.file) {
+          throw new PlatformInputError("multipart_file_required", "请选择文件");
+        }
+        const result = await platform.ingestIndustryDocument(
+          String(req.params.industryId),
+          {
+            fileName: normalizeUploadedFileName(req.file.originalname),
+            mimeType: req.file.mimetype,
+            sourceChannel: "web",
+            content: Readable.from([req.file.buffer]),
+          },
+        );
+        res.status(201).json(result);
+      } catch (error) {
+        handlePlatformError(error, res, next);
+      }
+    },
+  );
+
+  router.put("/industries/:industryId/watch", async (req, res, next) => {
+    try {
+      const input = industryWatchInput(req.body);
+      res.json(await platform.setIndustryWatched(
+        String(req.params.industryId),
+        input.watched,
+        input.expectedVersion,
+      ));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/search", async (req, res, next) => {
+    try {
+      res.json(await platform.search(String(req.query.q ?? "")));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.get("/notifications", async (_req, res, next) => {
+    try {
+      const items = await platform.listNotifications();
+      res.json({
+        items,
+        unreadCount: items.filter((item) => !item.readAt).length,
+      });
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post("/notifications/:notificationId/read", async (req, res, next) => {
+    try {
+      res.json(await platform.markNotificationRead(String(req.params.notificationId)));
     } catch (error) {
       handlePlatformError(error, res, next);
     }
@@ -342,7 +456,7 @@ function reviewDecisionInput(
   };
 }
 
-function companyResearchInput(body: unknown) {
+function companyResearchInput(body: unknown): StartCompanyResearchInput {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
   }
@@ -377,6 +491,181 @@ function companyResearchInput(body: unknown) {
       : {}),
     intent: input.intent,
     explicitWebSearch: input.explicitWebSearch,
+    ...(input.workflow !== undefined
+      ? { workflow: companyResearchWorkflowInput(input.workflow) }
+      : {}),
+  };
+}
+
+function companyResearchWorkflowInput(
+  value: unknown,
+): NonNullable<StartCompanyResearchInput["workflow"]> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new PlatformInputError(
+      "invalid_workflow",
+      "投研工作流配置必须是 JSON 对象",
+    );
+  }
+  const workflow = value as Record<string, unknown>;
+  if (
+    workflow.skill !== "diagnose-bp" &&
+    workflow.skill !== "screen-deal" &&
+    workflow.skill !== "extract-risk-flags"
+  ) {
+    throw new PlatformInputError("invalid_workflow_skill", "不支持的投研 Skill");
+  }
+  if (
+    typeof workflow.scope !== "object" ||
+    workflow.scope === null ||
+    Array.isArray(workflow.scope)
+  ) {
+    throw new PlatformInputError("workflow_scope_required", "请填写投研范围");
+  }
+  const scope = workflow.scope as Record<string, unknown>;
+  const requiredStrings = [
+    "asOfDate",
+    "transactionSide",
+    "stage",
+    "audience",
+    "decisionOwner",
+  ] as const;
+  if (requiredStrings.some((key) => typeof scope[key] !== "string")) {
+    throw new PlatformInputError(
+      "workflow_scope_required",
+      "投研范围字段不完整",
+    );
+  }
+  if (
+    scope.confidentiality !== "public" &&
+    scope.confidentiality !== "internal" &&
+    scope.confidentiality !== "restricted"
+  ) {
+    throw new PlatformInputError(
+      "workflow_confidentiality_invalid",
+      "保密级别无效",
+    );
+  }
+  if (
+    typeof workflow.inputScopeApproval !== "object" ||
+    workflow.inputScopeApproval === null ||
+    Array.isArray(workflow.inputScopeApproval)
+  ) {
+    throw new PlatformInputError(
+      "workflow_input_scope_approval_required",
+      "请确认本次输入范围",
+    );
+  }
+  const approval = workflow.inputScopeApproval as Record<string, unknown>;
+  if (
+    approval.approved !== true ||
+    typeof approval.approvedBy !== "string" ||
+    typeof approval.approvedAt !== "string" ||
+    !Array.isArray(approval.sourceIds) ||
+    approval.sourceIds.length === 0 ||
+    approval.sourceIds.some(
+      (sourceId) => typeof sourceId !== "string" || !sourceId.trim(),
+    )
+  ) {
+    throw new PlatformInputError(
+      "workflow_input_scope_approval_required",
+      "输入范围审批记录无效",
+    );
+  }
+  const sourceIds = [
+    ...new Set((approval.sourceIds as string[]).map((sourceId) => sourceId.trim())),
+  ];
+  if (sourceIds.length !== approval.sourceIds.length) {
+    throw new PlatformInputError(
+      "workflow_input_scope_approval_invalid",
+      "输入范围包含重复的材料来源",
+    );
+  }
+  const methodApproval = workflow.methodAssumptionApproval;
+  let parsedMethodApproval:
+    | NonNullable<StartCompanyResearchInput["workflow"]>["methodAssumptionApproval"]
+    | undefined;
+  if (methodApproval !== undefined) {
+    if (
+      typeof methodApproval !== "object" ||
+      methodApproval === null ||
+      Array.isArray(methodApproval)
+    ) {
+      throw new PlatformInputError(
+        "workflow_method_approval_invalid",
+        "方法审批记录无效",
+      );
+    }
+    const method = methodApproval as Record<string, unknown>;
+    if (
+      method.approved !== true ||
+      typeof method.approvedBy !== "string" ||
+      typeof method.approvedAt !== "string"
+    ) {
+      throw new PlatformInputError(
+        "workflow_method_approval_invalid",
+        "方法审批记录无效",
+      );
+    }
+    parsedMethodApproval = {
+      approved: true,
+      approvedBy: method.approvedBy,
+      approvedAt: method.approvedAt,
+    };
+  }
+  const mode = scope.mode;
+  const validMode = mode === "one-minute" || mode === "preliminary"
+    || mode === "re-screen" || mode === "gp-fit";
+  return {
+    skill: workflow.skill,
+    scope: {
+      asOfDate: scope.asOfDate as string,
+      transactionSide: scope.transactionSide as string,
+      stage: scope.stage as string,
+      audience: scope.audience as string,
+      confidentiality: scope.confidentiality,
+      decisionOwner: scope.decisionOwner as string,
+      ...(validMode ? { mode } : {}),
+      ...(typeof scope.mandate === "string" ? { mandate: scope.mandate } : {}),
+    },
+    inputScopeApproval: {
+      approved: true,
+      approvedBy: approval.approvedBy,
+      approvedAt: approval.approvedAt,
+      sourceIds,
+    },
+    ...(parsedMethodApproval
+      ? { methodAssumptionApproval: parsedMethodApproval }
+      : {}),
+  };
+}
+
+function industryResearchInput(body: unknown) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const input = body as Record<string, unknown>;
+  if (typeof input.industryId !== "string" || !input.industryId.trim()) {
+    throw new PlatformInputError(
+      "research_industry_required",
+      "请选择需要研究的行业",
+    );
+  }
+  if (typeof input.intent !== "string") {
+    throw new PlatformInputError(
+      "invalid_research_intent",
+      "研究意图必须是字符串",
+    );
+  }
+  if (typeof input.explicitWebSearch !== "boolean") {
+    throw new PlatformInputError(
+      "invalid_search_preference",
+      "必须明确是否执行外部搜索",
+    );
+  }
+  return {
+    industryId: input.industryId,
+    intent: input.intent,
+    explicitWebSearch: input.explicitWebSearch,
   };
 }
 
@@ -394,6 +683,27 @@ function companyWatchInput(body: unknown) {
     input.expectedVersion < 1
   ) {
     throw new PlatformInputError("invalid_version", "公司版本必须是正整数");
+  }
+  return {
+    watched: input.watched,
+    expectedVersion: input.expectedVersion,
+  };
+}
+
+function industryWatchInput(body: unknown) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const input = body as Record<string, unknown>;
+  if (typeof input.watched !== "boolean") {
+    throw new PlatformInputError("invalid_watch_state", "关注状态必须是布尔值");
+  }
+  if (
+    typeof input.expectedVersion !== "number" ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1
+  ) {
+    throw new PlatformInputError("invalid_version", "行业版本必须是正整数");
   }
   return {
     watched: input.watched,
@@ -456,7 +766,9 @@ function handlePlatformError(
   next: express.NextFunction,
 ) {
   if (error instanceof PlatformInputError) {
-    response.status(400).json({ error: error.code, message: error.message });
+    response
+      .status(error.code === "feishu_intake_unauthorized" ? 401 : 400)
+      .json({ error: error.code, message: error.message });
     return;
   }
   if (error instanceof PlatformNotFoundError) {
@@ -468,4 +780,48 @@ function handlePlatformError(
     return;
   }
   next(error);
+}
+
+function safeContentType(value: string | undefined): string {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && SAFE_DOWNLOAD_CONTENT_TYPES.has(normalized)
+    ? normalized
+    : "application/octet-stream";
+}
+
+const SAFE_DOWNLOAD_CONTENT_TYPES = new Set([
+  "application/csv",
+  "application/json",
+  "application/octet-stream",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/zip",
+  "image/heic",
+  "image/heif",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+  "image/webp",
+  "text/csv",
+  "text/markdown",
+  "text/plain",
+  "text/x-markdown",
+]);
+
+function attachmentContentDisposition(fileName: string): string {
+  const fallback = [...fileName]
+    .map((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint >= 0x20 && codePoint <= 0x7e && character !== '"' && character !== "\\"
+        ? character
+        : "_";
+    })
+    .join("")
+    .slice(0, 180) || "document";
+  const encoded = encodeURIComponent(fileName).replace(
+    /[!'()*]/gu,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
