@@ -23,13 +23,22 @@ export interface OpenCodeAssistantResponse {
     providerID: string;
     modelID: string;
     variant?: string;
+    finish?: string | null;
     error?: unknown;
   };
   parts: OpenCodePart[];
 }
 
 export interface OpenCodeSessionMessage {
-  info: { parentID?: string; role?: string };
+  info: {
+    id?: string;
+    parentID?: string;
+    role?: string;
+    providerID?: string;
+    modelID?: string;
+    variant?: string;
+    error?: unknown;
+  };
   parts: OpenCodePart[];
 }
 
@@ -39,6 +48,9 @@ export interface OpenCodeSkill {
 export interface OpenCodeMcpStatus {
   status?: string;
 }
+export interface OpenCodeSessionStatus {
+  type?: "idle" | "busy" | "retry";
+}
 
 export interface OpenCodeClient {
   createSession(title: string): Promise<string>;
@@ -46,10 +58,17 @@ export interface OpenCodeClient {
     sessionId: string,
     body: Record<string, unknown>,
   ): Promise<OpenCodeAssistantResponse>;
+  sendMessageAsync(
+    sessionId: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<void>;
   listMessages(
     sessionId: string,
     limit?: number,
+    signal?: AbortSignal,
   ): Promise<OpenCodeSessionMessage[]>;
+  sessionStatus(signal?: AbortSignal): Promise<Record<string, OpenCodeSessionStatus>>;
   listSkills(): Promise<OpenCodeSkill[]>;
   mcpStatus(): Promise<Record<string, OpenCodeMcpStatus>>;
   abortSession(sessionId: string): Promise<void>;
@@ -66,7 +85,7 @@ export function createOpenCodeClient(
     ? `Basic ${Buffer.from(`${options.credentials.username}:${options.credentials.password}`).toString("base64")}`
     : undefined;
 
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
+  const requestResponse = async (path: string, init: RequestInit): Promise<Response> => {
     const url = endpointUrl(options.baseUrl, path);
     url.searchParams.set("directory", options.directory);
     const headers = new Headers(init.headers);
@@ -82,8 +101,10 @@ export function createOpenCodeClient(
       ...(signal ? { signal } : {}),
     });
     if (!response.ok) throw httpError(response.status);
-    return (await response.json()) as T;
+    return response;
   };
+  const request = async <T>(path: string, init: RequestInit): Promise<T> =>
+    (await requestResponse(path, init)).json() as Promise<T>;
 
   return {
     async createSession(title) {
@@ -99,10 +120,25 @@ export function createOpenCodeClient(
         `/session/${encodeURIComponent(sessionId)}/message`,
         { method: "POST", body: JSON.stringify(body) },
       ),
-    listMessages: (sessionId, limit = 100) =>
+    async sendMessageAsync(sessionId, body, signal) {
+      await requestResponse(
+        `/session/${encodeURIComponent(sessionId)}/prompt_async`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          ...(signal ? { signal } : {}),
+        },
+      );
+    },
+    listMessages: (sessionId, limit = 100, signal) =>
       request<OpenCodeSessionMessage[]>(
         `/session/${encodeURIComponent(sessionId)}/message?limit=${encodeURIComponent(String(limit))}`,
-        { method: "GET" },
+        { method: "GET", ...(signal ? { signal } : {}) },
+      ),
+    sessionStatus: (signal) =>
+      request<Record<string, OpenCodeSessionStatus>>(
+        "/session/status",
+        { method: "GET", ...(signal ? { signal } : {}) },
       ),
     listSkills: () => request<OpenCodeSkill[]>("/skill", { method: "GET" }),
     mcpStatus: () =>
