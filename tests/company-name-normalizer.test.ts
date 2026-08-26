@@ -21,6 +21,9 @@ describe("公司名称规范化", () => {
 
   it("移除推荐来源、标题括号和 BP 类后缀", () => {
     expect(
+      normalizeCompanyNameCandidate("BP-云杉智能有限公司.pdf"),
+    ).toBe("云杉智能有限公司");
+    expect(
       normalizeCompanyNameCandidate(
         "毕友推荐-【星河科技有限公司】商业计划书.pdf",
       ),
@@ -71,6 +74,19 @@ describe("公司名称规范化", () => {
       extractLegalCompanyName(
         "合作方为上海海纳材料有限公司。项目公司为北京星河航空科技有限公司。",
       ),
+    ).toBe("北京星河航空科技有限公司");
+  });
+
+  it("需要明确主体时不会把合作方误当成项目公司", () => {
+    expect(
+      extractLegalCompanyName("合作方为上海海纳材料有限公司。", {
+        requireExplicitSubject: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      extractLegalCompanyName("项目公司为北京星河航空科技有限公司。", {
+        requireExplicitSubject: true,
+      }),
     ).toBe("北京星河航空科技有限公司");
   });
 

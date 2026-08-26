@@ -75,6 +75,58 @@ describe("研究平台 v1 行业目录接缝", () => {
       .toBe(true);
   });
 
+  it("同一公司多份材料属于不同赛道时保留两边公司关联，不产生空行业", async () => {
+    const { app, platform } = await fixture();
+    const first = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from(
+          "复合赛道科技有限公司\n公司位于航空发动机与飞行器高端装备产业链中游。",
+        ),
+        "复合赛道航空材料.txt",
+      );
+    expect(first.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    const companyId = (await platform.listCompanies())[0]?.companyId;
+    expect(companyId).toEqual(expect.any(String));
+
+    const second = await request(app)
+      .post(`/api/v1/companies/${companyId}/documents`)
+      .attach(
+        "file",
+        Buffer.from(
+          "复合赛道科技有限公司\n公司位于 Chiplet 产业链中游，提供 D2D、CPU 与 GPU 芯粒互联能力。",
+        ),
+        "复合赛道芯片材料.txt",
+      );
+    expect(second.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const industries = await platform.listIndustries();
+    expect(industries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "航空航天与高端装备",
+          companyCount: 1,
+          materialCount: 1,
+        }),
+        expect.objectContaining({
+          name: "半导体与集成电路",
+          companyCount: 1,
+          materialCount: 1,
+        }),
+      ]),
+    );
+    expect(industries.every((industry) => industry.companyCount > 0)).toBe(
+      true,
+    );
+  });
+
   it("从材料分析结果返回持久行业、产业节点、材料和公司", async () => {
     const { app, platform } = await fixture();
     await seedIndustry(app, platform);

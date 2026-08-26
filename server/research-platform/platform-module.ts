@@ -1497,6 +1497,66 @@ class SqlitePlatformModule implements PlatformModule {
     return this.getConversation(failure.conversation_id);
   }
 
+  async cancelTask(taskId: string): Promise<ConversationDetail> {
+    this.#assertOpen();
+    const task = this.#db.prepare(`
+      SELECT task_id, conversation_id, status, current_step
+      FROM analysis_tasks WHERE task_id = ?
+    `).get(taskId) as {
+      task_id: string;
+      conversation_id: string;
+      status: string;
+      current_step: string;
+    } | undefined;
+    if (!task) throw new PlatformNotFoundError(`task not found: ${taskId}`);
+    if (task.status === 'cancelled')
+      return this.getConversation(task.conversation_id);
+    if (task.status === 'completed' || task.status === 'failed') {
+      throw new PlatformConflictError(
+        'task_already_terminal',
+        '已完成或失败的任务不能取消',
+      );
+    }
+    const running = this.#db.prepare(`
+      SELECT 1 AS running FROM task_steps
+      WHERE task_id = ? AND status = 'running' LIMIT 1
+    `).get(taskId);
+    if (task.status === 'running' || running) {
+      throw new PlatformConflictError(
+        'task_already_running',
+        '任务已开始执行，不能按排队任务取消',
+      );
+    }
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      this.#db.prepare(`
+        UPDATE task_steps SET status = 'skipped', finished_at = ?,
+          lease_until = NULL, error_code = 'cancelled_by_user'
+        WHERE task_id = ? AND status IN (
+          'blocked', 'queued', 'pending_confirmation'
+        )
+      `).run(now, task.task_id);
+      this.#db.prepare(`
+        UPDATE analysis_tasks SET status = 'cancelled',
+          result_status = 'cancelled', updated_at = ?
+        WHERE task_id = ?
+      `).run(now, task.task_id);
+      this.#db.prepare(`
+        UPDATE conversations SET status = 'cancelled', updated_at = ?
+        WHERE conversation_id = ?
+      `).run(now, task.conversation_id);
+      this.#audit(
+        'task.cancel',
+        'analysis_task',
+        task.task_id,
+        { status: task.status, currentStep: task.current_step },
+        { status: 'cancelled', reason: 'cancelled_by_user' },
+        now,
+      );
+    });
+    return this.getConversation(task.conversation_id);
+  }
+
   async runPendingSteps(limit = 10): Promise<number> {
     this.#assertOpen();
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new PlatformInputError('invalid_limit', 'limit must be between 1 and 100');
@@ -1904,6 +1964,11 @@ class SqlitePlatformModule implements PlatformModule {
       UPDATE task_steps
       SET status = 'queued', lease_until = NULL, error_code = 'worker_lease_expired'
       WHERE status = 'running' AND lease_until < ? AND step_name IN (${placeholders})
+        AND EXISTS (
+          SELECT 1 FROM analysis_tasks task
+          WHERE task.task_id = task_steps.task_id
+            AND task.status != 'cancelled'
+        )
     `).run(now, ...supported);
   }
 
@@ -1911,13 +1976,18 @@ class SqlitePlatformModule implements PlatformModule {
     const supported = [...SUPPORTED_STEP_HANDLERS];
     const placeholders = supported.map(() => '?').join(', ');
     const excluded = [...excludedTaskIds];
-    const excludedSql = excluded.length ? `AND task_id NOT IN (${excluded.map(() => '?').join(', ')})` : '';
+    const excludedSql = excluded.length
+      ? `AND step.task_id NOT IN (${excluded.map(() => '?').join(', ')})`
+      : '';
     const selected = this.#db.prepare(`
-      SELECT step_id, task_id, step_name
-      FROM task_steps
-      WHERE status = 'queued' AND step_name IN (${placeholders})
+      SELECT step.step_id, step.task_id, step.step_name
+      FROM task_steps step
+      JOIN analysis_tasks task ON task.task_id = step.task_id
+      WHERE step.status = 'queued'
+        AND task.status NOT IN ('cancelled', 'completed', 'failed')
+        AND step.step_name IN (${placeholders})
       ${excludedSql}
-      ORDER BY rowid LIMIT 1
+      ORDER BY step.rowid LIMIT 1
     `).get(...supported, ...excluded) as { step_id: string; task_id: string; step_name: string } | undefined;
     if (!selected) return undefined;
     const now = this.#now();
@@ -1927,6 +1997,11 @@ class SqlitePlatformModule implements PlatformModule {
         UPDATE task_steps
         SET status = 'running', attempts = attempts + 1, started_at = ?, lease_until = ?, error_code = NULL
         WHERE step_id = ? AND status = 'queued'
+          AND EXISTS (
+            SELECT 1 FROM analysis_tasks task
+            WHERE task.task_id = task_steps.task_id
+              AND task.status NOT IN ('cancelled', 'completed', 'failed')
+          )
       `).run(now.toISOString(), leaseUntil, selected.step_id);
       if (result.changes !== 1) return false;
       this.#db.prepare(`
@@ -3413,8 +3488,8 @@ class SqlitePlatformModule implements PlatformModule {
         now,
       });
       reclassifiedCompanies.add(source.company_id);
-      const staleDrafts = this.#db.prepare(`
-        SELECT DISTINCT industry.industry_id
+      const staleDrafts = (this.#db.prepare(`
+        SELECT DISTINCT industry.industry_id, industry.name
         FROM industries industry
         LEFT JOIN industry_materials material
           ON material.industry_id = industry.industry_id
@@ -3426,7 +3501,8 @@ class SqlitePlatformModule implements PlatformModule {
         ORDER BY industry.industry_id
       `).all(targetIndustryId, source.document_id, source.company_id) as unknown as Array<{
         industry_id: string;
-      }>;
+        name: string;
+      }>).filter((industry) => isLegacyGeneratedIndustryName(industry.name));
       for (const stale of staleDrafts) {
         const targets = draftTargets.get(stale.industry_id) ?? new Set<string>();
         targets.add(targetIndustryId);
@@ -5226,10 +5302,19 @@ class SqlitePlatformModule implements PlatformModule {
         && isSafeNormalizedCompanyName(candidate)
       ) {
         const conflict = this.#db.prepare(`
-          SELECT 1 AS present FROM companies
+          SELECT company_id FROM companies
           WHERE canonical_name = ? AND company_id != ? AND status != 'merged'
-        `).get(candidate, company.company_id);
-        if (!conflict) {
+        `).get(candidate, company.company_id) as {
+          company_id: string;
+        } | undefined;
+        if (conflict) {
+          this.#mergeExistingCompany(
+            company.company_id,
+            conflict.company_id,
+            now,
+          );
+          continue;
+        } else {
           this.#db.prepare(`
             UPDATE companies SET canonical_name = ?, status = ?, version = version + 1,
               updated_at = ? WHERE company_id = ?
@@ -5287,6 +5372,281 @@ class SqlitePlatformModule implements PlatformModule {
     }
   }
 
+  #mergeExistingCompany(
+    sourceCompanyId: string,
+    targetCompanyId: string,
+    now: string,
+  ): void {
+    if (sourceCompanyId === targetCompanyId) return;
+    const source = this.#db.prepare(`
+      SELECT canonical_name, status, watched FROM companies
+      WHERE company_id = ?
+    `).get(sourceCompanyId) as {
+      canonical_name: string;
+      status: string;
+      watched: number;
+    } | undefined;
+    const target = this.#db.prepare(`
+      SELECT canonical_name, status, watched FROM companies
+      WHERE company_id = ? AND status != 'merged'
+    `).get(targetCompanyId) as {
+      canonical_name: string;
+      status: string;
+      watched: number;
+    } | undefined;
+    if (!source || !target) return;
+
+    const aliases = this.#db.prepare(`
+      SELECT alias, alias_type, created_at FROM company_aliases
+      WHERE company_id = ?
+    `).all(sourceCompanyId) as unknown as Array<{
+      alias: string;
+      alias_type: string;
+      created_at: string;
+    }>;
+    this.#db.prepare('DELETE FROM company_aliases WHERE company_id = ?')
+      .run(sourceCompanyId);
+    for (const alias of [
+      {
+        alias: source.canonical_name,
+        alias_type: 'merged_name',
+        created_at: now,
+      },
+      ...aliases,
+    ]) {
+      const normalized = normalizeCompanyNameCandidate(alias.alias);
+      const cleaned = normalized ? canonicalCompanyName(normalized) : undefined;
+      if (
+        !cleaned
+        || cleaned === target.canonical_name
+        || !isSafeNormalizedCompanyName(cleaned)
+      ) continue;
+      this.#db.prepare(`
+        INSERT OR IGNORE INTO company_aliases (
+          alias_id, company_id, alias, alias_type, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(
+        this.#nextId(),
+        targetCompanyId,
+        cleaned,
+        alias.alias_type,
+        alias.created_at,
+      );
+    }
+
+    this.#db.prepare(`
+      INSERT OR IGNORE INTO conversation_companies (
+        conversation_id, company_id, role, created_at
+      )
+      SELECT conversation_id, ?, role, created_at
+      FROM conversation_companies WHERE company_id = ?
+    `).run(targetCompanyId, sourceCompanyId);
+    this.#db.prepare('DELETE FROM conversation_companies WHERE company_id = ?')
+      .run(sourceCompanyId);
+
+    const relations = this.#db.prepare(`
+      SELECT relation_id, from_company_id, to_company_id,
+        relation_type, status, created_at
+      FROM company_relations
+      WHERE from_company_id = ? OR to_company_id = ?
+      ORDER BY relation_id
+    `).all(sourceCompanyId, sourceCompanyId) as unknown as Array<{
+      relation_id: string;
+      from_company_id: string;
+      to_company_id: string;
+      relation_type: string;
+      status: string;
+      created_at: string;
+    }>;
+    for (const relation of relations) {
+      const fromCompanyId = relation.from_company_id === sourceCompanyId
+        ? targetCompanyId
+        : relation.from_company_id;
+      const toCompanyId = relation.to_company_id === sourceCompanyId
+        ? targetCompanyId
+        : relation.to_company_id;
+      this.#db.prepare('DELETE FROM company_relations WHERE relation_id = ?')
+        .run(relation.relation_id);
+      if (fromCompanyId === toCompanyId) continue;
+      const existing = this.#db.prepare(`
+        SELECT relation_id, status FROM company_relations
+        WHERE from_company_id = ? AND to_company_id = ? AND relation_type = ?
+      `).get(fromCompanyId, toCompanyId, relation.relation_type) as {
+        relation_id: string;
+        status: string;
+      } | undefined;
+      if (existing) {
+        this.#db.prepare(`
+          UPDATE company_relations SET status = ? WHERE relation_id = ?
+        `).run(
+          mergedPlacementStatus(existing.status, relation.status),
+          existing.relation_id,
+        );
+      } else {
+        this.#db.prepare(`
+          INSERT INTO company_relations (
+            relation_id, from_company_id, to_company_id,
+            relation_type, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          relation.relation_id,
+          fromCompanyId,
+          toCompanyId,
+          relation.relation_type,
+          relation.status,
+          relation.created_at,
+        );
+      }
+    }
+
+    const placements = this.#db.prepare(`
+      SELECT industry_id, node_id, position_label, status,
+        evidence_id, created_at, updated_at
+      FROM company_industries WHERE company_id = ?
+      ORDER BY industry_id
+    `).all(sourceCompanyId) as unknown as Array<{
+      industry_id: string;
+      node_id: string | null;
+      position_label: string;
+      status: string;
+      evidence_id: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+    for (const placement of placements) {
+      const existing = this.#db.prepare(`
+        SELECT status, position_label FROM company_industries
+        WHERE company_id = ? AND industry_id = ?
+      `).get(targetCompanyId, placement.industry_id) as {
+        status: string;
+        position_label: string;
+      } | undefined;
+      if (existing) {
+        this.#db.prepare(`
+          UPDATE company_industries SET
+            node_id = COALESCE(node_id, ?),
+            position_label = CASE
+              WHEN position_label = '产业链位置待确认' THEN ?
+              ELSE position_label END,
+            status = ?, evidence_id = COALESCE(evidence_id, ?),
+            updated_at = ?
+          WHERE company_id = ? AND industry_id = ?
+        `).run(
+          placement.node_id,
+          placement.position_label,
+          mergedPlacementStatus(existing.status, placement.status),
+          placement.evidence_id,
+          now,
+          targetCompanyId,
+          placement.industry_id,
+        );
+        this.#db.prepare(`
+          DELETE FROM company_industries
+          WHERE company_id = ? AND industry_id = ?
+        `).run(sourceCompanyId, placement.industry_id);
+      } else {
+        this.#db.prepare(`
+          UPDATE company_industries SET company_id = ?, updated_at = ?
+          WHERE company_id = ? AND industry_id = ?
+        `).run(
+          targetCompanyId,
+          now,
+          sourceCompanyId,
+          placement.industry_id,
+        );
+      }
+    }
+
+    this.#db.prepare(`
+      UPDATE company_match_cases SET resolved_company_id = ?, updated_at = ?
+      WHERE resolved_company_id = ?
+    `).run(targetCompanyId, now, sourceCompanyId);
+    this.#db.prepare(`
+      UPDATE knowledge_candidates SET company_id = ?, updated_at = ?
+      WHERE company_id = ?
+    `).run(targetCompanyId, now, sourceCompanyId);
+    this.#db.prepare('UPDATE knowledge SET company_id = ? WHERE company_id = ?')
+      .run(targetCompanyId, sourceCompanyId);
+    this.#db.prepare(`
+      UPDATE company_list_rows SET confirmed_company_id = ?, updated_at = ?
+      WHERE confirmed_company_id = ?
+    `).run(targetCompanyId, now, sourceCompanyId);
+    this.#db.prepare(`
+      DELETE FROM company_research_requests
+      WHERE company_id = ? AND EXISTS (
+        SELECT 1 FROM company_research_requests target
+        WHERE target.list_id = company_research_requests.list_id
+          AND target.company_id = ?
+      )
+    `).run(sourceCompanyId, targetCompanyId);
+    this.#db.prepare(`
+      UPDATE company_research_requests SET company_id = ?
+      WHERE company_id = ?
+    `).run(targetCompanyId, sourceCompanyId);
+    this.#db.prepare(`
+      UPDATE company_research_runs SET company_id = ?, updated_at = ?
+      WHERE company_id = ?
+    `).run(targetCompanyId, now, sourceCompanyId);
+    this.#replaceCompanyIdInOptions(
+      'company_match_cases',
+      'case_id',
+      sourceCompanyId,
+      targetCompanyId,
+    );
+    this.#replaceCompanyIdInOptions(
+      'company_list_rows',
+      'row_id',
+      sourceCompanyId,
+      targetCompanyId,
+    );
+    this.#db.prepare(`
+      UPDATE companies SET
+        status = ?, watched = CASE WHEN watched = 1 OR ? = 1 THEN 1 ELSE 0 END,
+        version = version + 1, updated_at = ?
+      WHERE company_id = ?
+    `).run(
+      target.status === 'active' || source.status === 'active'
+        ? 'active'
+        : 'provisional',
+      source.watched,
+      now,
+      targetCompanyId,
+    );
+    this.#audit(
+      'company.merge_normalization',
+      'company',
+      targetCompanyId,
+      { sourceCompanyId, sourceName: source.canonical_name },
+      { targetCompanyId, targetName: target.canonical_name },
+      now,
+    );
+    this.#db.prepare('DELETE FROM companies WHERE company_id = ?')
+      .run(sourceCompanyId);
+  }
+
+  #replaceCompanyIdInOptions(
+    table: 'company_match_cases' | 'company_list_rows',
+    idColumn: 'case_id' | 'row_id',
+    sourceCompanyId: string,
+    targetCompanyId: string,
+  ): void {
+    const rows = this.#db.prepare(`
+      SELECT ${idColumn} AS row_id, option_ids_json
+      FROM ${table} WHERE option_ids_json LIKE ?
+    `).all(`%${sourceCompanyId}%`) as unknown as Array<{
+      row_id: string;
+      option_ids_json: string;
+    }>;
+    for (const row of rows) {
+      const options = JSON.parse(row.option_ids_json) as string[];
+      const replaced = [...new Set(options.map((companyId) =>
+        companyId === sourceCompanyId ? targetCompanyId : companyId))];
+      this.#db.prepare(`
+        UPDATE ${table} SET option_ids_json = ? WHERE ${idColumn} = ?
+      `).run(JSON.stringify(replaced), row.row_id);
+    }
+  }
+
   #companyNameCleanupCandidate(
     companyId: string,
     canonicalName: string,
@@ -5312,7 +5672,6 @@ class SqlitePlatformModule implements PlatformModule {
       const groupedCandidate = groupedDocument
         ? normalizeCompanyNameCandidate(groupedDocument.file_name)
         : undefined;
-      if (groupedCandidate) return canonicalCompanyName(groupedCandidate);
       const blocks = this.#db.prepare(`
         SELECT block.text
         FROM conversation_companies company
@@ -5326,8 +5685,10 @@ class SqlitePlatformModule implements PlatformModule {
       `).all(companyId) as unknown as Array<{ text: string }>;
       const legalEntity = extractLegalCompanyName(
         blocks.map((block) => block.text).join('\n').slice(0, 80_000),
+        { requireExplicitSubject: Boolean(groupedCandidate) },
       );
       if (legalEntity) return canonicalCompanyName(legalEntity);
+      if (groupedCandidate) return canonicalCompanyName(groupedCandidate);
       const legalEntityFromName = extractLegalCompanyName(canonicalName);
       if (legalEntityFromName) return canonicalCompanyName(legalEntityFromName);
     }
@@ -5617,12 +5978,25 @@ function assertKnownBlockIds(blockIds: string[], valid: Set<string>, context: st
 
 function extractCompanyName(fileName: string, blocks: ParsedBlock[]): string | undefined {
   const normalizedFileName = normalizeCompanyNameCandidate(fileName);
-  if (/^(?:创新组|创业组)\s*\d+\s*[+＋]/u.test(basename(fileName)) && normalizedFileName) {
+  const groupedMaterial = /^(?:创新组|创业组)\s*\d+\s*[+＋]/u.test(
+    basename(fileName),
+  );
+  const blockText = blocks
+    .slice(0, 120)
+    .map((block) => block.text)
+    .join('\n')
+    .slice(0, 80_000);
+  if (groupedMaterial) {
+    const explicitLegalEntity = extractLegalCompanyName(blockText, {
+      requireExplicitSubject: true,
+    });
+    if (explicitLegalEntity)
+      return canonicalCompanyName(explicitLegalEntity);
+  }
+  if (groupedMaterial && normalizedFileName) {
     return canonicalCompanyName(normalizedFileName);
   }
-  const legalEntity = extractLegalCompanyName(
-    blocks.slice(0, 120).map((block) => block.text).join('\n').slice(0, 80_000),
-  );
+  const legalEntity = extractLegalCompanyName(blockText);
   if (legalEntity) return canonicalCompanyName(legalEntity);
   const genericHeadings = new Set(['公司与团队', '公司介绍', '项目介绍', '核心产品', '商业计划书', '融资计划书']);
   const heading = blocks.find((block) => block.kind === 'heading' && block.text.length >= 2 && block.text.length <= 48 && !genericHeadings.has(block.text));
@@ -5664,7 +6038,7 @@ function assertCompanyListName(value: string): void {
 function organizationCandidateName(value: string | undefined, statement: string): string | undefined {
   for (const source of [value, statement]) {
     if (!source) continue;
-    const legal = source.match(/[\p{Script=Han}A-Za-z0-9（）()·&]{2,80}?(?:股份有限公司|有限责任公司|有限公司)/u)?.[0];
+    const legal = extractLegalCompanyName(source);
     if (legal) return canonicalCompanyName(legal);
     const group = source.match(/[\p{Script=Han}A-Za-z0-9（）()·&]{2,80}?(?:集团|研究院|中心)/u)?.[0];
     if (group) return canonicalCompanyName(group);
@@ -5672,6 +6046,25 @@ function organizationCandidateName(value: string | undefined, statement: string)
     if (source === value && trimmed.length >= 2 && trimmed.length <= 80 && !/[，。；;：:\n]/u.test(trimmed)) return trimmed;
   }
   return undefined;
+}
+
+const LEGACY_AUTOMATIC_INDUSTRY_NAMES = new Set([
+  '商业航天',
+  '可控核聚变',
+  '人工智能',
+  '半导体',
+  '新能源',
+  '生物医药',
+  '智能制造',
+  '企业服务',
+  '机器人',
+  '低空经济',
+  '卫星通信',
+  '新材料',
+]);
+
+function isLegacyGeneratedIndustryName(name: string): boolean {
+  return name.endsWith('相关行业') || LEGACY_AUTOMATIC_INDUSTRY_NAMES.has(name);
 }
 
 function isCompanyListFile(fileName: string): boolean {

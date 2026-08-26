@@ -603,6 +603,7 @@ export interface PlatformModule {
   startCompanyResearch(input: StartCompanyResearchInput): Promise<ConversationDetail>;
   startIndustryResearch(input: StartIndustryResearchInput): Promise<ConversationDetail>;
   listAdminOverview(): Promise<AdminOverview>;
+  cancelTask(taskId: string): Promise<ConversationDetail>;
   retryTask(taskId: string): Promise<ConversationDetail>;
   runPendingSteps(limit?: number): Promise<number>;
   close(): void;

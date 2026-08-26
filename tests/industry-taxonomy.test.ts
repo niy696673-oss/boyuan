@@ -48,6 +48,10 @@ describe("受控行业分类", () => {
       { key: "semiconductor-integrated-circuit", name: "半导体与集成电路" },
       { key: "aerospace-high-end-equipment", name: "航空航天与高端装备" },
       {
+        key: "instrumentation-testing-sensing",
+        name: "仪器仪表与检测传感",
+      },
+      {
         key: "industrial-software-smart-manufacturing",
         name: "工业软件与智能制造",
       },
@@ -84,6 +88,46 @@ describe("受控行业分类", () => {
       key: "artificial-intelligence-enterprise-services",
       name: "人工智能与企业服务",
     });
+  });
+
+  it.each([
+    [
+      "军民机与客机机翼",
+      "主制造商服务军民机市场，并进入波音与空客客机机翼供应链。",
+      "aerospace-high-end-equipment",
+      "航空航天与高端装备",
+    ],
+    [
+      "Chiplet",
+      "围绕 Chiplet、D2D、CPU 和 GPU 提供芯粒互联能力。",
+      "semiconductor-integrated-circuit",
+      "半导体与集成电路",
+    ],
+    [
+      "卫星射频",
+      "提供卫星互联网射频前端，覆盖卫通、北斗及数据链场景。",
+      "optoelectronics-communications",
+      "光电与通信",
+    ],
+    [
+      "工业预测维护",
+      "工业物联网软件平台为制造企业提供设备预测性维护。",
+      "industrial-software-smart-manufacturing",
+      "工业软件与智能制造",
+    ],
+    [
+      "压力检测",
+      "提供非介入式压力计、压力测量设备和在线校准服务。",
+      "instrumentation-testing-sensing",
+      "仪器仪表与检测传感",
+    ],
+  ])("根据真实材料摘要识别%s赛道", (_label, summary, key, name) => {
+    expect(
+      classifyCanonicalIndustry({
+        industryMarketSummary: summary,
+        industryChainSummary: summary,
+      }),
+    ).toEqual({ key, name });
   });
 
   it("不使用公司名称作为行业分类 fallback", () => {

@@ -97,6 +97,29 @@ describe("研究平台 v1 公司目录接缝", () => {
     expect(detail.body.latestMaterialAnalysis.sections).toHaveLength(13);
   });
 
+  it("创新组材料披露明确项目公司时使用法律主体，而不是项目标题", async () => {
+    const { app, platform } = await fixture();
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from(
+          "项目公司为北京星河航空科技有限公司。合作方为上海海纳材料有限公司。",
+        ),
+        "创新组12+航空发动机温度测试系统.pdf.txt",
+      );
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    expect(await platform.listCompanies()).toEqual([
+      expect.objectContaining({
+        canonicalName: "北京星河航空科技有限公司",
+      }),
+    ]);
+  });
+
   it("返回持久公司及页面所需的材料、正式知识和待确认计数", async () => {
     const { app, platform } = await fixture();
     await seedConfirmedCompany(app, platform);

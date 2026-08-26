@@ -27,6 +27,74 @@ afterEach(async () => {
 });
 
 describe("研究平台 v1 HTTP 接缝", () => {
+  it("原子取消排队任务，记录审计并阻止 worker 重新领取", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
+    roots.push(dataRoot);
+    const platform = createPlatformModule({
+      dataRoot,
+      analysis: createDeterministicAnalysisAdapter(),
+    });
+    modules.push(platform);
+    const store = new Store({
+      initialData: initialStoreData(),
+      persistToDisk: false,
+    });
+    const app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform,
+    });
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from("排队取消科技有限公司\n该材料不应继续执行。"),
+        "排队取消 BP.txt",
+      );
+    const taskId = uploaded.body.conversation.task.taskId as string;
+
+    const cancelled = await request(app).post(
+      `/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`,
+    );
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body).toMatchObject({
+      status: "cancelled",
+      task: {
+        taskId,
+        status: "cancelled",
+        resultStatus: "cancelled",
+      },
+    });
+    expect(
+      cancelled.body.task.steps.some(
+        (step: { status: string }) => step.status === "completed",
+      ),
+    ).toBe(true);
+    expect(
+      cancelled.body.task.steps
+        .filter((step: { status: string }) => step.status === "skipped")
+        .every(
+          (step: { errorCode?: string }) =>
+            step.errorCode === "cancelled_by_user",
+        ),
+    ).toBe(true);
+    expect(
+      cancelled.body.task.steps.some((step: { status: string }) =>
+        ["blocked", "queued", "running", "pending_confirmation"].includes(
+          step.status,
+        ),
+      ),
+    ).toBe(false);
+    await expect(platform.runPendingSteps()).resolves.toBe(0);
+    const replay = await request(app).post(
+      `/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`,
+    );
+    expect(replay.status).toBe(200);
+    expect(
+      (await platform.listAdminOverview()).audits.filter(
+        (audit) => audit.action === "task.cancel" && audit.entityId === taskId,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("只读返回持久材料内容、准确响应头，并对未知文档返回 404", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-research-v1-"));
     roots.push(dataRoot);

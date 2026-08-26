@@ -151,6 +151,14 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post("/tasks/:taskId/cancel", async (req, res, next) => {
+    try {
+      res.json(await platform.cancelTask(String(req.params.taskId)));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.post("/company-research", async (req, res, next) => {
     try {
       const input = companyResearchInput(req.body);

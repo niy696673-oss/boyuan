@@ -22,6 +22,10 @@ export function normalizeCompanyNameCandidate(
     .normalize("NFKC")
     .replace(/(?:pdf|pptx?|docx?|txt)$/iu, "")
     .replace(/\s*\(\d+\)\s*$/u, "")
+    .replace(
+      /^(?:商业融资计划书|商业计划书|融资计划书|BP|MP)\s*[-_—–:@：]+\s*/iu,
+      "",
+    )
     .replace(/^(?:创新组|创业组)\s*\d+\s*\+\s*/u, "")
     .replace(
       /^(?:推荐方|推荐机构|机构)\s*[:：]\s*[\p{L}\p{N}（）()·&]{2,24}\s*[-_—–:：]+\s*/u,
@@ -53,11 +57,18 @@ export function normalizeCompanyNameCandidate(
   return normalized || undefined;
 }
 
-export function extractLegalCompanyName(text: string): string | undefined {
+export function extractLegalCompanyName(
+  text: string,
+  options: { requireExplicitSubject?: boolean } = {},
+): string | undefined {
   const candidates = text
     .normalize("NFKC")
     .split(/[，,。；;！？!?\n\r]/u)
     .flatMap(legalCandidatesFromClause)
+    .filter(
+      (candidate) =>
+        !options.requireExplicitSubject || candidate.explicitSubject,
+    )
     .sort(
       (left, right) => right.score - left.score || left.order - right.order,
     );
@@ -66,8 +77,18 @@ export function extractLegalCompanyName(text: string): string | undefined {
 
 function legalCandidatesFromClause(
   clause: string,
-): Array<{ name: string; order: number; score: number }> {
-  const candidates: Array<{ name: string; order: number; score: number }> = [];
+): Array<{
+  name: string;
+  order: number;
+  score: number;
+  explicitSubject: boolean;
+}> {
+  const candidates: Array<{
+    name: string;
+    order: number;
+    score: number;
+    explicitSubject: boolean;
+  }> = [];
   let suffix: RegExpExecArray | null;
   LEGAL_SUFFIX.lastIndex = 0;
   while ((suffix = LEGAL_SUFFIX.exec(clause)) !== null) {
@@ -78,7 +99,12 @@ function legalCandidatesFromClause(
     const name = trimLegalNameDescriptor(raw);
     const score = scoreLegalName(name, boundary.score);
     if (score !== undefined)
-      candidates.push({ name, order: suffix.index, score });
+      candidates.push({
+        name,
+        order: suffix.index,
+        score,
+        explicitSubject: boundary.score === 50,
+      });
   }
   return candidates;
 }
