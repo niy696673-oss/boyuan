@@ -140,6 +140,7 @@ export interface StatusCardReceipt {
   cardMessageId: string;
   createdAt: string;
   senderId?: string;
+  terminal?: boolean;
 }
 
 export interface IntakeOutcome {

@@ -43,6 +43,12 @@ describe('intake service', () => {
       expect(service.listOrphanStatusCards()).toEqual([
         expect.objectContaining({ messageId: 'om_message', cardMessageId: 'om_status_card' }),
       ]);
+      service.markStatusCardTerminal('om_message', 'one');
+      expect(service.listOrphanStatusCards()).toEqual([]);
+      service.rememberStatusCard({
+        chatId: 'oc_chat', messageId: 'om_message', fileKey: 'one', fileName: 'one.pdf',
+        cardMessageId: 'om_status_card', createdAt: '2026-08-26T00:00:00.000Z', senderId: 'ou_sender',
+      });
       const input = turn(attachment('one'));
       input.statusCardMessageId = 'om_status_card';
       await service.ingestTurn(input);
@@ -101,6 +107,31 @@ describe('intake service', () => {
       expect(sent.map((item) => item.responseKind)).toEqual(['final', 'final']);
       expect(sent[0]?.timeoutMs).toBeUndefined();
       expect(JSON.stringify(sent[0]?.card)).toContain('深度分析继续运行');
+    } finally { temp.cleanup(); }
+  });
+
+  it('releases the downloaded BP immediately after upload, before Luna runs', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    const order: string[] = [];
+    vi.mocked(platform.upload).mockImplementation(async (_turn, file) => {
+      order.push(`upload:${file.fileKey}`);
+      return { conversation: conversation('conversation-one', 'processing'), reusedDocument: false };
+    });
+    vi.mocked(platform.quickCard).mockImplementation(async () => {
+      order.push('luna');
+      return quickCard();
+    });
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path), platform,
+        messenger: { sendCard: vi.fn(async () => undefined) },
+        store: new MemoryJobStore(), setTimer: () => undefined,
+      });
+      await service.ingestTurn(turn(attachment('one')), {
+        releaseAttachment: async () => { order.push('release'); },
+      });
+      expect(order).toEqual(['upload:one', 'release', 'luna']);
     } finally { temp.cleanup(); }
   });
 

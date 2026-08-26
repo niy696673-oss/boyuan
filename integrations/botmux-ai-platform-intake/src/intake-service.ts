@@ -61,19 +61,33 @@ export class IntakeService {
   }
 
   listOrphanStatusCards(): StatusCardReceipt[] {
-    return this.#store.listStatusCards().filter((receipt) => !this.#store.get(receipt.key));
+    return this.#store.listStatusCards().filter((receipt) => (
+      !receipt.terminal && !this.#store.get(receipt.key)
+    ));
   }
 
-  async ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]> {
+  markStatusCardTerminal(messageId: string, fileKey: string): void {
+    const key = jobKey(messageId, fileKey);
+    const receipt = this.#store.getStatusCard(key);
+    if (!receipt) return;
+    this.#store.putStatusCard({ ...receipt, terminal: true });
+  }
+
+  async ingestTurn(
+    turn: IntakeTurn,
+    options: { releaseAttachment?: (attachment: IntakeTurn['attachments'][number]) => Promise<void> } = {},
+  ): Promise<IntakeOutcome[]> {
     const outcomes: IntakeOutcome[] = [];
     for (const attachment of turn.attachments) {
       try {
         const key = jobKey(turn.messageId, attachment.fileKey);
         let active = this.#active.get(key);
         if (!active) {
-          active = this.#acceptOne(turn, attachment);
+          active = this.#acceptOne(turn, attachment, options.releaseAttachment);
           this.#active.set(key, active);
           void active.finally(() => this.#active.delete(key)).catch(() => undefined);
+        } else if (options.releaseAttachment) {
+          await options.releaseAttachment(attachment);
         }
         outcomes.push(await active);
       } catch (error) {
@@ -102,10 +116,15 @@ export class IntakeService {
     for (const job of this.#store.listPending()) this.#schedule(job.key, 0);
   }
 
-  async #acceptOne(turn: IntakeTurn, attachment: IntakeTurn['attachments'][number]): Promise<IntakeOutcome> {
+  async #acceptOne(
+    turn: IntakeTurn,
+    attachment: IntakeTurn['attachments'][number],
+    releaseAttachment?: (attachment: IntakeTurn['attachments'][number]) => Promise<void>,
+  ): Promise<IntakeOutcome> {
     const key = jobKey(turn.messageId, attachment.fileKey);
     const existing = this.#store.get(key);
     if (existing) {
+      if (releaseAttachment) await releaseAttachment(attachment);
       if (!existing.completionCardSent) await this.#finish(key);
       const saved = this.#store.get(key) ?? existing;
       return {
@@ -122,7 +141,12 @@ export class IntakeService {
     const startedMs = Number.isFinite(receivedMs) && receivedMs <= observedMs + 1_000 && receivedMs >= observedMs - 300_000
       ? Math.min(receivedMs, observedMs)
       : observedMs;
-    const uploaded = await this.#platform.upload(turn, attachment, this.#config.timeoutMs);
+    let uploaded: Awaited<ReturnType<PlatformClient['upload']>>;
+    try {
+      uploaded = await this.#platform.upload(turn, attachment, this.#config.timeoutMs);
+    } finally {
+      if (releaseAttachment) await releaseAttachment(attachment);
+    }
     const acceptedMs = this.#nowMs();
     const statusCardMessageId = turn.statusCardMessageId ??
       this.#store.getStatusCard(key)?.cardMessageId;

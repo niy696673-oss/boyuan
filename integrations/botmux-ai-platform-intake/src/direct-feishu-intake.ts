@@ -14,13 +14,17 @@ export interface FeishuFileMessage {
 export interface DirectFeishuFileIngressOptions {
   materialize(message: FeishuFileMessage): Promise<IntakeAttachment>;
   releaseAttachment?: (attachment: IntakeAttachment) => Promise<void> | void;
-  ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]>;
+  ingestTurn(
+    turn: IntakeTurn,
+    options?: { releaseAttachment?: (attachment: IntakeAttachment) => Promise<void> },
+  ): Promise<IntakeOutcome[]>;
   messenger?: Messenger;
   statusCardId?: (message: FeishuFileMessage) => string | undefined;
   rememberStatusCard?: (
     message: FeishuFileMessage,
     cardMessageId: string,
   ) => void;
+  markStatusCardTerminal?: (message: FeishuFileMessage) => void;
 }
 
 export interface FeishuCardReplyPort {
@@ -43,6 +47,7 @@ export class DirectFeishuFileIngress {
   readonly #messenger: Messenger | undefined;
   readonly #statusCardId: DirectFeishuFileIngressOptions['statusCardId'];
   readonly #rememberStatusCard: DirectFeishuFileIngressOptions['rememberStatusCard'];
+  readonly #markStatusCardTerminal: DirectFeishuFileIngressOptions['markStatusCardTerminal'];
   readonly #active = new Map<string, Promise<void>>();
 
   constructor(options: DirectFeishuFileIngressOptions) {
@@ -52,7 +57,12 @@ export class DirectFeishuFileIngress {
     this.#messenger = options.messenger;
     this.#statusCardId = options.statusCardId;
     this.#rememberStatusCard = options.rememberStatusCard;
-    if (this.#messenger && (!this.#statusCardId || !this.#rememberStatusCard)) {
+    this.#markStatusCardTerminal = options.markStatusCardTerminal;
+    if (this.#messenger && (
+      !this.#statusCardId
+      || !this.#rememberStatusCard
+      || !this.#markStatusCardTerminal
+    )) {
       throw new Error('status_card_store_required');
     }
   }
@@ -104,6 +114,10 @@ export class DirectFeishuFileIngress {
         ...(message.senderId ? { senderId: message.senderId } : {}),
         ...(statusCardMessageId ? { statusCardMessageId } : {}),
         attachments: [attachment],
+      }, {
+        ...(this.#releaseAttachment
+          ? { releaseAttachment: async (file: IntakeAttachment) => this.#releaseAttachment!(file) }
+          : {}),
       });
     } catch (error) {
       if (statusCardMessageId && this.#messenger?.updateCard) {
@@ -112,11 +126,8 @@ export class DirectFeishuFileIngress {
           card: failureCard(message.fileName),
         }).catch(() => undefined);
       }
+      if (terminalIntakeError(error)) this.#markStatusCardTerminal?.(message);
       throw error;
-    } finally {
-      if (attachment && this.#releaseAttachment) {
-        await Promise.resolve(this.#releaseAttachment(attachment)).catch(() => undefined);
-      }
     }
   }
 }
@@ -187,4 +198,11 @@ function record(value: unknown): Record<string, unknown> | null {
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function terminalIntakeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : '';
+  return message === 'attachment_type_unsupported'
+    || message.startsWith('attachment_symlink_')
+    || message.startsWith('attachment_path_');
 }

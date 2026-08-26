@@ -28,7 +28,7 @@ const service = new IntakeService({
 const ingress = new DirectFeishuFileIngress({
   materialize: (message) => feishu.materialize(message),
   releaseAttachment: (attachment) => feishu.release(attachment),
-  ingestTurn: (turn) => service.ingestTurn(turn),
+  ingestTurn: (turn, options) => service.ingestTurn(turn, options),
   messenger,
   statusCardId: (message) =>
     service.statusCardId(message.messageId, message.fileKey),
@@ -42,6 +42,8 @@ const ingress = new DirectFeishuFileIngress({
       createdAt: message.receivedAt,
       ...(message.senderId ? { senderId: message.senderId } : {}),
     }),
+  markStatusCardTerminal: (message) =>
+    service.markStatusCardTerminal(message.messageId, message.fileKey),
 });
 const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
