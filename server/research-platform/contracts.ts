@@ -3,8 +3,8 @@ import type { CompanyResearchWorkflowSkill } from './research/contracts.js';
 
 export type SourceChannel = 'web' | 'feishu';
 export type ConversationType = 'material' | 'company' | 'industry';
-export type ConversationStatus = 'processing' | 'waiting' | 'pending_confirmation' | 'completed' | 'failed';
-export type TaskStatus = 'queued' | 'running' | 'waiting' | 'pending_confirmation' | 'completed' | 'failed';
+export type ConversationStatus = 'processing' | 'waiting' | 'pending_confirmation' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'queued' | 'running' | 'waiting' | 'pending_confirmation' | 'completed' | 'failed' | 'cancelled';
 export type TaskStepStatus = 'blocked' | 'queued' | 'running' | 'completed' | 'skipped' | 'pending_confirmation' | 'failed';
 
 export interface DocumentRecord {
@@ -120,6 +120,19 @@ export interface CompanyCardRecord extends CompanyRecord {
   materialCount: number;
   knowledgeCount: number;
   pendingCandidateCount: number;
+  latestMaterialAnalysis?: LatestMaterialAnalysisSummary;
+}
+
+export interface LatestMaterialAnalysisSummary {
+  taskId: string;
+  conversationId: string;
+  documentId: string;
+  fileName: string;
+  taskStatus: TaskStatus;
+  resultStatus?: string;
+  summary?: string;
+  sectionCount: number;
+  updatedAt: string;
 }
 
 export interface CompanyMaterialRecord {
@@ -240,6 +253,9 @@ export interface CompanyDetail extends CompanyRecord {
   researchRecords: CompanyResearchSummary[];
   relations: CompanyRelationRecord[];
   industryPlacements: CompanyIndustryPlacementRecord[];
+  latestMaterialAnalysis?: LatestMaterialAnalysisSummary & {
+    sections: AnalysisSectionRecord[];
+  };
 }
 
 export interface IndustryRecord {
@@ -545,6 +561,13 @@ export interface StartIndustryResearchInput {
   explicitWebSearch: boolean;
 }
 
+export interface IndustryReclassificationResult {
+  companies: number;
+  industries: number;
+  mergedIndustries: number;
+  unclassifiedMaterials: number;
+}
+
 export interface PlatformModule {
   ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;
@@ -567,6 +590,7 @@ export interface PlatformModule {
   ): Promise<CompanyResearchWorkflowSourceRecord[]>;
   setCompanyWatched(companyId: string, watched: boolean, expectedVersion: number): Promise<CompanyDetail>;
   listIndustries(): Promise<IndustryRecord[]>;
+  reclassifyIndustries(): Promise<IndustryReclassificationResult>;
   countUnclassifiedIndustryMaterials(): Promise<number>;
   getIndustry(industryId: string): Promise<IndustryDetail>;
   setIndustryWatched(industryId: string, watched: boolean, expectedVersion: number): Promise<IndustryDetail>;

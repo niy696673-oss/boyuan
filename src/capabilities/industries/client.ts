@@ -1,6 +1,7 @@
 import type {
   IndustryDetailResponseV1,
   IndustryDirectoryResponseV1,
+  IndustryReclassificationResponseV1,
 } from "../../../shared/research-platform-v1";
 import type { UploadResult } from "../research/types";
 import {
@@ -10,6 +11,7 @@ import {
 
 export interface IndustryDirectoryClient {
   list(signal?: AbortSignal): Promise<IndustryDirectoryResponseV1>;
+  reclassify(signal?: AbortSignal): Promise<IndustryReclassificationResponseV1>;
   get(
     industryId: string,
     signal?: AbortSignal,
@@ -36,6 +38,12 @@ export function createIndustryDirectoryClient(
         fetcher,
         "/api/v1/industries",
         { signal },
+      ),
+    reclassify: (signal) =>
+      requestPlatformJson<IndustryReclassificationResponseV1>(
+        fetcher,
+        "/api/v1/industries/reclassify",
+        { method: "POST", signal },
       ),
     get: (industryId, signal) =>
       requestPlatformJson<IndustryDetailResponseV1>(

@@ -78,7 +78,7 @@ describe("全局搜索与通知接缝", () => {
     expect(industryResearchRequest.body.conversations).toEqual([
       expect.objectContaining({
         conversationId: industryConversation.conversationId,
-        title: "人工智能行业研究",
+        title: "人工智能与企业服务行业研究",
       }),
     ]);
 
@@ -89,7 +89,7 @@ describe("全局搜索与通知接缝", () => {
     expect(industrySourceRequest.body.conversations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         conversationId: industryConversation.conversationId,
-        title: "人工智能行业研究",
+        title: "人工智能与企业服务行业研究",
       }),
     ]));
   });

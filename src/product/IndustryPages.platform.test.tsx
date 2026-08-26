@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api";
@@ -29,6 +29,54 @@ describe("持久行业目录页面", () => {
     expect(screen.getByText("待分类材料").parentElement?.textContent).toContain("3");
     expect(client.list).toHaveBeenCalledOnce();
     expect(client.get).toHaveBeenCalledWith("industry-1", expect.any(AbortSignal));
+  });
+
+  it("草稿行业显示待确认分类，并通过 v1 接缝重新分类", async () => {
+    const detail = industryDetail();
+    detail.status = "draft";
+    const client = fakeClient(detail);
+    vi.mocked(client.reclassify).mockResolvedValue({
+      companies: 2,
+      industries: 1,
+      mergedIndustries: 1,
+      unclassifiedMaterials: 3,
+    });
+    const data = bootstrap();
+    data.user.role = "knowledge_admin";
+
+    render(
+      <MemoryRouter>
+        <IndustriesPage data={data} reload={vi.fn()} industryClient={client} />
+      </MemoryRouter>,
+    );
+
+    const heading = await screen.findByRole("heading", { name: "人工智能" });
+    const card = heading.closest("article");
+    if (!card) throw new Error("industry card missing");
+    expect(within(card).getByText("待确认分类")).toBeTruthy();
+    expect(within(card).queryByText("正式知识")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新分类" }));
+    await waitFor(() => expect(client.reclassify).toHaveBeenCalledOnce());
+    expect(await screen.findByText(/2 家公司已重新分类.*3 份材料待分类/)).toBeTruthy();
+  });
+
+  it("行业详情不会把 draft 产业链标成正式知识", async () => {
+    const detail = industryDetail();
+    detail.status = "draft";
+    const client = fakeClient(detail);
+
+    render(
+      <MemoryRouter initialEntries={["/industry/industry-1?tab=chain"]}>
+        <Routes>
+          <Route path="/industry/:id" element={<IndustryDetailPage data={bootstrap()} industryClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "人工智能" });
+    expect(screen.getAllByText("待确认分类").length).toBeGreaterThan(0);
+    expect(screen.queryByText("BP 正式知识")).toBeNull();
   });
 
   it("详情展示持久节点、材料和公司，不对未知 ID 回退", async () => {
@@ -90,6 +138,7 @@ describe("持久行业目录页面", () => {
       ["pending_confirmation", "待处理"],
       ["failed", "失败"],
       ["completed", "已完成"],
+      ["cancelled", "已取消"],
     ] as const;
     detail.materials = statuses.map(([status], index) => ({
       conversationId: `conversation-status-${index}`,
@@ -110,7 +159,7 @@ describe("持久行业目录页面", () => {
     );
 
     await screen.findByRole("heading", { name: "人工智能" });
-    for (const [status, label] of statuses) {
+    for (const [status, label] of statuses.slice(0, 5)) {
       expect(
         screen.getByRole("button", { name: new RegExp(`${status}材料.*${label}`) }),
       ).toBeTruthy();
@@ -177,8 +226,7 @@ describe("持久行业目录页面", () => {
   });
 });
 
-function fakeClient(): IndustryDirectoryClient {
-  const detail = industryDetail();
+function fakeClient(detail = industryDetail()): IndustryDirectoryClient {
   return {
     list: vi.fn().mockResolvedValue({
       items: [{
@@ -195,6 +243,7 @@ function fakeClient(): IndustryDirectoryClient {
       total: 1,
       unclassifiedMaterialCount: 3,
     }),
+    reclassify: vi.fn(),
     get: vi.fn().mockResolvedValue(detail),
     uploadDocument: vi.fn(),
     setWatched: vi.fn().mockResolvedValue(detail),

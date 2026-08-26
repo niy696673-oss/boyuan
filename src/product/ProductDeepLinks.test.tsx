@@ -94,6 +94,7 @@ describe("飞书卡片实体深链", () => {
 function industryClient(): IndustryDirectoryClient {
   return {
     list: vi.fn(),
+    reclassify: vi.fn(),
     uploadDocument: vi.fn(),
     setWatched: vi.fn(),
     get: vi.fn().mockResolvedValue({

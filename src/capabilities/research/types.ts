@@ -1,7 +1,7 @@
 import type { IndustryDirectoryItemV1 } from "../../../shared/research-platform-v1";
 
 export type ConversationStatus =
-  "processing" | "waiting" | "pending_confirmation" | "completed" | "failed";
+  "processing" | "waiting" | "pending_confirmation" | "completed" | "failed" | "cancelled";
 
 export type TaskStepStatus =
   | "blocked"
@@ -48,7 +48,8 @@ export interface AnalysisTask {
     | "waiting"
     | "pending_confirmation"
     | "completed"
-    | "failed";
+    | "failed"
+    | "cancelled";
   currentStep: string;
   createdAt: string;
   updatedAt: string;

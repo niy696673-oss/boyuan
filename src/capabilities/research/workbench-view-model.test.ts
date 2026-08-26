@@ -183,6 +183,25 @@ describe("研究对话工作台视图模型", () => {
     });
     expect(research.task.status).toBe("执行失败");
   });
+
+  it("把取消任务映射为终态，并停止显示外部检索仍在执行", () => {
+    const detail = failedResearchDetail("industry", "execute_industry_search");
+    detail.status = "cancelled";
+    detail.task.status = "cancelled";
+    const searchStep = detail.task.steps[0];
+    searchStep.status = "queued";
+    delete searchStep.errorCode;
+
+    const research = toWorkbenchResearch(detail);
+
+    expect(research.task.status).toBe("已取消");
+    expect(research.externalResearch).toMatchObject({
+      requested: true,
+      executed: false,
+      status: "cancelled",
+      sources: [],
+    });
+  });
 });
 
 function failedResearchDetail(

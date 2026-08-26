@@ -14,6 +14,7 @@ import type {
 import type {
   CompanyDirectoryResponse,
   IndustryDirectoryResponseV1,
+  IndustryReclassificationResponseV1,
   ReviewDecisionResponse,
   ReviewQueueItem,
   ReviewQueueResponse,
@@ -261,6 +262,16 @@ export function createResearchPlatformV1Router(
         total: items.length,
         unclassifiedMaterialCount,
       } satisfies IndustryDirectoryResponseV1;
+      res.json(response);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post("/industries/reclassify", async (_req, res, next) => {
+    try {
+      const response =
+        (await platform.reclassifyIndustries()) satisfies IndustryReclassificationResponseV1;
       res.json(response);
     } catch (error) {
       handlePlatformError(error, res, next);

@@ -25,6 +25,56 @@ afterEach(async () => {
 });
 
 describe("研究平台 v1 行业目录接缝", () => {
+  it("将不同公司的航空材料聚合到同一受控行业，而不是生成一企一行业", async () => {
+    const { app, platform } = await fixture();
+    for (const [company, fileName, detail] of [
+      ["星航测控有限公司", "星航测控 BP.txt", "公司位于航空发动机测试产业链中游，面向精细化测压与试验验证。"],
+      ["云翼装备有限公司", "云翼装备 BP.txt", "公司位于航空航天产业链中游，提供飞行器高端装备核心部件与系统集成。"],
+    ] as const) {
+      const uploaded = await request(app)
+        .post("/api/v1/documents")
+        .attach("file", Buffer.from(`${company}\n${detail}`), fileName);
+      expect(uploaded.status).toBe(201);
+    }
+    for (let index = 0; index < 40; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const directory = await request(app).get("/api/v1/industries");
+    expect(directory.status).toBe(200);
+    expect(directory.body).toMatchObject({
+      total: 1,
+      items: [
+        {
+          name: "航空航天与高端装备",
+          companyCount: 2,
+          materialCount: 2,
+        },
+      ],
+    });
+    expect(
+      directory.body.items.some((item: { name: string }) =>
+        item.name.endsWith("相关行业"),
+      ),
+    ).toBe(false);
+    const reclassified = await request(app).post(
+      "/api/v1/industries/reclassify",
+    );
+    expect(reclassified.status).toBe(200);
+    expect(reclassified.body).toEqual({
+      companies: 2,
+      industries: 1,
+      mergedIndustries: 0,
+      unclassifiedMaterials: 0,
+    });
+    const detail = await platform.getIndustry(
+      directory.body.items[0].industryId as string,
+    );
+    expect(detail.companies).toHaveLength(2);
+    expect(detail.companies.every((company) => company.status === "candidate"))
+      .toBe(true);
+  });
+
   it("从材料分析结果返回持久行业、产业节点、材料和公司", async () => {
     const { app, platform } = await fixture();
     await seedIndustry(app, platform);
@@ -36,7 +86,7 @@ describe("研究平台 v1 行业目录接缝", () => {
       unclassifiedMaterialCount: 0,
       items: [
         {
-          name: "人工智能",
+          name: "人工智能与企业服务",
           materialCount: 1,
           companyCount: 1,
         },
@@ -48,7 +98,7 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(detail.status).toBe(200);
     expect(detail.body).toMatchObject({
       industryId,
-      name: "人工智能",
+      name: "人工智能与企业服务",
       nodes: [
         { stage: "upstream" },
         { stage: "midstream" },
@@ -226,7 +276,7 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(started.body).toMatchObject({
       type: "industry",
       status: "waiting",
-      industry: { industryId, name: "人工智能" },
+      industry: { industryId, name: "人工智能与企业服务" },
       task: {
         type: "industry_research",
         currentStep: "load_industry_context",
@@ -256,16 +306,16 @@ describe("研究平台 v1 行业目录接缝", () => {
     expect(completed.status).toBe(200);
     expect(completed.body).toMatchObject({
       status: "completed",
-      industry: { industryId, name: "人工智能" },
+      industry: { industryId, name: "人工智能与企业服务" },
       industryResearch: {
         industryId,
         triggerReason: "user_requested",
         summary: expect.stringContaining("人工智能"),
         sources: [expect.objectContaining({
           sourceType: "web",
-          title: "人工智能公开信息",
+          title: "人工智能与企业服务公开信息",
           site: "example.com",
-          url: "https://example.com/companies/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD",
+          url: "https://example.com/companies/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%E4%B8%8E%E4%BC%81%E4%B8%9A%E6%9C%8D%E5%8A%A1",
           accessStatus: "accessible",
           retrievedAt: "2026-08-24T00:00:00.000Z",
         })],
