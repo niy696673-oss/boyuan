@@ -28,6 +28,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Upload,
   X,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -646,9 +647,6 @@ export function WorkbenchPage({
       {!activeResearch ? (
         <section className="by-workbench-home">
           <div className="by-home-center">
-            <div className="by-assistant-mark">
-              <Sparkles />
-            </div>
             <h1>今天想研究什么？</h1>
             <p>
               提交问题或材料，博源 AI
@@ -673,6 +671,7 @@ export function WorkbenchPage({
               onWorkflow={applyWorkflowComposer}
               onSubmit={runResearch}
               onUpload={() => uploadRef.current?.click()}
+              onUploadFiles={uploadFiles}
             />
             <input
               ref={uploadRef}
@@ -1408,6 +1407,7 @@ function ActiveConversation({
           onWorkflow={onWorkflow}
           onSubmit={onSubmit}
           onUpload={() => uploadRef.current?.click()}
+          onUploadFiles={onUploadFiles}
         />
         <input
           ref={uploadRef}
@@ -1587,6 +1587,7 @@ function ResearchComposer({
   onWorkflow,
   onSubmit,
   onUpload,
+  onUploadFiles,
 }: {
   data: Bootstrap;
   context: ContextType;
@@ -1604,9 +1605,51 @@ function ResearchComposer({
   onWorkflow: (workflow: WorkflowComposerState) => void;
   onSubmit: () => void;
   onUpload: () => void;
+  onUploadFiles?: (files: File[]) => void;
 }) {
+  const [draggingFile, setDraggingFile] = useState(false);
+
   return (
     <div className={`by-composer ${compact ? "compact" : ""}`}>
+      {!compact && (
+        <div
+          className={`by-composer-upload ${draggingFile ? "dragging" : ""}`}
+          onClick={onUpload}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setDraggingFile(true);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setDraggingFile(false);
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDraggingFile(false);
+            const files = [...event.dataTransfer.files];
+            if (files.length) onUploadFiles?.(files);
+          }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onUpload();
+            }
+          }}
+        >
+          <span className="by-upload-prompt">
+            <Upload />
+            <strong>{draggingFile ? "松开即可上传" : "拖拽或点击上传"}</strong>
+          </span>
+          <span className="by-upload-actions">
+            <em>选择文件</em>
+            <small>BP · 名录 · 资料</small>
+          </span>
+        </div>
+      )}
       {notice && <div className="by-composer-notice">{notice}</div>}
       <div className="by-composer-context-row">
         <div className="by-context-switch" aria-label="研究类型">
@@ -1831,10 +1874,12 @@ function ResearchComposer({
         }
       />
       <div className="by-composer-toolbar">
-        <button className="by-add-file" onClick={onUpload}>
-          <Paperclip />
-          添加文件
-        </button>
+        {compact && (
+          <button className="by-add-file" onClick={onUpload}>
+            <Paperclip />
+            添加文件
+          </button>
+        )}
         <span className="by-context-disclosure">
           <ShieldCheck />
           使用已授权 BP 与正式知识

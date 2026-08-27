@@ -39,7 +39,10 @@ describe("持久公司目录页面", () => {
     ).toBeTruthy();
     expect(screen.getByText("2", { selector: "dd" })).toBeTruthy();
     expect(screen.getByText("3", { selector: "dd" })).toBeTruthy();
-    expect(screen.getByText("待确认 1")).toBeTruthy();
+    expect(screen.getByText("待确认 1", { selector: "span.warning" })).toBeTruthy();
+    expect(screen.getByText("人工智能 · 工业软件", { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText("云杉智能有限公司", { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText("研究信号")).toBeTruthy();
     expect(screen.queryByText("错误回退公司")).toBeNull();
     expect(client.list).toHaveBeenCalledOnce();
   });

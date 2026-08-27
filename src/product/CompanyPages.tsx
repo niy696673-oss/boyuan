@@ -178,14 +178,52 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
 }
 
 function CompanyCard({ company, data: _data, watching, onWatch, onOpen }: { company: CompanyView; data: Bootstrap; watching: boolean; onWatch: () => void; onOpen: () => void }) {
-  const positions = company.industryTags.slice(0, 2);
+  const pending = company.pendingCandidateCount;
+  const direction = company.industryTags.slice(0, 2).join(" · ") || "产业方向待确认";
+  const researchSignal = `已归档 ${company.materialCount} 份材料，沉淀 ${company.knowledgeCount} 条确认知识`;
+  const compactFacts = [
+    ["研究状态", company.analysisStatus.label],
+    ["产业标签", direction],
+    ["材料沉淀", `${company.materialCount} 份`],
+    ["确认知识", `${company.knowledgeCount} 条`],
+  ];
   return (
     <article className="by-company-card" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}>
-      <header><CompanyMark company={company} /><div><h2>{company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></header>
-      <p className="by-company-description">{company.description}</p>
-      <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
-      <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
-      <footer><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><button>打开公司<ArrowRight /></button></footer>
+      <header>
+        <CompanyMark company={company} />
+        <div>
+          <span className="by-company-kicker">{company.cognitionStatus} · {company.materialCount ? `${company.materialCount} 份 BP/材料` : "尚无材料"}</span>
+          <h2>{company.standardName}</h2>
+          {company.englishName && <p>{company.englishName}</p>}
+        </div>
+        <button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button>
+      </header>
+      <p className="by-company-positioning">{company.description || "基础档案，等待补充已确认认知。"}</p>
+      <dl className="by-company-profile">
+        <div><dt>方向</dt><dd>{direction}</dd></div>
+        <div><dt>主体</dt><dd>{company.standardName}</dd></div>
+        <div><dt>状态</dt><dd>{company.analysisStatus.label}</dd></div>
+      </dl>
+      <div className="by-company-signal">
+        <span>研究信号</span>
+        <strong>{researchSignal}</strong>
+        <dl className="by-company-metrics">
+          <div><dt>材料</dt><dd>{company.materialCount}</dd></div>
+          <div><dt>确认知识</dt><dd>{company.knowledgeCount}</dd></div>
+        </dl>
+      </div>
+      <div className="by-company-research-facts">
+        {compactFacts.length ? compactFacts.map(([label, value]) => (
+          <div key={label}><span>{label}</span><p>{value}</p></div>
+        )) : (
+          <p className="empty">创始团队、产品技术、客户合作与竞争信息等待 BP 深度分析。</p>
+        )}
+      </div>
+      <footer>
+        <span className={company.analysisStatus.tone}>{pending ? `待确认 ${pending}` : company.analysisStatus.label}</span>
+        <time dateTime={company.updatedAt}>更新于 {new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time>
+        <button>查看档案<ArrowRight /></button>
+      </footer>
     </article>
   );
 }

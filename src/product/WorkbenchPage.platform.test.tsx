@@ -144,6 +144,10 @@ describe("工作台研究平台接缝", () => {
     );
 
     expect(await screen.findByText("3 条待确认")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /拖拽或点击上传/ }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "添加文件" })).toBeNull();
   });
 
   it("详情深链预选 SQLite 公司并通过 v1 接缝创建外部调研对话", async () => {
