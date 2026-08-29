@@ -9,6 +9,9 @@ import type {
   ReviewCandidate,
   ReviewEvidence,
   ReviewKnowledge,
+  SubjectKindStatusV1,
+  SubjectKindV1,
+  SubjectCompanyLinkV1,
 } from "../../../shared/research-platform-v1";
 import type { Claim, Company, Evidence } from "../../types";
 
@@ -26,6 +29,11 @@ export interface CompanyAnalysisStatus {
 
 export interface CompanyView extends Company {
   version: number;
+  subjectKind: SubjectKindV1;
+  subjectKindStatus: SubjectKindStatusV1;
+  suggestedSubjectKind?: SubjectKindV1;
+  subjectKindReason?: string;
+  parentCompany?: SubjectCompanyLinkV1;
   materialCount: number;
   knowledgeCount: number;
   pendingCandidateCount: number;
@@ -115,10 +123,19 @@ export function companyDetailView(detail: CompanyDetailResponse): CompanyView {
 function baseView(
   item: Omit<CompanyDirectoryItem, "knowledgeCount"> &
     Partial<Pick<CompanyDirectoryItem, "knowledgeCount">>,
-): Omit<Company, "claims" | "evidence"> & { version: number } {
+) {
   return {
     id: item.companyId,
     version: item.version,
+    subjectKind: item.subjectKind || "unknown",
+    subjectKindStatus: item.subjectKindStatus || "pending",
+    ...(item.suggestedSubjectKind
+      ? { suggestedSubjectKind: item.suggestedSubjectKind }
+      : {}),
+    ...(item.subjectKindReason
+      ? { subjectKindReason: item.subjectKindReason }
+      : {}),
+    ...(item.parentCompany ? { parentCompany: item.parentCompany } : {}),
     standardName: item.canonicalName,
     aliases: item.aliases.map((alias) => alias.alias),
     description: materialAnalysisDescription(item),

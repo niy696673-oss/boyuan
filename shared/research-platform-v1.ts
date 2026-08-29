@@ -40,6 +40,9 @@ export interface ReviewCompany {
   companyId: string;
   canonicalName: string;
   aliases: Array<{ alias: string; type: string }>;
+  subjectKind?: SubjectKindV1;
+  subjectKindStatus?: SubjectKindStatusV1;
+  suggestedSubjectKind?: SubjectKindV1;
   version: number;
 }
 
@@ -70,6 +73,38 @@ export interface ReviewQueueItem extends ReviewCandidate {
 export interface ReviewQueueResponse {
   items: ReviewQueueItem[];
   total: number;
+  packages: ReviewPackageV1[];
+  packageTotal: number;
+  groupTotal: number;
+}
+
+export interface ReviewCandidateClusterV1 {
+  clusterId: string;
+  fingerprint: string;
+  candidateIds: string[];
+  candidates?: ReviewQueueItem[];
+  candidateCount: number;
+  safeToConfirm: boolean;
+  riskReasons: string[];
+}
+
+export interface ReviewKnowledgeGroupV1 {
+  groupId: string;
+  sectionKey: string;
+  sectionTitle: string;
+  knowledgeType: string;
+  candidateCount: number;
+  clusters: ReviewCandidateClusterV1[];
+}
+
+export interface ReviewPackageV1 {
+  packageId: string;
+  company: ReviewCompany;
+  candidateCount: number;
+  groupCount: number;
+  safeCandidateCount: number;
+  riskCandidateCount: number;
+  groups: ReviewKnowledgeGroupV1[];
 }
 
 export type ReviewDecisionAction = "confirm" | "modify" | "reject";
@@ -87,6 +122,42 @@ export interface ReviewDecisionResponse {
   company: ReviewCompany;
   currentKnowledge: ReviewKnowledge[];
   remainingCount: number;
+}
+
+export interface ReviewBatchDecisionItemV1 {
+  candidateId: string;
+  expectedVersion: number;
+  action: "confirm" | "reject";
+}
+
+export interface ReviewBatchDecisionInputV1 {
+  decisions: ReviewBatchDecisionItemV1[];
+}
+
+export interface ReviewBatchDecisionResponseV1 {
+  candidates: ReviewCandidate[];
+  remainingCount: number;
+}
+
+export type SubjectKindV1 =
+  | "legal_company"
+  | "project"
+  | "institution"
+  | "team"
+  | "unknown";
+
+export type SubjectKindStatusV1 = "pending" | "confirmed";
+
+export interface SubjectCompanyLinkV1 {
+  companyId: string;
+  canonicalName: string;
+}
+
+export interface SubjectResolutionInputV1 {
+  expectedVersion: number;
+  action: "confirm" | "link" | "merge";
+  subjectKind?: Exclude<SubjectKindV1, "unknown">;
+  targetCompanyId?: string;
 }
 
 export type CompanyProfileFieldState =
@@ -115,6 +186,11 @@ export interface CompanyDirectoryItem {
   canonicalName: string;
   status: "active" | "provisional" | "merged";
   aliases: Array<{ alias: string; type: string }>;
+  subjectKind?: SubjectKindV1;
+  subjectKindStatus?: SubjectKindStatusV1;
+  suggestedSubjectKind?: SubjectKindV1;
+  subjectKindReason?: string;
+  parentCompany?: SubjectCompanyLinkV1;
   version: number;
   createdAt: string;
   updatedAt: string;

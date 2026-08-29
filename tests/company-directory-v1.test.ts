@@ -3,6 +3,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
@@ -118,6 +119,44 @@ describe("研究平台 v1 公司目录接缝", () => {
         canonicalName: "北京星河航空科技有限公司",
       }),
     ]);
+  });
+
+  it("名称不足以判断时使用材料分析给出待确认的主体类型建议", async () => {
+    const baseAnalysis = createDeterministicAnalysisAdapter();
+    const { app, platform } = await fixture({
+      analysis: {
+        async analyze(input) {
+          const result = await baseAnalysis.analyze(input);
+          return {
+            ...result,
+            sections: result.sections.map((section) =>
+              section.key === "company_and_project_stage"
+                ? {
+                    ...section,
+                    summary: "该项目处于工程验证阶段，正在开展产品测试。",
+                  }
+                : section,
+            ),
+          };
+        },
+      },
+    });
+    const uploaded = await request(app)
+      .post("/api/v1/documents")
+      .attach("file", Buffer.from("星河计划\n核心方案说明。"), "星河计划 BP.txt");
+    expect(uploaded.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+
+    const directory = await request(app).get("/api/v1/companies");
+    expect(directory.body.items[0]).toMatchObject({
+      canonicalName: "星河计划",
+      subjectKind: "unknown",
+      subjectKindStatus: "pending",
+      suggestedSubjectKind: "project",
+      subjectKindReason: "材料分析表明该主体是项目、产品或技术",
+    });
   });
 
   it("返回持久公司及页面所需的材料、正式知识和待确认计数", async () => {
@@ -285,6 +324,150 @@ describe("研究平台 v1 公司目录接缝", () => {
       `/api/v1/companies/${companyId}`,
     );
     expect(afterRestart.body.profile.watched).toBe(true);
+  });
+
+  it("人工确认研究主体类型，并可关联或合并到已确认的法律公司", async () => {
+    const { app, dataRoot, platform } = await fixture();
+    for (const [fileName, content] of [
+      ["云杉智能有限公司 BP.txt", "云杉智能有限公司\n公司提供智能制造服务。"],
+      ["航空发动机测压系统 BP.txt", "航空发动机测压系统\n项目处于工程验证阶段。"],
+      ["航空发动机压力计 BP.txt", "航空发动机压力计\n项目用于发动机压力测试。"],
+    ] as const) {
+      const uploaded = await request(app)
+        .post("/api/v1/documents")
+        .attach("file", Buffer.from(content), fileName);
+      expect(uploaded.status, JSON.stringify(uploaded.body)).toBe(201);
+      for (let index = 0; index < 20; index += 1) {
+        if ((await platform.runPendingSteps()) === 0) break;
+      }
+    }
+
+    const directory = (await request(app).get("/api/v1/companies")).body.items;
+    const legal = directory.find(
+      (item: { canonicalName: string }) => item.canonicalName === "云杉智能有限公司",
+    );
+    const project = directory.find(
+      (item: { canonicalName: string }) => item.canonicalName === "航空发动机测压系统",
+    );
+    const duplicate = directory.find(
+      (item: { canonicalName: string }) => item.canonicalName === "航空发动机压力计",
+    );
+    expect(legal).toMatchObject({
+      subjectKind: "unknown",
+      subjectKindStatus: "pending",
+      suggestedSubjectKind: "legal_company",
+    });
+    expect(project).toMatchObject({
+      subjectKind: "unknown",
+      subjectKindStatus: "pending",
+      suggestedSubjectKind: "project",
+    });
+
+    const database = new DatabaseSync(join(dataRoot, "database", "platform.sqlite"));
+    const legalCandidate = database.prepare(`
+      SELECT candidate_id FROM knowledge_candidates WHERE company_id = ? LIMIT 1
+    `).get(legal.companyId) as { candidate_id: string };
+    const duplicateCandidate = database.prepare(`
+      SELECT candidate_id FROM knowledge_candidates WHERE company_id = ? LIMIT 1
+    `).get(duplicate.companyId) as { candidate_id: string };
+    database.prepare(`
+      INSERT INTO knowledge (
+        knowledge_id, company_id, knowledge_type, statement, status,
+        version, source_candidate_id, created_at
+      ) VALUES (?, ?, 'company_summary', ?, 'current', 1, ?, ?)
+    `).run(
+      "knowledge-legal-before-merge",
+      legal.companyId,
+      "法律公司既有知识",
+      legalCandidate.candidate_id,
+      "2026-08-29T00:00:00.000Z",
+    );
+    database.prepare(`
+      INSERT INTO knowledge (
+        knowledge_id, company_id, knowledge_type, statement, status,
+        version, source_candidate_id, created_at
+      ) VALUES (?, ?, 'company_summary', ?, 'current', 1, ?, ?)
+    `).run(
+      "knowledge-project-before-merge",
+      duplicate.companyId,
+      "待合并主体的不同知识",
+      duplicateCandidate.candidate_id,
+      "2026-08-29T00:01:00.000Z",
+    );
+    database.close();
+
+    const confirmedLegal = await request(app)
+      .put(`/api/v1/companies/${legal.companyId}/subject-resolution`)
+      .send({
+        expectedVersion: legal.version,
+        action: "confirm",
+        subjectKind: "legal_company",
+      });
+    expect(confirmedLegal.status).toBe(200);
+    expect(confirmedLegal.body).toMatchObject({
+      subjectKind: "legal_company",
+      subjectKindStatus: "confirmed",
+    });
+
+    const linked = await request(app)
+      .put(`/api/v1/companies/${project.companyId}/subject-resolution`)
+      .send({
+        expectedVersion: project.version,
+        action: "link",
+        subjectKind: "project",
+        targetCompanyId: legal.companyId,
+      });
+    expect(linked.status).toBe(200);
+    expect(linked.body).toMatchObject({
+      subjectKind: "project",
+      subjectKindStatus: "confirmed",
+      parentCompany: {
+        companyId: legal.companyId,
+        canonicalName: "云杉智能有限公司",
+      },
+    });
+
+    const merged = await request(app)
+      .put(`/api/v1/companies/${duplicate.companyId}/subject-resolution`)
+      .send({
+        expectedVersion: duplicate.version,
+        action: "merge",
+        targetCompanyId: legal.companyId,
+      });
+    expect(merged.status).toBe(200);
+    expect(merged.body).toMatchObject({
+      companyId: legal.companyId,
+      materialCount: 2,
+      subjectKind: "legal_company",
+      subjectKindStatus: "confirmed",
+    });
+    expect(
+      merged.body.knowledge.filter(
+        (item: { knowledgeType: string; status: string }) =>
+          item.knowledgeType === "company_summary"
+          && item.status !== "superseded",
+      ),
+    ).toEqual([expect.objectContaining({ status: "disputed" })]);
+    expect(
+      merged.body.knowledge.filter(
+        (item: { knowledgeType: string }) =>
+          item.knowledgeType === "company_summary",
+      ),
+    ).toHaveLength(2);
+    expect(
+      (await request(app).get(`/api/v1/companies/${duplicate.companyId}`)).status,
+    ).toBe(404);
+    const queue = await request(app).get("/api/v1/review-queue");
+    expect(
+      queue.body.items.some(
+        (item: { companyId: string }) => item.companyId === duplicate.companyId,
+      ),
+    ).toBe(false);
+    expect(
+      queue.body.items.some(
+        (item: { companyId: string }) => item.companyId === legal.companyId,
+      ),
+    ).toBe(true);
   });
 });
 

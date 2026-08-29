@@ -1,6 +1,8 @@
 import type {
   ReviewDecisionInput,
   ReviewDecisionResponse,
+  ReviewBatchDecisionInputV1,
+  ReviewBatchDecisionResponseV1,
   ReviewQueueResponse,
 } from "../../../shared/research-platform-v1";
 import {
@@ -15,6 +17,10 @@ export interface ReviewQueueClient {
     input: ReviewDecisionInput,
     signal?: AbortSignal,
   ): Promise<ReviewDecisionResponse>;
+  decideBatch?(
+    input: ReviewBatchDecisionInputV1,
+    signal?: AbortSignal,
+  ): Promise<ReviewBatchDecisionResponseV1>;
 }
 
 export function createReviewQueueClient(
@@ -31,6 +37,17 @@ export function createReviewQueueClient(
       requestPlatformJson<ReviewDecisionResponse>(
         fetcher,
         `/api/v1/review-queue/${encodeURIComponent(candidateId)}/decision`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+          signal,
+        },
+      ),
+    decideBatch: (input, signal) =>
+      requestPlatformJson<ReviewBatchDecisionResponseV1>(
+        fetcher,
+        "/api/v1/review-queue/batch-decision",
         {
           method: "POST",
           headers: { "content-type": "application/json" },

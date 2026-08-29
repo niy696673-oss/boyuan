@@ -48,6 +48,12 @@ describe("公司名称规范化", () => {
     expect(normalizeCompanyNameCandidate("艾可萨BP@20230907(1)")).toBe(
       "艾可萨",
     );
+    expect(normalizeCompanyNameCandidate("南栖仙策BP@博源资本.pdf")).toBe(
+      "南栖仙策",
+    );
+    expect(normalizeCompanyNameCandidate("一下海南德工智能公司.pdf")).toBe(
+      "海南德工智能公司",
+    );
   });
 
   it("从叙述句中只提取有边界的法律主体", () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type {
+  ReviewBatchDecisionInputV1,
   ReviewDecisionInput,
   ReviewQueueItem,
 } from "../../../shared/research-platform-v1";
@@ -78,6 +79,29 @@ export function useReviewQueue(
     }
   };
 
+  const decideBatch = async (input: ReviewBatchDecisionInputV1) => {
+    if (busy || !client.decideBatch || input.decisions.length === 0) return false;
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await client.decideBatch(input);
+      const decidedIds = new Set(input.decisions.map((item) => item.candidateId));
+      const remainingItems = (items || []).filter(
+        (item) => !decidedIds.has(item.candidateId),
+      );
+      setItems(remainingItems);
+      setSelectedId(remainingItems[0]?.candidateId || "");
+      onCountChange?.(result.remainingCount);
+      setNotice(`已批量处理 ${input.decisions.length} 条候选`);
+      return true;
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "批量处理失败，请重试");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return {
     items,
     selected,
@@ -87,5 +111,6 @@ export function useReviewQueue(
     notice,
     select,
     decide,
+    decideBatch,
   };
 }

@@ -160,7 +160,7 @@ describe("持久公司目录页面", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "找不到这家公司" }),
+      await screen.findByRole("heading", { name: "找不到这个研究主体" }),
     ).toBeTruthy();
     expect(screen.queryByText("错误回退公司")).toBeNull();
   });

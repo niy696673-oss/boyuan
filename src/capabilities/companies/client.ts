@@ -1,6 +1,7 @@
 import type {
   CompanyDetailResponse,
   CompanyDirectoryResponse,
+  SubjectResolutionInputV1,
 } from "../../../shared/research-platform-v1";
 import type { UploadResult } from "../research/types";
 import {
@@ -19,6 +20,11 @@ export interface CompanyDirectoryClient {
   setWatched(
     companyId: string,
     input: { watched: boolean; expectedVersion: number },
+    signal?: AbortSignal,
+  ): Promise<CompanyDetailResponse>;
+  resolveSubject?(
+    companyId: string,
+    input: SubjectResolutionInputV1,
     signal?: AbortSignal,
   ): Promise<CompanyDetailResponse>;
 }
@@ -52,6 +58,17 @@ export function createCompanyDirectoryClient(
       requestPlatformJson<CompanyDetailResponse>(
         fetcher,
         `/api/v1/companies/${encodeURIComponent(companyId)}/watch`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+          signal,
+        },
+      ),
+    resolveSubject: (companyId, input, signal) =>
+      requestPlatformJson<CompanyDetailResponse>(
+        fetcher,
+        `/api/v1/companies/${encodeURIComponent(companyId)}/subject-resolution`,
         {
           method: "PUT",
           headers: { "content-type": "application/json" },

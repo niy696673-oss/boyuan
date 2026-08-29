@@ -6,9 +6,11 @@ import { normalizeUploadedFileName } from "../upload-file-name.js";
 import type {
   ConfirmCompanyListRowsInput,
   CompanyDetail,
+  DecideCandidatesBatchInput,
   DecideCandidateInput,
   KnowledgeCandidateRecord,
   PlatformModule,
+  ResolveSubjectInput,
   StartCompanyResearchInput,
 } from "./contracts.js";
 import type {
@@ -16,9 +18,12 @@ import type {
   IndustryDirectoryResponseV1,
   IndustryReclassificationResponseV1,
   ReviewDecisionResponse,
+  ReviewBatchDecisionResponseV1,
   ReviewQueueItem,
   ReviewQueueResponse,
 } from "../../shared/research-platform-v1.js";
+import { buildReviewPackages } from "../../shared/review-packages.js";
+import { BP_SECTION_TITLES } from "./analysis/contracts.js";
 import {
   PlatformConflictError,
   PlatformInputError,
@@ -259,6 +264,18 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.put("/companies/:companyId/subject-resolution", async (req, res, next) => {
+    try {
+      res.json(
+        await platform.resolveSubject(
+          subjectResolutionInput(String(req.params.companyId), req.body),
+        ),
+      );
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.get("/industries", async (_req, res, next) => {
     try {
       const [items, unclassifiedMaterialCount] = await Promise.all([
@@ -378,9 +395,18 @@ export function createResearchPlatformV1Router(
         if (!company) throw new Error("review_queue_company_missing");
         return toReviewQueueItem(candidate, company);
       });
+      const packages = buildReviewPackages(items, {
+        sectionTitle: (sectionKey) =>
+          BP_SECTION_TITLES[
+            sectionKey as keyof typeof BP_SECTION_TITLES
+          ] ?? sectionKey,
+      });
       const response = {
         items,
         total: items.length,
+        packages,
+        packageTotal: packages.length,
+        groupTotal: packages.reduce((total, item) => total + item.groupCount, 0),
       } satisfies ReviewQueueResponse;
       res.json(response);
     } catch (error) {
@@ -409,6 +435,24 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post("/review-queue/batch-decision", async (req, res, next) => {
+    try {
+      const candidates = await platform.decideCandidatesBatch(
+        reviewBatchDecisionInput(req.body),
+      );
+      const remainingCount = (await platform.listCandidates()).filter(
+        isReviewableCandidate,
+      ).length;
+      const response = {
+        candidates,
+        remainingCount,
+      } satisfies ReviewBatchDecisionResponseV1;
+      res.json(response);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   return router;
 }
 
@@ -426,6 +470,11 @@ function toReviewQueueItem(
       companyId: company.companyId,
       canonicalName: company.canonicalName,
       aliases: company.aliases,
+      subjectKind: company.subjectKind,
+      subjectKindStatus: company.subjectKindStatus,
+      ...(company.suggestedSubjectKind
+        ? { suggestedSubjectKind: company.suggestedSubjectKind }
+        : {}),
       version: company.version,
     },
     currentKnowledge: company.knowledge.filter(
@@ -471,6 +520,88 @@ function reviewDecisionInput(
     ...(typeof input.value === "string" ? { value: input.value } : {}),
     ...(typeof input.effectiveAt === "string"
       ? { effectiveAt: input.effectiveAt }
+      : {}),
+  };
+}
+
+function reviewBatchDecisionInput(body: unknown): DecideCandidatesBatchInput {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new PlatformInputError('invalid_json', '请求内容必须是 JSON 对象');
+  }
+  const decisions = (body as Record<string, unknown>).decisions;
+  if (!Array.isArray(decisions)) {
+    throw new PlatformInputError('batch_decisions_required', '请选择要批量处理的候选');
+  }
+  return {
+    decisions: decisions.map((decision) => {
+      if (
+        typeof decision !== 'object'
+        || decision === null
+        || Array.isArray(decision)
+      ) {
+        throw new PlatformInputError('invalid_batch_decision', '批量候选格式无效');
+      }
+      const item = decision as Record<string, unknown>;
+      if (typeof item.candidateId !== 'string' || !item.candidateId) {
+        throw new PlatformInputError('invalid_candidate_id', '候选 ID 无效');
+      }
+      if (
+        typeof item.expectedVersion !== 'number'
+        || !Number.isSafeInteger(item.expectedVersion)
+        || item.expectedVersion < 1
+      ) {
+        throw new PlatformInputError('invalid_version', '候选版本必须是正整数');
+      }
+      if (item.action !== 'confirm' && item.action !== 'reject') {
+        throw new PlatformInputError(
+          'invalid_batch_action',
+          '批量处理只支持确认或驳回',
+        );
+      }
+      return {
+        candidateId: item.candidateId,
+        expectedVersion: item.expectedVersion,
+        action: item.action,
+      };
+    }),
+  };
+}
+
+function subjectResolutionInput(
+  companyId: string,
+  body: unknown,
+): ResolveSubjectInput {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new PlatformInputError('invalid_json', '请求内容必须是 JSON 对象');
+  }
+  const item = body as Record<string, unknown>;
+  if (
+    typeof item.expectedVersion !== 'number'
+    || !Number.isSafeInteger(item.expectedVersion)
+    || item.expectedVersion < 1
+  ) {
+    throw new PlatformInputError('invalid_version', '主体版本必须是正整数');
+  }
+  if (
+    item.action !== 'confirm'
+    && item.action !== 'link'
+    && item.action !== 'merge'
+  ) {
+    throw new PlatformInputError('invalid_subject_action', '主体处理方式无效');
+  }
+  const validKind = item.subjectKind === 'legal_company'
+    || item.subjectKind === 'project'
+    || item.subjectKind === 'institution'
+    || item.subjectKind === 'team';
+  return {
+    companyId,
+    expectedVersion: item.expectedVersion,
+    action: item.action,
+    ...(validKind
+      ? { subjectKind: item.subjectKind as ResolveSubjectInput['subjectKind'] }
+      : {}),
+    ...(typeof item.targetCompanyId === 'string'
+      ? { targetCompanyId: item.targetCompanyId }
       : {}),
   };
 }

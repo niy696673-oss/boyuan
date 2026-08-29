@@ -3,6 +3,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../server/app.js";
@@ -150,6 +151,226 @@ describe("研究平台 v1 待确认队列接缝", () => {
     expect((await request(app).get("/api/v1/review-queue")).body).toMatchObject(
       { items: [], total: 0 },
     );
+  });
+
+  it("按主体、13 维和知识类型压缩重复候选，并保护批量确认边界", async () => {
+    const { app, dataRoot, platform } = await fixture();
+    await seedCandidate(app, platform);
+    const before = await request(app).get("/api/v1/review-queue");
+    const safe = before.body.items.find(
+      (item: {
+        highImpact: boolean;
+        sensitive: boolean;
+        status: string;
+        evidence: unknown[];
+      }) =>
+        !item.highImpact
+        && !item.sensitive
+        && item.status === "pending"
+        && item.evidence.length > 0,
+    );
+    expect(safe).toBeTruthy();
+    const duplicateId = "candidate-duplicate-safe";
+    const database = new DatabaseSync(join(dataRoot, "database", "platform.sqlite"));
+    database.prepare(`
+      INSERT INTO knowledge_candidates (
+        candidate_id, task_id, company_id, section_key, knowledge_type,
+        statement, value, effective_at, status, version, high_impact,
+        sensitive, created_at, updated_at
+      )
+      SELECT ?, task_id, company_id, section_key, knowledge_type,
+        '  ' || statement || '。 ', value, effective_at, status, version,
+        high_impact, sensitive, created_at, updated_at
+      FROM knowledge_candidates WHERE candidate_id = ?
+    `).run(duplicateId, safe.candidateId);
+    database.prepare(`
+      INSERT INTO candidate_evidence (
+        candidate_id, evidence_id, status, updated_at
+      )
+      SELECT ?, evidence_id, status, updated_at
+      FROM candidate_evidence WHERE candidate_id = ?
+    `).run(duplicateId, safe.candidateId);
+    database.close();
+
+    const grouped = await request(app).get("/api/v1/review-queue");
+    expect(grouped.status).toBe(200);
+    expect(grouped.body).toMatchObject({
+      packageTotal: 1,
+      packages: [
+        {
+          company: { companyId: safe.companyId },
+          candidateCount: before.body.total + 1,
+          groupCount: expect.any(Number),
+        },
+      ],
+    });
+    const cluster = grouped.body.packages[0].groups
+      .flatMap((group: { clusters: unknown[] }) => group.clusters)
+      .find(
+        (item: { candidateIds: string[] }) =>
+          item.candidateIds.includes(safe.candidateId),
+      );
+    expect(cluster).toMatchObject({
+      candidateCount: 2,
+      safeToConfirm: true,
+    });
+
+    const batched = await request(app)
+      .post("/api/v1/review-queue/batch-decision")
+      .send({
+        decisions: [
+          {
+            candidateId: safe.candidateId,
+            expectedVersion: safe.version,
+            action: "confirm",
+          },
+          {
+            candidateId: duplicateId,
+            expectedVersion: safe.version,
+            action: "reject",
+          },
+        ],
+      });
+    expect(batched.status).toBe(200);
+    expect(batched.body.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ candidateId: safe.candidateId, status: "confirmed" }),
+        expect.objectContaining({ candidateId: duplicateId, status: "rejected" }),
+      ]),
+    );
+
+    const risky = (await request(app).get("/api/v1/review-queue")).body.items.find(
+      (item: { highImpact: boolean; sensitive: boolean; status: string }) =>
+        item.highImpact || item.sensitive || item.status === "conflicted",
+    );
+    if (risky) {
+      const protectedResponse = await request(app)
+        .post("/api/v1/review-queue/batch-decision")
+        .send({
+          decisions: [
+            {
+              candidateId: risky.candidateId,
+              expectedVersion: risky.version,
+              action: "confirm",
+            },
+          ],
+        });
+      expect(protectedResponse.status).toBe(400);
+      expect(protectedResponse.body).toMatchObject({
+        error: "unsafe_batch_confirmation",
+      });
+    }
+  });
+
+  it("重复簇任一候选有风险时整簇保持逐条处理，且不能批量驳回", async () => {
+    const { app, dataRoot, platform } = await fixture();
+    const safe = await seedCandidate(app, platform);
+    const riskyId = "candidate-risky-duplicate";
+    const database = new DatabaseSync(join(dataRoot, "database", "platform.sqlite"));
+    database.prepare(`
+      INSERT INTO knowledge_candidates (
+        candidate_id, task_id, company_id, section_key, knowledge_type,
+        statement, value, effective_at, status, version, high_impact,
+        sensitive, created_at, updated_at
+      )
+      SELECT ?, task_id, company_id, section_key, knowledge_type,
+        statement, value, effective_at, status, version, 1,
+        sensitive, created_at, updated_at
+      FROM knowledge_candidates WHERE candidate_id = ?
+    `).run(riskyId, safe.candidateId);
+    database.prepare(`
+      INSERT INTO candidate_evidence (candidate_id, evidence_id, status, updated_at)
+      SELECT ?, evidence_id, status, updated_at
+      FROM candidate_evidence WHERE candidate_id = ?
+    `).run(riskyId, safe.candidateId);
+    database.close();
+
+    const grouped = await request(app).get("/api/v1/review-queue");
+    const cluster = grouped.body.packages[0].groups
+      .flatMap((group: { clusters: unknown[] }) => group.clusters)
+      .find(
+        (item: { candidateIds: string[] }) =>
+          item.candidateIds.includes(safe.candidateId),
+      );
+    expect(cluster).toMatchObject({
+      candidateCount: 2,
+      safeToConfirm: false,
+      riskReasons: expect.arrayContaining(["高影响"]),
+    });
+
+    const rejected = await request(app)
+      .post("/api/v1/review-queue/batch-decision")
+      .send({
+        decisions: [
+          { candidateId: riskyId, expectedVersion: 1, action: "reject" },
+        ],
+      });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body).toMatchObject({ error: "unsafe_batch_rejection" });
+  });
+
+  it("批量决策任一写入失败时回滚整批候选、知识和审计", async () => {
+    const { app, dataRoot, platform } = await fixture();
+    const first = await seedCandidate(app, platform);
+    const secondId = "candidate-batch-rollback";
+    const database = new DatabaseSync(join(dataRoot, "database", "platform.sqlite"));
+    database.prepare(`
+      INSERT INTO knowledge_candidates (
+        candidate_id, task_id, company_id, section_key, knowledge_type,
+        statement, value, effective_at, status, version, high_impact,
+        sensitive, created_at, updated_at
+      )
+      SELECT ?, task_id, company_id, section_key, knowledge_type,
+        statement || ' 补充', value, effective_at, status, version,
+        high_impact, sensitive, created_at, updated_at
+      FROM knowledge_candidates WHERE candidate_id = ?
+    `).run(secondId, first.candidateId);
+    database.prepare(`
+      INSERT INTO candidate_evidence (candidate_id, evidence_id, status, updated_at)
+      SELECT ?, evidence_id, status, updated_at
+      FROM candidate_evidence WHERE candidate_id = ?
+    `).run(secondId, first.candidateId);
+    database.exec(`
+      CREATE TRIGGER force_batch_rollback
+      BEFORE UPDATE ON knowledge_candidates
+      WHEN NEW.candidate_id = 'candidate-batch-rollback'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced_batch_failure');
+      END;
+    `);
+    database.close();
+
+    const failed = await request(app)
+      .post("/api/v1/review-queue/batch-decision")
+      .send({
+        decisions: [
+          {
+            candidateId: first.candidateId,
+            expectedVersion: first.version,
+            action: "reject",
+          },
+          { candidateId: secondId, expectedVersion: 1, action: "reject" },
+        ],
+      });
+    expect(failed.status).toBe(500);
+
+    const after = new DatabaseSync(join(dataRoot, "database", "platform.sqlite"));
+    expect(
+      after.prepare(`
+        SELECT candidate_id, status, version FROM knowledge_candidates
+        WHERE candidate_id IN (?, ?) ORDER BY candidate_id
+      `).all(first.candidateId, secondId),
+    ).toEqual([
+      expect.objectContaining({ status: "pending", version: 1 }),
+      expect.objectContaining({ status: "pending", version: 1 }),
+    ]);
+    expect(
+      after.prepare(`
+        SELECT COUNT(*) AS count FROM confirmation_records
+        WHERE candidate_id IN (?, ?)
+      `).get(first.candidateId, secondId),
+    ).toMatchObject({ count: 0 });
+    after.close();
   });
 });
 

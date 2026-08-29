@@ -29,8 +29,10 @@ import type {
   ReviewDecisionAction,
   ReviewDecisionInput,
   ReviewEvidence,
+  ReviewPackageV1,
   ReviewQueueItem,
 } from "../../shared/research-platform-v1";
+import { buildReviewPackages } from "../../shared/review-packages";
 import { AuthenticatedDocumentDownload } from "./AuthenticatedDocumentDownload";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -58,7 +60,7 @@ const confirmationFilters: ConfirmationFilter[] = [
 
 export function ConfirmationPage({
   data: _data,
-  reload: _reload,
+  reload,
   reviewClient = defaultReviewClient,
   onQueueCountChange,
 }: {
@@ -92,12 +94,21 @@ export function ConfirmationPage({
       candidateMatchesFilter(item, filter) &&
       candidateMatchesQuery(item, query),
   );
+  const packages = buildReviewPackages(visibleItems, {
+    includeCandidates: true,
+    sectionTitle: (sectionKey) => sectionTitles[sectionKey] || sectionKey,
+  });
   const selected =
     visibleItems.find((item) => item.candidateId === selectedId) ||
     visibleItems.find(
       (item) => item.candidateId === queueSelected?.candidateId,
     ) ||
     visibleItems[0];
+  const selectedPackage = selected
+    ? packages.find(
+        (item) => item.company.companyId === selected.company.companyId,
+      )
+    : undefined;
 
   useEffect(() => {
     if (!selectedId || !visibleItems.length) return;
@@ -178,7 +189,15 @@ export function ConfirmationPage({
       action: edited ? "modify" : action,
       ...(edited ? { statement: draft.trim() } : {}),
     };
-    await queue.decide(input);
+    if (await queue.decide(input)) reload();
+  };
+
+  const batchReview = async (action: "confirm" | "reject") => {
+    if (!selectedPackage || busy) return;
+    const decisions = action === "confirm"
+      ? safePackageConfirmDecisions(selectedPackage)
+      : safePackageRejectDecisions(selectedPackage);
+    if (await queue.decideBatch({ decisions })) reload();
   };
 
   if (loadError) return <ConfirmationLoadError message={loadError} />;
@@ -208,6 +227,12 @@ export function ConfirmationPage({
     ),
   ];
   const existing = selected?.currentKnowledge || [];
+  const safeConfirmCount = selectedPackage
+    ? safePackageConfirmDecisions(selectedPackage).length
+    : 0;
+  const safeRejectCount = selectedPackage
+    ? safePackageRejectDecisions(selectedPackage).length
+    : 0;
 
   return (
     <div className="by-confirmation-page" ref={root}>
@@ -259,33 +284,27 @@ export function ConfirmationPage({
           </button>
         </header>
         <div>
-          {visibleItems.map((item) => {
-            const web = hasWebEvidence(item);
+          {packages.map((reviewPackage) => {
+            const first = reviewPackage.groups[0]?.clusters[0]?.candidates?.[0];
+            const active = selected?.company.companyId === reviewPackage.company.companyId;
             return (
               <button
-                className={
-                  selected?.candidateId === item.candidateId ? "active" : ""
-                }
-                key={item.candidateId}
-                onClick={() => choose(item)}
+                className={active ? "active" : ""}
+                key={reviewPackage.packageId}
+                onClick={() => first && choose(first)}
               >
                 <header>
-                  <span className={web ? "external" : "ai"}>
-                    {web ? <Globe2 /> : <Sparkles />}
-                    {web ? "Web Search 候选" : "AI 候选"}
+                  <span className="ai">
+                    <Sparkles />
+                    候选确认包
                   </span>
-                  <time>
-                    {new Date(item.updatedAt).toLocaleDateString("zh-CN", {
-                      month: "2-digit",
-                      day: "2-digit",
-                    })}
-                  </time>
+                  <time>{reviewPackage.groupCount} 组</time>
                 </header>
-                <p>{item.statement}</p>
+                <p>{reviewPackage.company.canonicalName}</p>
                 <footer>
-                  <span>{item.company.canonicalName}</span>
-                  <span>{knowledgeTypeLabel(item.knowledgeType)}</span>
-                  <em>{item.highImpact ? "高影响" : "常规候选"}</em>
+                  <span>{reviewPackage.candidateCount} 条候选</span>
+                  <span>{reviewPackage.safeCandidateCount} 条可安全批量处理</span>
+                  <em>{reviewPackage.riskCandidateCount} 条需逐条核验</em>
                   <ChevronRight />
                 </footer>
               </button>
@@ -309,10 +328,67 @@ export function ConfirmationPage({
               <h2>核验候选知识</h2>
             </div>
             <Link to={`/companies/${selected.company.companyId}`}>
-              打开公司
+              打开主体
               <ExternalLink />
             </Link>
           </header>
+          {selectedPackage && (
+            <section className="by-existing-knowledge">
+              <header>
+                <h3>候选确认包</h3>
+                <span>
+                  {selectedPackage.groupCount} 组 · {selectedPackage.candidateCount} 条
+                </span>
+              </header>
+              {selectedPackage.groups.map((group) => (
+                <article key={group.groupId}>
+                  <div>
+                    <strong>{group.sectionTitle}</strong>
+                    <small>
+                      {knowledgeTypeLabel(group.knowledgeType)} · {group.candidateCount} 条
+                    </small>
+                  </div>
+                  {group.clusters.map((cluster) => {
+                    const candidate = cluster.candidates?.[0];
+                    if (!candidate) return null;
+                    return (
+                      <button
+                        className={
+                          selected.candidateId === candidate.candidateId
+                            ? "active"
+                            : ""
+                        }
+                        key={cluster.clusterId}
+                        onClick={() => choose(candidate)}
+                      >
+                        {candidate.statement}
+                        {cluster.candidateCount > 1
+                          ? ` · ${cluster.candidateCount} 条重复`
+                          : ""}
+                        {!cluster.safeToConfirm
+                          ? ` · ${cluster.riskReasons.join("、")}`
+                          : ""}
+                      </button>
+                    );
+                  })}
+                </article>
+              ))}
+              <div>
+                <button
+                  disabled={busy || safeRejectCount === 0}
+                  onClick={() => void batchReview("reject")}
+                >
+                  批量驳回低风险候选（{safeRejectCount}）
+                </button>
+                <button
+                  disabled={busy || safeConfirmCount === 0}
+                  onClick={() => void batchReview("confirm")}
+                >
+                  批量确认低风险组（{safeConfirmCount}）
+                </button>
+              </div>
+            </section>
+          )}
           <div className="by-candidate-content">
             <span>{knowledgeTypeLabel(selected.knowledgeType)}</span>
             {mode === "edit" ? (
@@ -451,6 +527,59 @@ function candidateMatchesFilter(
   if (filter === "高影响") return item.highImpact;
   if (filter === "存在冲突") return item.status === "conflicted";
   return true;
+}
+
+const sectionTitles: Record<string, string> = {
+  company_and_project_stage: "01 公司主体与项目阶段",
+  founders_team_and_governance: "02 创始人、团队与治理",
+  product_portfolio: "03 产品矩阵",
+  core_technology_and_ip: "04 核心技术与知识产权",
+  technology_readiness_and_production: "05 技术成熟度与生产能力",
+  industry_market_and_policy: "06 行业、市场和政策",
+  industry_chain_position: "07 产业链位置",
+  customers_orders_and_scenarios: "08 客户、订单与应用场景",
+  supply_chain_and_partners: "09 供应链与合作方",
+  business_model_and_competition: "10 商业模式和竞争优势",
+  financing_valuation_equity_and_use: "11 融资、估值、股权和资金用途",
+  financial_operations_plans_risks: "12 财务经营、规划、风险与待验证",
+  provenance_versions_conflicts_confirmations:
+    "13 来源、时间、版本、冲突和人工确认",
+};
+
+function safePackageConfirmDecisions(reviewPackage: ReviewPackageV1) {
+  const typeCounts = new Map<string, number>();
+  for (const group of reviewPackage.groups) {
+    typeCounts.set(
+      group.knowledgeType,
+      (typeCounts.get(group.knowledgeType) || 0) + 1,
+    );
+  }
+  return reviewPackage.groups.flatMap((group) => {
+    if (group.clusters.length !== 1 || typeCounts.get(group.knowledgeType) !== 1) {
+      return [];
+    }
+    const cluster = group.clusters[0];
+    if (!cluster.safeToConfirm) return [];
+    return (cluster.candidates || []).map((candidate, index) => ({
+      candidateId: candidate.candidateId,
+      expectedVersion: candidate.version,
+      action: index === 0 ? "confirm" as const : "reject" as const,
+    }));
+  });
+}
+
+function safePackageRejectDecisions(reviewPackage: ReviewPackageV1) {
+  return reviewPackage.groups.flatMap((group) =>
+    group.clusters.flatMap((cluster) =>
+      cluster.safeToConfirm
+        ? (cluster.candidates || []).map((candidate) => ({
+            candidateId: candidate.candidateId,
+            expectedVersion: candidate.version,
+            action: "reject" as const,
+          }))
+        : [],
+    ),
+  );
 }
 
 function candidateMatchesQuery(item: ReviewQueueItem, query: string) {

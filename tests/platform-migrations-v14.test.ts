@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 16;
+const CURRENT_SCHEMA_VERSION = 17;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -438,6 +438,15 @@ function expectCurrentSchema(dataRoot: string): void {
   expect(columnNames(dataRoot, "company_research_runs")).toEqual(
     expect.arrayContaining(["workflow_skill", "workflow_context_json"]),
   );
+  expect(columnNames(dataRoot, "companies")).toEqual(
+    expect.arrayContaining([
+      "subject_kind",
+      "subject_kind_status",
+      "suggested_subject_kind",
+      "subject_kind_reason",
+    ]),
+  );
+  expect(tableExists(dataRoot, "subject_company_links")).toBe(true);
 }
 
 function expectSchemaHistory(dataRoot: string, latestVersion: number): void {

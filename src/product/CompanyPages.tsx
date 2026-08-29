@@ -40,7 +40,12 @@ import { createCompanyDirectoryClient, type CompanyDirectoryClient } from "../ca
 import { companyDetailView, companyDirectoryView, type CompanyView } from "../capabilities/companies/view-model";
 import { ResearchPlatformApiError } from "../capabilities/platform-http";
 import type { Claim, Company } from "../types";
-import type { CompanyListRecordV1, CompanyListRowV1 } from "../../shared/research-platform-v1";
+import type {
+  CompanyListRecordV1,
+  CompanyListRowV1,
+  SubjectKindV1,
+  SubjectResolutionInputV1,
+} from "../../shared/research-platform-v1";
 
 const defaultCompanyClient = createCompanyDirectoryClient();
 const defaultCompanyListClient = createCompanyListClient();
@@ -138,7 +143,7 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
   return (
     <div className="by-directory-page" ref={root}>
       <aside className="by-filter-rail">
-        <header><span>公司目录</span><strong>{directory.length} 家已建档</strong></header>
+        <header><span>研究主体</span><strong>{directory.length} 个已建档</strong></header>
         <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索名称、简称或英文名" /></label>
         <nav>
           {(["全部", "已关注", "有 BP", "待确认", "有冲突"] satisfies CompanyFilter[]).map((item) => (
@@ -156,21 +161,21 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
 
       <section className="by-directory-main">
         <header className="by-page-heading">
-          <div><span>机构公司主体</span><h1>公司</h1><p>浏览已接触、研究或由材料自动建档的长期公司主体。</p></div>
+          <div><span>长期研究对象</span><h1>研究主体</h1><p>区分法律公司、项目、机构和团队，并持续沉淀材料与知识。</p></div>
           <div><button onClick={() => navigate("/companies/import")}><ListChecks />导入名单</button><button className="primary"><Plus />新建公司</button></div>
         </header>
         {actionNotice && <p role="status">{actionNotice}</p>}
         <div className="by-directory-toolbar">
-          <span><Filter />当前显示 {companies.length} 家公司</span>
+          <span><Filter />当前显示 {companies.length} 个主体</span>
           <div>
-            <select aria-label="公司排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近更新</option><option>材料数量</option></select>
+            <select aria-label="主体排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近更新</option><option>材料数量</option></select>
             <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")}>卡片</button>
             <button className={view === "rows" ? "active" : ""} onClick={() => setView("rows")}>列表</button>
           </div>
         </div>
         <div className={`by-company-grid ${view}`}>
           {companies.map((company) => <CompanyCard company={company} data={data} key={company.id} watching={watchingCompanyId === company.id} onWatch={() => void toggleWatched(company)} onOpen={() => navigate(`/companies/${company.id}`)} />)}
-          {!companies.length && <section className="by-catalog-empty"><Building2 /><h2>还没有公司档案</h2><p>上传材料、导入公司名单，或从工作台发起研究后，公司会在这里持续沉淀。</p><button className="primary" onClick={() => navigate("/companies/import")}><ListChecks />导入公司名单</button></section>}
+          {!companies.length && <section className="by-catalog-empty"><Building2 /><h2>还没有研究主体</h2><p>上传材料、导入公司名单，或从工作台发起研究后，主体会在这里持续沉淀。</p><button className="primary" onClick={() => navigate("/companies/import")}><ListChecks />导入公司名单</button></section>}
         </div>
       </section>
     </div>
@@ -185,13 +190,14 @@ function CompanyCard({ company, data: _data, watching, onWatch, onOpen }: { comp
       <p className="by-company-description">{company.description}</p>
       <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
       <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
-      <footer><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><button>打开公司<ArrowRight /></button></footer>
+      <footer><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><span>{subjectKindLabel(company.subjectKindStatus === "confirmed" ? company.subjectKind : company.suggestedSubjectKind || "unknown")}</span><button>打开主体<ArrowRight /></button></footer>
     </article>
   );
 }
 
 export function CompanyDetailPage({ data, reload, companyClient = defaultCompanyClient }: { data: Bootstrap; reload: () => void; companyClient?: CompanyDirectoryClient }) {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [company, setCompany] = useState<CompanyView | null>(null);
   const [directory, setDirectory] = useState<CompanyView[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "not-found" | "error">("loading");
@@ -267,13 +273,28 @@ export function CompanyDetailPage({ data, reload, companyClient = defaultCompany
     reload();
   };
 
-  if (state === "loading") return <CompanyLoadState title="正在加载公司档案…" />;
-  if (state === "not-found") return <CompanyLoadState title="找不到这家公司" description="该公司可能不存在，或已经被合并。" />;
-  if (state === "error" || !company) return <CompanyLoadState title="公司档案加载失败" />;
-  return <CompanyDetailContent data={data} company={company} directory={directory} onUpload={uploadCompanyMaterial} onWatch={updateWatched} />;
+  const resolveSubject = async (input: SubjectResolutionInputV1) => {
+    if (!id || !companyClient.resolveSubject) {
+      throw new Error("主体确认能力不可用");
+    }
+    actionController.current?.abort();
+    const controller = new AbortController();
+    actionController.current = controller;
+    const detail = await companyClient.resolveSubject(id, input, controller.signal);
+    const resolved = companyDetailView(detail);
+    setCompany(resolved);
+    await refreshDirectory(controller.signal);
+    reload();
+    if (resolved.id !== id) navigate(`/companies/${resolved.id}`, { replace: true });
+  };
+
+  if (state === "loading") return <CompanyLoadState title="正在加载主体档案…" />;
+  if (state === "not-found") return <CompanyLoadState title="找不到这个研究主体" description="该主体可能不存在，或已经被合并。" />;
+  if (state === "error" || !company) return <CompanyLoadState title="主体档案加载失败" />;
+  return <CompanyDetailContent data={data} company={company} directory={directory} onUpload={uploadCompanyMaterial} onWatch={updateWatched} onResolveSubject={resolveSubject} />;
 }
 
-function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: { data: Bootstrap; company: CompanyView; directory: CompanyView[]; onUpload: (file: File) => Promise<string>; onWatch: (watched: boolean) => Promise<void> }) {
+function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onResolveSubject }: { data: Bootstrap; company: CompanyView; directory: CompanyView[]; onUpload: (file: File) => Promise<string>; onWatch: (watched: boolean) => Promise<void>; onResolveSubject: (input: SubjectResolutionInputV1) => Promise<void> }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") === "relations" ? "产业关系" : "概览");
@@ -281,11 +302,24 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
   const [uploading, setUploading] = useState(false);
   const [watching, setWatching] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
+  const [subjectKind, setSubjectKind] = useState<Exclude<SubjectKindV1, "unknown">>(
+    company.suggestedSubjectKind && company.suggestedSubjectKind !== "unknown"
+      ? company.suggestedSubjectKind
+      : "legal_company",
+  );
+  const [targetCompanyId, setTargetCompanyId] = useState("");
+  const [resolvingSubject, setResolvingSubject] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const confirmed = company.claims.filter((claim) => claim.status === "confirmed");
   const pending = company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status));
   const conflicts = company.claims.filter((claim) => claim.status === "disputed");
   const companyName = company.standardName;
+  const legalCompanyTargets = directory.filter(
+    (item) =>
+      item.id !== company.id
+      && item.subjectKind === "legal_company"
+      && item.subjectKindStatus === "confirmed",
+  );
 
   const tabs = [
     ["概览", ""], ["材料", company.materialCount], ["已确认知识", confirmed.length], ["待确认", pending.length], ["研究记录", company.researchRecords.length], ["产业关系", ""],
@@ -326,6 +360,32 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
     }
   };
 
+  const resolveIdentity = async (action: "confirm" | "link" | "merge") => {
+    setResolvingSubject(true);
+    setActionNotice("");
+    try {
+      await onResolveSubject({
+        expectedVersion: company.version,
+        action,
+        ...(action !== "merge" ? { subjectKind } : {}),
+        ...(action !== "confirm" ? { targetCompanyId } : {}),
+      });
+      setActionNotice(
+        action === "merge"
+          ? "重复主体已合并，材料、证据和候选已迁移"
+          : action === "link"
+            ? "主体类型和法律公司归属已确认"
+            : "主体类型已确认",
+      );
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") {
+        setActionNotice(error instanceof Error ? error.message : "主体确认失败");
+      }
+    } finally {
+      setResolvingSubject(false);
+    }
+  };
+
   return (
     <div className="by-company-detail-page">
       <CompanyDirectory companies={directory} activeId={company.id} />
@@ -336,6 +396,74 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
             <div><h1>{companyName}</h1><p>{company.englishName || company.standardName}<span />标准名称：{company.standardName}</p><div>{company.industryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div></div>
           </div>
           <p>{company.description}</p>
+          <section className="by-company-warning">
+            <Building2 />
+            <div>
+              <strong>
+                主体类型：{subjectKindLabel(company.subjectKind)}
+                {company.subjectKindStatus === "pending" ? "（待确认）" : "（已确认）"}
+              </strong>
+              <p>
+                {company.parentCompany
+                  ? `归属法律公司：${company.parentCompany.canonicalName}`
+                  : company.subjectKindStatus === "pending"
+                    ? `系统建议：${subjectKindLabel(company.suggestedSubjectKind || "unknown")}；${company.subjectKindReason || "请结合材料确认"}`
+                    : "该主体尚未关联其他法律公司。"}
+              </p>
+            </div>
+            <select
+              aria-label="主体类型"
+              value={subjectKind}
+              onChange={(event) => setSubjectKind(event.target.value as Exclude<SubjectKindV1, "unknown">)}
+            >
+              <option value="legal_company">法律公司</option>
+              <option value="project">项目 / 产品 / 技术</option>
+              <option value="institution">机构</option>
+              <option value="team">团队</option>
+            </select>
+            <button
+              disabled={resolvingSubject}
+              onClick={() => void resolveIdentity("confirm")}
+            >
+              确认类型
+            </button>
+            {subjectKind !== "legal_company" && (
+              <>
+                <select
+                  aria-label="归属法律公司"
+                  value={targetCompanyId}
+                  onChange={(event) => setTargetCompanyId(event.target.value)}
+                >
+                  <option value="">选择已确认的法律公司</option>
+                  {legalCompanyTargets.map((item) => (
+                    <option value={item.id} key={item.id}>{item.standardName}</option>
+                  ))}
+                </select>
+                <button
+                  disabled={resolvingSubject || !targetCompanyId}
+                  onClick={() => void resolveIdentity("link")}
+                >
+                  确认归属
+                </button>
+              </>
+            )}
+            <select
+              aria-label="合并目标公司"
+              value={targetCompanyId}
+              onChange={(event) => setTargetCompanyId(event.target.value)}
+            >
+              <option value="">选择重复主体的合并目标</option>
+              {legalCompanyTargets.map((item) => (
+                <option value={item.id} key={item.id}>{item.standardName}</option>
+              ))}
+            </select>
+            <button
+              disabled={resolvingSubject || !targetCompanyId}
+              onClick={() => void resolveIdentity("merge")}
+            >
+              合并重复主体
+            </button>
+          </section>
           <div className="by-company-actions"><button onClick={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
           <input ref={fileInput} hidden type="file" accept=".pdf,.docx,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
           {actionNotice && <p role="status">{actionNotice}</p>}
@@ -351,8 +479,8 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
             <div className="by-company-primary-column">
               <MaterialAnalysisOverview company={company} />
               <section className="by-confirmed-overview">
-                <header><h2>机构已确认认知</h2><span><ShieldCheck />仅展示正式知识</span></header>
-                {["公司身份", "产品与技术", "商业与融资", "风险与待验证"].map((category, index) => {
+                <header><h2>主体已确认知识</h2><span><ShieldCheck />仅展示正式知识</span></header>
+                {["主体身份", "产品与技术", "商业与融资", "风险与待验证"].map((category, index) => {
                   const claim = confirmed[index];
                   return <KnowledgeRow key={category} icon={index === 0 ? <Building2 /> : index === 1 ? <Sparkles /> : index === 2 ? <Globe2 /> : <ShieldCheck />} category={category} claim={claim} evidenceCount={claim?.evidenceIds.length || 0} />;
                 })}
@@ -380,19 +508,19 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch }: {
 function CompanyDirectory({ companies, activeId }: { companies: CompanyView[]; activeId: string }) {
   return (
     <aside className="by-company-directory">
-      <Link to="/companies"><ArrowLeft />返回公司列表</Link>
-      <label><Search /><input placeholder="搜索公司" /></label>
+      <Link to="/companies"><ArrowLeft />返回主体列表</Link>
+      <label><Search /><input placeholder="搜索研究主体" /></label>
       <div className="by-company-mini-list">{companies.map((company) => {
         return <Link className={company.id === activeId ? "active" : ""} to={`/companies/${company.id}`} key={company.id}><CompanyMark company={company} /><span><strong>{company.standardName}</strong><small>{company.cognitionStatus} · {company.materialCount} 份材料</small></span>{company.pendingCandidateCount > 0 && <em>{company.pendingCandidateCount}</em>}</Link>;
       })}</div>
-      <Link className="by-company-all-link" to="/companies">查看全部公司<ChevronRight /></Link>
+      <Link className="by-company-all-link" to="/companies">查看全部主体<ChevronRight /></Link>
     </aside>
   );
 }
 
 function KnowledgeRow({ icon, category, claim, evidenceCount }: { icon: React.ReactNode; category: string; claim?: Claim; evidenceCount: number }) {
   return (
-    <article className="by-knowledge-row"><span>{icon}</span><div><h3>{category}</h3><p>{claim?.text || "暂无经过确认的机构知识。"}</p><small>证据来源 {evidenceCount} · 最后确认 {claim?.eventTime || "待补充"}</small></div>{claim && <button>查看 {evidenceCount} 条证据<ChevronRight /></button>}</article>
+    <article className="by-knowledge-row"><span>{icon}</span><div><h3>{category}</h3><p>{claim?.text || "暂无经过确认的主体知识。"}</p><small>证据来源 {evidenceCount} · 最后确认 {claim?.eventTime || "待补充"}</small></div>{claim && <button>查看 {evidenceCount} 条证据<ChevronRight /></button>}</article>
   );
 }
 
@@ -406,7 +534,7 @@ function MaterialAnalysisOverview({ company }: { company: CompanyView }) {
         <div className="by-inline-empty">暂无材料分析结果</div>
       ) : (
         <>
-          <article className="by-knowledge-row"><span><FileText /></span><div><h3>{analysis.fileName}</h3><p>{analysis.summary || company.description}</p><small>材料分析摘要 · 不等于机构正式知识 · {analysis.sectionCount} 个维度</small></div></article>
+          <article className="by-knowledge-row"><span><FileText /></span><div><h3>{analysis.fileName}</h3><p>{analysis.summary || company.description}</p><small>材料分析摘要 · 不等于主体正式知识 · {analysis.sectionCount} 个维度</small></div></article>
           {sections.map((section) => (
             <article className="by-knowledge-row by-material-analysis-section" key={section.key}>
               <span><FileSearch /></span>
@@ -428,6 +556,16 @@ function materialInformationGaps(company: CompanyView): Array<{ icon: React.Reac
       title: section.summary,
       meta: `${section.title} · ${section.evidence.length} 条证据`,
     }));
+}
+
+function subjectKindLabel(kind: SubjectKindV1): string {
+  return {
+    legal_company: "法律公司",
+    project: "项目 / 产品 / 技术",
+    institution: "机构",
+    team: "团队",
+    unknown: "尚未识别",
+  }[kind];
 }
 
 function IndustryLane({ company, expanded = false }: { company: CompanyView; expanded?: boolean }) {
@@ -464,7 +602,7 @@ function SupportList({ title, action, rows, emptyText }: { title: string; action
 }
 
 function CompanyMaterials({ company, uploading, onUpload }: { company: CompanyView; uploading: boolean; onUpload: () => void }) {
-  return <section className="by-tab-panel"><header><div><h2>公司材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "completed" ? "success" : "warning"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
+  return <section className="by-tab-panel"><header><div><h2>主体材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "completed" ? "success" : "warning"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
 }
 
 function CompanyClaims({ claims, title }: { claims: Claim[]; title: string }) {
