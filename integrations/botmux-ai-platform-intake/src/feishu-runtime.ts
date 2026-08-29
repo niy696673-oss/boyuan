@@ -21,7 +21,7 @@ interface BotmuxBotConfig {
   apiOnly?: unknown;
 }
 
-interface LarkRequestClient {
+export interface LarkRequestClient {
   request(input: Record<string, unknown>): Promise<unknown>;
   im: {
     v1: {
@@ -61,10 +61,14 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
   #ws: Lark.WSClient | undefined;
   #reviveTimer: NodeJS.Timeout | undefined;
 
-  constructor(config: IntakeConfig, credentials: BotmuxLarkCredentials) {
+  constructor(
+    config: IntakeConfig,
+    credentials: BotmuxLarkCredentials,
+    client?: LarkRequestClient,
+  ) {
     this.#config = config;
     this.#credentials = credentials;
-    this.#client = new Lark.Client({
+    this.#client = client ?? new Lark.Client({
       appId: credentials.appId,
       appSecret: credentials.appSecret,
       domain: openApiDomain(credentials.brand),
@@ -145,6 +149,24 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
     if (typeof response.code === 'number' && response.code !== 0) {
       throw new Error(`lark_update_failed_${response.code}`);
     }
+  }
+
+  async botOpenId(): Promise<string> {
+    const response = await this.#client.request({
+      method: 'GET',
+      url: '/open-apis/bot/v3/info',
+    });
+    const source = response && typeof response === 'object' && !Array.isArray(response)
+      ? response as Record<string, unknown>
+      : undefined;
+    const bot = source?.bot && typeof source.bot === 'object' && !Array.isArray(source.bot)
+      ? source.bot as Record<string, unknown>
+      : undefined;
+    const openId = typeof bot?.open_id === 'string' ? bot.open_id : '';
+    if (!/^ou_[A-Za-z0-9_-]{1,500}$/u.test(openId)) {
+      throw new Error('lark_bot_open_id_missing');
+    }
+    return openId;
   }
 
   start(onMessage: (data: unknown) => Promise<unknown>, onError: (error: unknown) => void): void {

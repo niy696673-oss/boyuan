@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DirectFeishuFileIngress, FeishuCardMessenger, parseFeishuFileMessage } from '../src/direct-feishu-intake.js';
+import {
+  DirectFeishuCompanyResearchIngress,
+  DirectFeishuFileIngress,
+  FeishuCardMessenger,
+  parseFeishuCompanyResearchMessage,
+  parseFeishuFileMessage,
+} from '../src/direct-feishu-intake.js';
 import type { IntakeAttachment } from '../src/types.js';
 
 const pdf: IntakeAttachment = {
@@ -20,6 +26,21 @@ function fileEvent(overrides: Record<string, unknown> = {}) {
       message_type: 'file',
       create_time: '1787702400000',
       content: JSON.stringify({ file_key: 'file_pdf', file_name: '项目 BP.pdf' }),
+      ...overrides,
+    },
+  };
+}
+
+function textEvent(text: string, overrides: Record<string, unknown> = {}) {
+  return {
+    sender: { sender_id: { open_id: 'ou_sender' }, sender_type: 'user' },
+    message: {
+      message_id: 'om_company',
+      chat_id: 'oc_chat',
+      chat_type: 'p2p',
+      message_type: 'text',
+      create_time: '1787702400000',
+      content: JSON.stringify({ text }),
       ...overrides,
     },
   };
@@ -328,5 +349,83 @@ describe('direct Feishu file intake', () => {
       messageId: 'om_pdf',
       receivedAt: new Date(1787702400000).toISOString(),
     }));
+  });
+});
+
+describe('direct Feishu company research intake', () => {
+  it('only accepts explicit company research commands in a private chat', () => {
+    expect(parseFeishuCompanyResearchMessage(textEvent('研究 白杨智能'))).toMatchObject({
+      companyName: '白杨智能',
+      messageId: 'om_company',
+      senderId: 'ou_sender',
+    });
+    expect(parseFeishuCompanyResearchMessage(textEvent('分析一下：白杨智能'))).toMatchObject({
+      companyName: '白杨智能',
+    });
+    expect(parseFeishuCompanyResearchMessage(textEvent('白杨智能'))).toBeNull();
+    expect(parseFeishuCompanyResearchMessage(textEvent('你好，研究一下白杨智能'))).toBeNull();
+  });
+
+  it('requires an @ mention in a group and removes the mention token before parsing', () => {
+    expect(parseFeishuCompanyResearchMessage(textEvent('研究 白杨智能', {
+      chat_type: 'group',
+    }), new Date(), 'ou_bot')).toBeNull();
+    expect(parseFeishuCompanyResearchMessage(textEvent('@_user_1 研究 白杨智能', {
+      chat_type: 'group',
+      mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' } }],
+    }), new Date(), 'ou_bot')).toMatchObject({ companyName: '白杨智能' });
+    expect(parseFeishuCompanyResearchMessage(textEvent('@_user_1 研究 白杨智能', {
+      chat_type: 'group',
+      mentions: [{ key: '@_user_1', id: { open_id: 'ou_someone_else' } }],
+    }), new Date(), 'ou_bot')).toBeNull();
+  });
+
+  it('sends and persists the processing card before starting both research lanes', async () => {
+    const order: string[] = [];
+    let cardId: string | undefined;
+    const researchCompany = vi.fn(async () => {
+      order.push('research');
+      return { fileKey: 'company-research', fileName: '白杨智能', status: 'completed' as const };
+    });
+    const ingress = new DirectFeishuCompanyResearchIngress({
+      botOpenId: 'ou_bot',
+      researchCompany,
+      messenger: {
+        sendCard: vi.fn(async () => { order.push('loading'); return { messageId: 'om_status' }; }),
+        updateCard: vi.fn(async () => undefined),
+      },
+      statusCardId: () => cardId,
+      rememberStatusCard: (_message, statusCardId) => { order.push('persist'); cardId = statusCardId; },
+      markStatusCardTerminal: vi.fn(),
+    });
+
+    await expect(ingress.handle(textEvent('研究 白杨智能'))).resolves.toEqual({ handled: true });
+
+    expect(order).toEqual(['loading', 'persist', 'research']);
+    expect(researchCompany).toHaveBeenCalledWith(expect.objectContaining({
+      companyName: '白杨智能',
+      statusCardMessageId: 'om_status',
+    }));
+  });
+
+  it('reuses a persisted processing card when the same event is replayed', async () => {
+    const sendCard = vi.fn(async () => ({ messageId: 'om_unexpected' }));
+    const researchCompany = vi.fn(async () => ({
+      fileKey: 'company-research', fileName: '白杨智能', status: 'completed' as const,
+    }));
+    const ingress = new DirectFeishuCompanyResearchIngress({
+      botOpenId: 'ou_bot',
+      researchCompany,
+      messenger: { sendCard, updateCard: vi.fn(async () => undefined) },
+      statusCardId: () => 'om_status',
+      rememberStatusCard: vi.fn(),
+      markStatusCardTerminal: vi.fn(),
+    });
+
+    await ingress.handle(textEvent('研究 白杨智能'));
+    await ingress.handle(textEvent('研究 白杨智能'));
+
+    expect(sendCard).not.toHaveBeenCalled();
+    expect(researchCompany).toHaveBeenCalledTimes(2);
   });
 });

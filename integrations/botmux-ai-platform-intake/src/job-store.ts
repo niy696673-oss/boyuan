@@ -10,6 +10,8 @@ interface StoreData {
 type StoredIntakeJob = Omit<IntakeJob, 'completionCardSent'> & {
   completionCardSent?: boolean;
   finalCardSent?: boolean;
+  fileName?: string;
+  companyName?: string;
 };
 
 export class JsonJobStore implements JobStore {
@@ -87,9 +89,20 @@ export class JsonJobStore implements JobStore {
         statusCards: parsed.statusCards ?? {},
         jobs: Object.fromEntries(Object.entries(parsed.jobs).map(([key, job]) => {
           const { finalCardSent, ...current } = job;
+          const completionCardSent = current.completionCardSent ?? finalCardSent ?? false;
+          if (current.kind === 'company_research') {
+            const companyName = current.companyName ?? current.fileName;
+            if (!companyName) throw new Error();
+            const { fileName: _legacyFileName, ...companyJob } = current;
+            return [key, {
+              ...companyJob,
+              companyName,
+              completionCardSent,
+            }];
+          }
           return [key, {
             ...current,
-            completionCardSent: current.completionCardSent ?? finalCardSent ?? false,
+            completionCardSent,
           }];
         })) as Record<string, IntakeJob>,
       };

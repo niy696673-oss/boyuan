@@ -3,7 +3,7 @@ import { FeishuCardMessenger } from '../src/direct-feishu-intake.js';
 import { IntakeService, jobKey } from '../src/intake-service.js';
 import { MemoryJobStore } from '../src/job-store.js';
 import type { IntakeAttachment, IntakeTurn, Messenger, PlatformClient, SendCardInput } from '../src/types.js';
-import { conversation, quickCard, tempDir, testConfig } from './helpers.js';
+import { companyQuickCard, conversation, quickCard, tempDir, testConfig } from './helpers.js';
 
 const attachment = (key: string, name = `${key}.pdf`): IntakeAttachment => ({
   fileKey: key, name, mimeType: 'application/pdf', path: `/managed/${name}`, size: 10,
@@ -16,10 +16,120 @@ function platformFixture(): PlatformClient {
   return {
     upload: vi.fn(async (_turn, file) => ({ conversation: conversation(`conversation-${file.fileKey}`, 'processing'), reusedDocument: false })),
     quickCard: vi.fn(async () => quickCard()),
+    startCompanyResearch: vi.fn(async () => ({ conversation: conversation('conversation-company', 'processing'), reusedResearch: false })),
+    companyQuickCard: vi.fn(async () => companyQuickCard()),
   };
 }
 
 describe('intake service', () => {
+  it('starts company deep research and updates the same card with the independent quick result', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    const updateCard = vi.fn(async () => undefined);
+    const messenger: Messenger = {
+      sendCard: vi.fn(async () => ({ messageId: 'om_unexpected' })),
+      updateCard,
+    };
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path),
+        platform,
+        messenger,
+        store: new MemoryJobStore(),
+      });
+      const input = {
+        chatId: 'oc_chat',
+        sessionId: 'feishu:om_company',
+        messageId: 'om_company',
+        companyName: '博源科技',
+        senderId: 'ou_sender',
+        statusCardMessageId: 'om_processing',
+      };
+
+      const first = await service.researchCompany(input);
+      const replay = await service.researchCompany(input);
+
+      expect(platform.startCompanyResearch).toHaveBeenCalledOnce();
+      expect(platform.companyQuickCard).toHaveBeenCalledOnce();
+      expect(first).toMatchObject({ status: 'completed', conversationId: 'conversation-company' });
+      expect(replay).toMatchObject({ status: 'completed', conversationId: 'conversation-company' });
+      expect(messenger.sendCard).not.toHaveBeenCalled();
+      expect(messenger.updateCard).toHaveBeenCalledOnce();
+      const rendered = JSON.stringify(updateCard.mock.calls[0]);
+      expect(rendered).toContain('公司研究 · 快速分析');
+      expect(rendered).toContain('公开来源');
+      expect(rendered).not.toContain('Sol');
+    } finally { temp.cleanup(); }
+  });
+
+  it('keeps the deep research link when company quick analysis fails', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    vi.mocked(platform.companyQuickCard).mockRejectedValue(new Error('luna_failed'));
+    const updateCard = vi.fn(async () => undefined);
+    const messenger: Messenger = {
+      sendCard: vi.fn(async () => undefined),
+      updateCard,
+    };
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path),
+        platform,
+        messenger,
+        store: new MemoryJobStore(),
+      });
+      await service.researchCompany({
+        chatId: 'oc_chat',
+        sessionId: 'feishu:om_company',
+        messageId: 'om_company',
+        companyName: '博源科技',
+        statusCardMessageId: 'om_processing',
+      });
+
+      const rendered = JSON.stringify(updateCard.mock.calls[0]);
+      expect(rendered).toContain('快速分析未完成');
+      expect(rendered).toContain('/workbench/conversations/conversation-company');
+      expect(platform.startCompanyResearch).toHaveBeenCalledOnce();
+    } finally { temp.cleanup(); }
+  });
+
+  it('resumes a durable company job after delivery failure without restarting deep research or Luna', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    const store = new MemoryJobStore();
+    const updateCard = vi.fn()
+      .mockRejectedValueOnce(new Error('lark_update_failed'))
+      .mockResolvedValue(undefined);
+    const input = {
+      chatId: 'oc_chat',
+      sessionId: 'feishu:om_company',
+      messageId: 'om_company',
+      companyName: '博源科技',
+      statusCardMessageId: 'om_processing',
+    };
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path),
+        platform,
+        messenger: { sendCard: vi.fn(async () => undefined), updateCard },
+        store,
+        setTimer: () => undefined,
+      });
+
+      await expect(service.researchCompany(input)).rejects.toThrow('lark_update_failed');
+      expect(store.get(jobKey('om_company', 'company-research'))).toMatchObject({
+        kind: 'company_research',
+        completionCardSent: false,
+        companyQuickCard: { modelId: 'gpt-5.6-luna' },
+      });
+      await expect(service.researchCompany(input)).resolves.toMatchObject({ status: 'completed' });
+
+      expect(platform.startCompanyResearch).toHaveBeenCalledOnce();
+      expect(platform.companyQuickCard).toHaveBeenCalledOnce();
+      expect(updateCard).toHaveBeenCalledTimes(2);
+    } finally { temp.cleanup(); }
+  });
+
   it('resumes orphan processing receipts and removes the redundant receipt after upload is durable', async () => {
     const temp = tempDir();
     const store = new MemoryJobStore();

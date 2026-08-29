@@ -1,4 +1,5 @@
 import type { QuickCardAnalysisResult } from './quick-card/contracts.js';
+import type { CompanyQuickCardResult } from './company-quick-card/contracts.js';
 import type { CompanyResearchWorkflowSkill } from './research/contracts.js';
 
 export type SourceChannel = 'web' | 'feishu';
@@ -548,6 +549,17 @@ export interface StartCompanyResearchInput {
   workflow?: CompanyResearchWorkflowRequest;
 }
 
+export interface StartFeishuCompanyResearchInput {
+  companyName: string;
+  sourceMessageId: string;
+  senderId?: string;
+}
+
+export interface StartFeishuCompanyResearchResult {
+  conversation: ConversationDetail;
+  reusedResearch: boolean;
+}
+
 export interface CompanyResearchWorkflowRequest {
   skill: CompanyResearchWorkflowSkill;
   scope: {
@@ -599,6 +611,7 @@ export interface PlatformModule {
   ingestCompanyNames(input: IngestCompanyNamesInput): Promise<IngestDocumentResult>;
   getDocumentContent(documentId: string): Promise<DocumentContentRecord>;
   quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult>;
+  quickAnalyzeCompanyResearch(conversationId: string): Promise<CompanyQuickCardResult>;
   listConversations(): Promise<ConversationSummary[]>;
   getConversation(conversationId: string): Promise<ConversationDetail>;
   resolveCompanyMatch(input: ResolveCompanyMatchInput): Promise<ConversationDetail>;
@@ -627,6 +640,9 @@ export interface PlatformModule {
   confirmCompanyListRows(input: ConfirmCompanyListRowsInput): Promise<CompanyListRecord>;
   startCompanyListResearch(input: StartCompanyListResearchInput): Promise<CompanyListRecord>;
   startCompanyResearch(input: StartCompanyResearchInput): Promise<ConversationDetail>;
+  startFeishuCompanyResearch(
+    input: StartFeishuCompanyResearchInput,
+  ): Promise<StartFeishuCompanyResearchResult>;
   startIndustryResearch(input: StartIndustryResearchInput): Promise<ConversationDetail>;
   listAdminOverview(): Promise<AdminOverview>;
   cancelTask(taskId: string): Promise<ConversationDetail>;

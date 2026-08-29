@@ -1,8 +1,24 @@
 import { createReadStream } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { QUICK_CARD_LIST_FIELDS, QUICK_CARD_TEXT_FIELDS } from './types.js';
-import type { IntakeAttachment, IntakeTurn, PlatformClient, PlatformConversation, PlatformUploadResult, QuickCardFields, QuickCardResult } from './types.js';
+import {
+  COMMON_COMPANY_QUICK_CARD_LIST_FIELDS,
+  COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS,
+  QUICK_CARD_LIST_FIELDS,
+} from './types.js';
+import type {
+  CommonCompanyQuickCardFields,
+  CompanyQuickCardResult,
+  CompanyResearchTurn,
+  IntakeAttachment,
+  IntakeTurn,
+  PlatformClient,
+  PlatformCompanyResearchResult,
+  PlatformConversation,
+  PlatformUploadResult,
+  QuickCardFields,
+  QuickCardResult,
+} from './types.js';
 
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
 
@@ -58,6 +74,35 @@ export class HttpPlatformClient implements PlatformClient {
       headers: { accept: 'application/json', 'x-boyuan-intake-key': this.#intakeKey },
     });
     return parseQuickCard(await readResponse(response));
+  }
+
+  async startCompanyResearch(input: CompanyResearchTurn): Promise<PlatformCompanyResearchResult> {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/feishu/company-research`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'x-boyuan-intake-key': this.#intakeKey,
+        'x-boyuan-message-id': input.messageId,
+        ...(input.senderId ? { 'x-boyuan-sender-id': input.senderId } : {}),
+      },
+      body: JSON.stringify({ companyName: input.companyName }),
+      signal: AbortSignal.timeout(this.#timeoutMs),
+    });
+    const source = record(await readResponse(response));
+    if (typeof source.reusedResearch !== 'boolean') throw new Error('platform_invalid_response');
+    return {
+      conversation: parseConversation(source.conversation),
+      reusedResearch: source.reusedResearch,
+    };
+  }
+
+  async companyQuickCard(conversationId: string): Promise<CompanyQuickCardResult> {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/feishu/company-research/${encodeURIComponent(conversationId)}/quick-card`, {
+      method: 'POST',
+      headers: { accept: 'application/json', 'x-boyuan-intake-key': this.#intakeKey },
+    });
+    return parseCompanyQuickCard(await readResponse(response));
   }
 }
 
@@ -118,8 +163,12 @@ function parseConversation(value: unknown): PlatformConversation {
 
 function parseQuickCard(value: unknown): QuickCardResult {
   const source = record(value);
-  const textFields = Object.fromEntries(QUICK_CARD_TEXT_FIELDS.map(({ name }) => [name, text(source[name])])) as Pick<QuickCardFields, typeof QUICK_CARD_TEXT_FIELDS[number]['name']>;
-  const listFields = Object.fromEntries(QUICK_CARD_LIST_FIELDS.map(({ name }) => [name, stringArray(source[name])])) as Pick<QuickCardFields, typeof QUICK_CARD_LIST_FIELDS[number]['name']>;
+  const commonFields = parseCommonCompanyQuickCardFields(source);
+  const relationFields = Object.fromEntries(
+    QUICK_CARD_LIST_FIELDS
+      .filter(({ name }) => name !== 'highlights')
+      .map(({ name }) => [name, stringArray(source[name])]),
+  ) as Pick<QuickCardFields, 'competitorNames' | 'upstreamNames' | 'downstreamNames'>;
   const confidence = source.confidence;
   if (typeof confidence !== 'number' || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) {
     throw new Error('platform_invalid_response');
@@ -128,8 +177,8 @@ function parseQuickCard(value: unknown): QuickCardResult {
   if (!['低', '中', '高'].includes(String(confidenceLevel))) throw new Error('platform_invalid_response');
   const navigation = record(source.navigation);
   return {
-    ...textFields,
-    ...listFields,
+    ...commonFields,
+    ...relationFields,
     status: 'completed',
     confidence,
     confidenceLevel: confidenceLevel as QuickCardResult['confidenceLevel'],
@@ -142,6 +191,64 @@ function parseQuickCard(value: unknown): QuickCardResult {
     variant: text(source.variant),
     sessionId: text(source.sessionId),
   };
+}
+
+function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
+  const source = record(value);
+  if (source.kind !== 'company_research') throw new Error('platform_invalid_response');
+  if (!['completed', 'pending_confirmation'].includes(String(source.status))) {
+    throw new Error('platform_invalid_response');
+  }
+  if (!['existing', 'provisional', 'ambiguous'].includes(String(source.identityState))) {
+    throw new Error('platform_invalid_response');
+  }
+  const confidence = source.confidence;
+  if (typeof confidence !== 'number' || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) {
+    throw new Error('platform_invalid_response');
+  }
+  const confidenceLevel = source.confidenceLevel;
+  if (!['低', '中', '高'].includes(String(confidenceLevel))) throw new Error('platform_invalid_response');
+  const navigation = record(source.navigation);
+  return {
+    ...parseCommonCompanyQuickCardFields(source),
+    kind: 'company_research',
+    status: source.status as CompanyQuickCardResult['status'],
+    identityState: source.identityState as CompanyQuickCardResult['identityState'],
+    recentSignals: stringArray(source.recentSignals),
+    confidence,
+    confidenceLevel: confidenceLevel as CompanyQuickCardResult['confidenceLevel'],
+    sourceCount: nonNegativeInteger(source.sourceCount),
+    materialCount: nonNegativeInteger(source.materialCount),
+    formalKnowledgeCount: nonNegativeInteger(source.formalKnowledgeCount),
+    pendingCandidateCount: nonNegativeInteger(source.pendingCandidateCount),
+    navigation: {
+      ...(typeof navigation.companyId === 'string' && navigation.companyId ? { companyId: navigation.companyId } : {}),
+      ...(typeof navigation.industryId === 'string' && navigation.industryId ? { industryId: navigation.industryId } : {}),
+    },
+    ...(typeof source.providerId === 'string' ? { providerId: source.providerId } : {}),
+    ...(typeof source.modelId === 'string' ? { modelId: source.modelId } : {}),
+    ...(typeof source.variant === 'string' ? { variant: source.variant } : {}),
+    ...(typeof source.sessionId === 'string' ? { sessionId: source.sessionId } : {}),
+  };
+}
+
+function parseCommonCompanyQuickCardFields(
+  source: Record<string, unknown>,
+): CommonCompanyQuickCardFields {
+  const textFields = Object.fromEntries(
+    COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS.map(({ name }) => [name, text(source[name])]),
+  ) as Record<typeof COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS[number]['name'], string>;
+  const listFields = Object.fromEntries(
+    COMMON_COMPANY_QUICK_CARD_LIST_FIELDS.map(({ name }) => [name, stringArray(source[name])]),
+  ) as Record<typeof COMMON_COMPANY_QUICK_CARD_LIST_FIELDS[number]['name'], string[]>;
+  return { ...textFields, ...listFields };
+}
+
+function nonNegativeInteger(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error('platform_invalid_response');
+  }
+  return value;
 }
 
 function stringArray(value: unknown): string[] {

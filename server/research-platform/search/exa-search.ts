@@ -39,7 +39,6 @@ export function createExaSearchAdapter(options: ExaSearchOptions): WebSearchPort
             numResults: input.maxResults ?? 5,
             contents: { highlights: { maxCharacters: 1_200 } },
           }),
-          signal: AbortSignal.timeout(30_000),
         });
       } catch (error) {
         throw new SearchAdapterError('exa_request_failed', 'Exa search request failed', { cause: error });

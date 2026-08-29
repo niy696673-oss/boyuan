@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 17;
+const CURRENT_SCHEMA_VERSION = 18;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -226,6 +226,28 @@ describe("research-platform SQLite schema reconciliation", () => {
     expectCurrentSchema(dataRoot);
   });
 
+  it("reconciles a collided v17 marker without skipping either feature schema", async () => {
+    const dataRoot = await createDataRoot();
+    const original = openPlatform(dataRoot);
+    await seedMaterial(original, "collided-v17-message");
+    closeModule(original);
+
+    withDatabase(dataRoot, (database) => {
+      database.exec(`
+        DROP TABLE subject_company_links;
+        DELETE FROM schema_migrations WHERE version = 18;
+      `);
+    });
+    expectSchemaHistory(dataRoot, 17);
+    expect(tableExists(dataRoot, "company_quick_card_results")).toBe(true);
+    expect(tableExists(dataRoot, "subject_company_links")).toBe(false);
+
+    openPlatform(dataRoot);
+
+    expectCurrentSchema(dataRoot);
+    expectDatabaseIntegrity(dataRoot);
+  });
+
   it("v16 cleans legacy company labels and merges generated draft industries without losing links", async () => {
     const dataRoot = await createDataRoot();
     const original = openPlatform(dataRoot);
@@ -432,6 +454,7 @@ function expectCurrentSchema(dataRoot: string): void {
   );
   expect(tableExists(dataRoot, "notification_reads")).toBe(true);
   expect(tableExists(dataRoot, "industry_research_runs")).toBe(true);
+  expect(tableExists(dataRoot, "company_quick_card_results")).toBe(true);
   expect(columnNames(dataRoot, "industries")).toEqual(
     expect.arrayContaining(["watched", "version"]),
   );

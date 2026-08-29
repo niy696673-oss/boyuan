@@ -2,11 +2,16 @@ import { createServer, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseIntakeConfig, prepareRuntimeDirectories } from '../config.js';
-import { DirectFeishuFileIngress, FeishuCardMessenger } from '../direct-feishu-intake.js';
+import {
+  DirectFeishuCompanyResearchIngress,
+  DirectFeishuFileIngress,
+  FeishuCardMessenger,
+} from '../direct-feishu-intake.js';
 import { LarkFeishuTransport, loadBotmuxLarkCredentials } from '../feishu-runtime.js';
 import { IntakeService } from '../intake-service.js';
 import { JsonJobStore } from '../job-store.js';
 import { HttpPlatformClient } from '../platform-client.js';
+import { COMPANY_RESEARCH_FILE_KEY } from '../types.js';
 
 const configPath = process.env.BOTMUX_AI_PLATFORM_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('intake_config_path_missing');
@@ -18,6 +23,7 @@ const port = Number(process.env.PORT ?? config.servicePort);
 const host = process.env.HOST ?? '127.0.0.1';
 if (host !== '127.0.0.1' && host !== '::1') throw new Error('intake_service_must_be_loopback');
 const feishu = new LarkFeishuTransport(config, loadBotmuxLarkCredentials(config));
+const botOpenId = await feishu.botOpenId();
 const messenger = new FeishuCardMessenger(feishu);
 const service = new IntakeService({
   config,
@@ -45,13 +51,45 @@ const ingress = new DirectFeishuFileIngress({
   markStatusCardTerminal: (message) =>
     service.markStatusCardTerminal(message.messageId, message.fileKey),
 });
+const companyIngress = new DirectFeishuCompanyResearchIngress({
+  botOpenId,
+  researchCompany: (turn) => service.researchCompany(turn),
+  messenger,
+  statusCardId: (message) =>
+    service.statusCardId(message.messageId, COMPANY_RESEARCH_FILE_KEY),
+  rememberStatusCard: (message, cardMessageId) =>
+    service.rememberStatusCard({
+      chatId: message.chatId,
+      messageId: message.messageId,
+      fileKey: COMPANY_RESEARCH_FILE_KEY,
+      fileName: message.companyName,
+      cardMessageId,
+      createdAt: message.receivedAt,
+      ...(message.senderId ? { senderId: message.senderId } : {}),
+    }),
+  markStatusCardTerminal: (message) =>
+    service.markStatusCardTerminal(message.messageId, COMPANY_RESEARCH_FILE_KEY),
+});
 const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
   process.stderr.write(`[ai-platform-intake] Feishu ingress error: ${message.slice(0, 300)}\n`);
 };
-feishu.start((data) => ingress.handle(data), reportIngressError);
+feishu.start(async (data) => {
+  const company = await companyIngress.handle(data);
+  return company.handled ? company : ingress.handle(data);
+}, reportIngressError);
 service.resumePending();
 for (const receipt of service.listOrphanStatusCards()) {
+  if (receipt.fileKey === COMPANY_RESEARCH_FILE_KEY) {
+    void companyIngress.resume({
+      chatId: receipt.chatId,
+      messageId: receipt.messageId,
+      companyName: receipt.fileName,
+      receivedAt: receipt.createdAt,
+      ...(receipt.senderId ? { senderId: receipt.senderId } : {}),
+    }).catch(reportIngressError);
+    continue;
+  }
   void ingress.resume({
     chatId: receipt.chatId,
     messageId: receipt.messageId,
