@@ -286,6 +286,104 @@ describe("研究平台 v1 公司目录接缝", () => {
     );
     expect(afterRestart.body.profile.watched).toBe(true);
   });
+
+  it("人工确认研究主体类型，并可关联或合并到已确认的法律公司", async () => {
+    const { app, platform } = await fixture();
+    for (const [fileName, content] of [
+      ["云杉智能有限公司 BP.txt", "云杉智能有限公司\n公司提供智能制造服务。"],
+      ["航空发动机测压系统 BP.txt", "航空发动机测压系统\n项目处于工程验证阶段。"],
+      ["航空发动机压力计 BP.txt", "航空发动机压力计\n项目用于发动机压力测试。"],
+    ] as const) {
+      const uploaded = await request(app)
+        .post("/api/v1/documents")
+        .attach("file", Buffer.from(content), fileName);
+      expect(uploaded.status, JSON.stringify(uploaded.body)).toBe(201);
+      for (let index = 0; index < 20; index += 1) {
+        if ((await platform.runPendingSteps()) === 0) break;
+      }
+    }
+
+    const directory = (await request(app).get("/api/v1/companies")).body.items;
+    const legal = directory.find(
+      (item: { canonicalName: string }) => item.canonicalName === "云杉智能有限公司",
+    );
+    const project = directory.find(
+      (item: { canonicalName: string }) => item.canonicalName === "航空发动机测压系统",
+    );
+    const duplicate = directory.find(
+      (item: { canonicalName: string }) => item.canonicalName === "航空发动机压力计",
+    );
+    expect(legal).toMatchObject({
+      subjectKind: "unknown",
+      subjectKindStatus: "pending",
+      suggestedSubjectKind: "legal_company",
+    });
+    expect(project).toMatchObject({
+      subjectKind: "unknown",
+      subjectKindStatus: "pending",
+      suggestedSubjectKind: "project",
+    });
+
+    const confirmedLegal = await request(app)
+      .put(`/api/v1/companies/${legal.companyId}/subject-resolution`)
+      .send({
+        expectedVersion: legal.version,
+        action: "confirm",
+        subjectKind: "legal_company",
+      });
+    expect(confirmedLegal.status).toBe(200);
+    expect(confirmedLegal.body).toMatchObject({
+      subjectKind: "legal_company",
+      subjectKindStatus: "confirmed",
+    });
+
+    const linked = await request(app)
+      .put(`/api/v1/companies/${project.companyId}/subject-resolution`)
+      .send({
+        expectedVersion: project.version,
+        action: "link",
+        subjectKind: "project",
+        targetCompanyId: legal.companyId,
+      });
+    expect(linked.status).toBe(200);
+    expect(linked.body).toMatchObject({
+      subjectKind: "project",
+      subjectKindStatus: "confirmed",
+      parentCompany: {
+        companyId: legal.companyId,
+        canonicalName: "云杉智能有限公司",
+      },
+    });
+
+    const merged = await request(app)
+      .put(`/api/v1/companies/${duplicate.companyId}/subject-resolution`)
+      .send({
+        expectedVersion: duplicate.version,
+        action: "merge",
+        targetCompanyId: legal.companyId,
+      });
+    expect(merged.status).toBe(200);
+    expect(merged.body).toMatchObject({
+      companyId: legal.companyId,
+      materialCount: 2,
+      subjectKind: "legal_company",
+      subjectKindStatus: "confirmed",
+    });
+    expect(
+      (await request(app).get(`/api/v1/companies/${duplicate.companyId}`)).status,
+    ).toBe(404);
+    const queue = await request(app).get("/api/v1/review-queue");
+    expect(
+      queue.body.items.some(
+        (item: { companyId: string }) => item.companyId === duplicate.companyId,
+      ),
+    ).toBe(false);
+    expect(
+      queue.body.items.some(
+        (item: { companyId: string }) => item.companyId === legal.companyId,
+      ),
+    ).toBe(true);
+  });
 });
 
 async function seedConfirmedCompany(

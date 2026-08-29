@@ -20,6 +20,7 @@ export function normalizeCompanyNameCandidate(
   );
   const normalized = withoutExtension
     .normalize("NFKC")
+    .replace(/^一下(?=[\p{L}\p{N}])/u, "")
     .replace(/(?:pdf|pptx?|docx?|txt)$/iu, "")
     .replace(/\s*\(\d+\)\s*$/u, "")
     .replace(
@@ -36,6 +37,10 @@ export function normalizeCompanyNameCandidate(
       "",
     )
     .replace(/\s*(?:only\s+for|for)\s*博源资本\s*$/iu, "")
+    .replace(
+      /\s*(?:BP|MP)\s*@\s*(?:博源资本|博源|青桐资本|芯湃推荐)\s*$/iu,
+      "",
+    )
     .replace(/\s*[-_—–]+\s*(?:博源资本|博源|青桐资本|芯湃推荐)\s*$/u, "")
     .replace(/\s*[-_—–]?\s*v(?:er(?:sion)?)?\s*\d+(?:\.\d+)*\s*$/iu, "")
     .replace(

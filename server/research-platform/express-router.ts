@@ -1,14 +1,17 @@
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { createHash } from "node:crypto";
 import express from "express";
 import multer from "multer";
 import { normalizeUploadedFileName } from "../upload-file-name.js";
 import type {
   ConfirmCompanyListRowsInput,
   CompanyDetail,
+  DecideCandidatesBatchInput,
   DecideCandidateInput,
   KnowledgeCandidateRecord,
   PlatformModule,
+  ResolveSubjectInput,
   StartCompanyResearchInput,
 } from "./contracts.js";
 import type {
@@ -16,9 +19,12 @@ import type {
   IndustryDirectoryResponseV1,
   IndustryReclassificationResponseV1,
   ReviewDecisionResponse,
+  ReviewBatchDecisionResponseV1,
+  ReviewPackageV1,
   ReviewQueueItem,
   ReviewQueueResponse,
 } from "../../shared/research-platform-v1.js";
+import { BP_SECTION_TITLES } from "./analysis/contracts.js";
 import {
   PlatformConflictError,
   PlatformInputError,
@@ -259,6 +265,18 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.put("/companies/:companyId/subject-resolution", async (req, res, next) => {
+    try {
+      res.json(
+        await platform.resolveSubject(
+          subjectResolutionInput(String(req.params.companyId), req.body),
+        ),
+      );
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.get("/industries", async (_req, res, next) => {
     try {
       const [items, unclassifiedMaterialCount] = await Promise.all([
@@ -378,9 +396,13 @@ export function createResearchPlatformV1Router(
         if (!company) throw new Error("review_queue_company_missing");
         return toReviewQueueItem(candidate, company);
       });
+      const packages = reviewPackages(items);
       const response = {
         items,
         total: items.length,
+        packages,
+        packageTotal: packages.length,
+        groupTotal: packages.reduce((total, item) => total + item.groupCount, 0),
       } satisfies ReviewQueueResponse;
       res.json(response);
     } catch (error) {
@@ -409,6 +431,24 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.post("/review-queue/batch-decision", async (req, res, next) => {
+    try {
+      const candidates = await platform.decideCandidatesBatch(
+        reviewBatchDecisionInput(req.body),
+      );
+      const remainingCount = (await platform.listCandidates()).filter(
+        isReviewableCandidate,
+      ).length;
+      const response = {
+        candidates,
+        remainingCount,
+      } satisfies ReviewBatchDecisionResponseV1;
+      res.json(response);
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   return router;
 }
 
@@ -426,6 +466,11 @@ function toReviewQueueItem(
       companyId: company.companyId,
       canonicalName: company.canonicalName,
       aliases: company.aliases,
+      subjectKind: company.subjectKind,
+      subjectKindStatus: company.subjectKindStatus,
+      ...(company.suggestedSubjectKind
+        ? { suggestedSubjectKind: company.suggestedSubjectKind }
+        : {}),
       version: company.version,
     },
     currentKnowledge: company.knowledge.filter(
@@ -434,6 +479,130 @@ function toReviewQueueItem(
         knowledge.status !== "superseded",
     ),
   };
+}
+
+function reviewPackages(items: ReviewQueueItem[]): ReviewPackageV1[] {
+  const byCompany = new Map<string, ReviewQueueItem[]>();
+  for (const item of items) {
+    const bucket = byCompany.get(item.companyId) ?? [];
+    bucket.push(item);
+    byCompany.set(item.companyId, bucket);
+  }
+  return [...byCompany.values()]
+    .map((companyItems) => {
+      const company = companyItems[0].company;
+      const byGroup = new Map<string, ReviewQueueItem[]>();
+      for (const item of companyItems) {
+        const key = `${item.sectionKey}\u0000${item.knowledgeType}`;
+        const bucket = byGroup.get(key) ?? [];
+        bucket.push(item);
+        byGroup.set(key, bucket);
+      }
+      const groups = [...byGroup.values()].map((groupItems) => {
+        const first = groupItems[0];
+        const byFingerprint = new Map<string, ReviewQueueItem[]>();
+        for (const item of groupItems) {
+          const fingerprint = reviewFingerprint(item);
+          const bucket = byFingerprint.get(fingerprint) ?? [];
+          bucket.push(item);
+          byFingerprint.set(fingerprint, bucket);
+        }
+        return {
+          groupId: stableReviewId(
+            'group',
+            company.companyId,
+            first.sectionKey,
+            first.knowledgeType,
+          ),
+          sectionKey: first.sectionKey,
+          sectionTitle:
+            BP_SECTION_TITLES[
+              first.sectionKey as keyof typeof BP_SECTION_TITLES
+            ] ?? first.sectionKey,
+          knowledgeType: first.knowledgeType,
+          candidateCount: groupItems.length,
+          clusters: [...byFingerprint.entries()].map(
+            ([fingerprint, candidates]) => {
+              const reasons = reviewRiskReasons(candidates[0]);
+              return {
+                clusterId: stableReviewId(
+                  'cluster',
+                  company.companyId,
+                  first.sectionKey,
+                  first.knowledgeType,
+                  fingerprint,
+                ),
+                fingerprint,
+                candidateIds: candidates.map((candidate) => candidate.candidateId),
+                candidateCount: candidates.length,
+                safeToConfirm: reasons.length === 0,
+                riskReasons: reasons,
+              };
+            },
+          ),
+        };
+      });
+      const safeCandidateCount = groups.reduce(
+        (total, group) =>
+          total
+          + group.clusters
+            .filter((cluster) => cluster.safeToConfirm)
+            .reduce((count, cluster) => count + cluster.candidateCount, 0),
+        0,
+      );
+      return {
+        packageId: stableReviewId('package', company.companyId),
+        company,
+        candidateCount: companyItems.length,
+        groupCount: groups.length,
+        safeCandidateCount,
+        riskCandidateCount: companyItems.length - safeCandidateCount,
+        groups,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.candidateCount - left.candidateCount
+        || left.company.canonicalName.localeCompare(
+          right.company.canonicalName,
+          'zh-CN',
+        ),
+    );
+}
+
+function reviewFingerprint(item: ReviewQueueItem): string {
+  return [item.statement, item.value ?? '', item.effectiveAt ?? '']
+    .map(normalizeReviewText)
+    .join('\u0000');
+}
+
+function normalizeReviewText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase('zh-CN')
+    .replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+function reviewRiskReasons(item: ReviewQueueItem): string[] {
+  return [
+    ...(item.highImpact ? ['高影响'] : []),
+    ...(item.sensitive ? ['敏感信息'] : []),
+    ...(item.status === 'conflicted' ? ['存在冲突'] : []),
+    ...(item.evidence.length === 0 ? ['缺少支持证据'] : []),
+    ...((item.unsupportedEvidence?.length ?? 0) > 0
+      ? ['存在不支持证据']
+      : []),
+    ...((item.conflictingKnowledge?.length ?? 0) > 0
+      ? ['与正式知识冲突']
+      : []),
+  ];
+}
+
+function stableReviewId(prefix: string, ...parts: string[]): string {
+  return `${prefix}-${createHash('sha256')
+    .update(parts.join('\u0000'))
+    .digest('hex')
+    .slice(0, 16)}`;
 }
 
 function reviewDecisionInput(
@@ -471,6 +640,88 @@ function reviewDecisionInput(
     ...(typeof input.value === "string" ? { value: input.value } : {}),
     ...(typeof input.effectiveAt === "string"
       ? { effectiveAt: input.effectiveAt }
+      : {}),
+  };
+}
+
+function reviewBatchDecisionInput(body: unknown): DecideCandidatesBatchInput {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new PlatformInputError('invalid_json', '请求内容必须是 JSON 对象');
+  }
+  const decisions = (body as Record<string, unknown>).decisions;
+  if (!Array.isArray(decisions)) {
+    throw new PlatformInputError('batch_decisions_required', '请选择要批量处理的候选');
+  }
+  return {
+    decisions: decisions.map((decision) => {
+      if (
+        typeof decision !== 'object'
+        || decision === null
+        || Array.isArray(decision)
+      ) {
+        throw new PlatformInputError('invalid_batch_decision', '批量候选格式无效');
+      }
+      const item = decision as Record<string, unknown>;
+      if (typeof item.candidateId !== 'string' || !item.candidateId) {
+        throw new PlatformInputError('invalid_candidate_id', '候选 ID 无效');
+      }
+      if (
+        typeof item.expectedVersion !== 'number'
+        || !Number.isSafeInteger(item.expectedVersion)
+        || item.expectedVersion < 1
+      ) {
+        throw new PlatformInputError('invalid_version', '候选版本必须是正整数');
+      }
+      if (item.action !== 'confirm' && item.action !== 'reject') {
+        throw new PlatformInputError(
+          'invalid_batch_action',
+          '批量处理只支持确认或驳回',
+        );
+      }
+      return {
+        candidateId: item.candidateId,
+        expectedVersion: item.expectedVersion,
+        action: item.action,
+      };
+    }),
+  };
+}
+
+function subjectResolutionInput(
+  companyId: string,
+  body: unknown,
+): ResolveSubjectInput {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new PlatformInputError('invalid_json', '请求内容必须是 JSON 对象');
+  }
+  const item = body as Record<string, unknown>;
+  if (
+    typeof item.expectedVersion !== 'number'
+    || !Number.isSafeInteger(item.expectedVersion)
+    || item.expectedVersion < 1
+  ) {
+    throw new PlatformInputError('invalid_version', '主体版本必须是正整数');
+  }
+  if (
+    item.action !== 'confirm'
+    && item.action !== 'link'
+    && item.action !== 'merge'
+  ) {
+    throw new PlatformInputError('invalid_subject_action', '主体处理方式无效');
+  }
+  const validKind = item.subjectKind === 'legal_company'
+    || item.subjectKind === 'project'
+    || item.subjectKind === 'institution'
+    || item.subjectKind === 'team';
+  return {
+    companyId,
+    expectedVersion: item.expectedVersion,
+    action: item.action,
+    ...(validKind
+      ? { subjectKind: item.subjectKind as ResolveSubjectInput['subjectKind'] }
+      : {}),
+    ...(typeof item.targetCompanyId === 'string'
+      ? { targetCompanyId: item.targetCompanyId }
       : {}),
   };
 }

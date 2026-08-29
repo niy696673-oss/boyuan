@@ -30,6 +30,7 @@ import type {
   ConversationStatus,
   ConversationSummary,
   DecideCandidateInput,
+  DecideCandidatesBatchInput,
   DocumentContentRecord,
   DocumentRecord,
   EvidenceRecord,
@@ -47,6 +48,7 @@ import type {
   PlatformModule,
   ResolveCompanyMatchInput,
   ResolveConversationReuseInput,
+  ResolveSubjectInput,
   ReviewCandidateEvidenceInput,
   SourceChannel,
   StartCompanyListResearchInput,
@@ -55,6 +57,7 @@ import type {
   TaskStatus,
   TaskStepRecord,
   TaskStepStatus,
+  SubjectKind,
 } from './contracts.js';
 import { PlatformConflictError, PlatformInputError, PlatformNotFoundError } from './contracts.js';
 import { classifyCanonicalIndustry } from './industry-taxonomy.js';
@@ -696,6 +699,69 @@ class SqlitePlatformModule implements PlatformModule {
     return updated;
   }
 
+  async decideCandidatesBatch(
+    input: DecideCandidatesBatchInput,
+  ): Promise<KnowledgeCandidateRecord[]> {
+    this.#assertOpen();
+    if (!Array.isArray(input.decisions) || input.decisions.length === 0) {
+      throw new PlatformInputError('batch_decisions_required', '请选择要批量处理的候选');
+    }
+    if (input.decisions.length > 100) {
+      throw new PlatformInputError('batch_decisions_too_large', '每次最多批量处理 100 条候选');
+    }
+    const candidateIds = input.decisions.map((item) => item.candidateId);
+    if (new Set(candidateIds).size !== candidateIds.length) {
+      throw new PlatformInputError('duplicate_batch_candidate', '同一候选不能重复处理');
+    }
+    const candidates = new Map(
+      candidateIds.flatMap((candidateId) => {
+        const candidate = this.#candidateRecords(
+          'WHERE kc.candidate_id = ?',
+          candidateId,
+        )[0];
+        return candidate ? [[candidateId, candidate] as const] : [];
+      }),
+    );
+    const confirmedTypes = new Set<string>();
+    for (const decision of input.decisions) {
+      if (decision.action !== 'confirm' && decision.action !== 'reject') {
+        throw new PlatformInputError('invalid_batch_action', '批量处理只支持确认或驳回');
+      }
+      const candidate = candidates.get(decision.candidateId);
+      if (!candidate) {
+        throw new PlatformNotFoundError(`candidate not found: ${decision.candidateId}`);
+      }
+      if (
+        !['pending', 'conflicted'].includes(candidate.status)
+        || candidate.version !== decision.expectedVersion
+      ) {
+        throw new PlatformConflictError('version_conflict', '候选已变化，请刷新后重试');
+      }
+      if (decision.action === 'confirm') {
+        const reasons = batchConfirmationRiskReasons(candidate);
+        if (reasons.length) {
+          throw new PlatformInputError(
+            'unsafe_batch_confirmation',
+            `候选需要逐条确认：${reasons.join('、')}`,
+          );
+        }
+        const typeKey = `${candidate.companyId}:${candidate.knowledgeType}`;
+        if (confirmedTypes.has(typeKey)) {
+          throw new PlatformInputError(
+            'batch_knowledge_type_conflict',
+            '同一主体的同类知识每批只能确认一条',
+          );
+        }
+        confirmedTypes.add(typeKey);
+      }
+    }
+    const updated: KnowledgeCandidateRecord[] = [];
+    for (const decision of input.decisions) {
+      updated.push(await this.decideCandidate(decision));
+    }
+    return updated;
+  }
+
   async reviewCandidateEvidence(input: ReviewCandidateEvidenceInput): Promise<KnowledgeCandidateRecord> {
     this.#assertOpen();
     if (input.action !== 'unsupported' && input.action !== 'restore') {
@@ -906,6 +972,92 @@ class SqlitePlatformModule implements PlatformModule {
       }, { watched, version: expectedVersion + 1 }, now);
     });
     return this.getCompany(companyId);
+  }
+
+  async resolveSubject(input: ResolveSubjectInput): Promise<CompanyDetail> {
+    this.#assertOpen();
+    const source = this.#companyRecord(input.companyId);
+    if (source.version !== input.expectedVersion) {
+      throw new PlatformConflictError('version_conflict', '主体档案已变更，请刷新后重试');
+    }
+    if (!['confirm', 'link', 'merge'].includes(input.action)) {
+      throw new PlatformInputError('invalid_subject_action', '主体处理方式无效');
+    }
+    const now = this.#now().toISOString();
+    if (input.action === 'merge') {
+      if (!input.targetCompanyId || input.targetCompanyId === input.companyId) {
+        throw new PlatformInputError('target_company_required', '请选择要合并到的法律公司');
+      }
+      const target = this.#confirmedLegalCompany(input.targetCompanyId);
+      this.#transaction(() => {
+        const current = this.#db.prepare(`
+          SELECT version FROM companies WHERE company_id = ?
+        `).get(input.companyId) as { version: number } | undefined;
+        if (!current || current.version !== input.expectedVersion) {
+          throw new PlatformConflictError('version_conflict', '主体档案已变更，请刷新后重试');
+        }
+        this.#prepareSubjectLinksForMerge(input.companyId, target.companyId, now);
+        this.#mergeExistingCompany(input.companyId, target.companyId, now);
+      });
+      return this.getCompany(target.companyId);
+    }
+
+    const kind = input.subjectKind;
+    if (!kind) {
+      throw new PlatformInputError('subject_kind_required', '请选择明确的主体类型');
+    }
+    let target: CompanyRecord | undefined;
+    if (input.action === 'link') {
+      if (kind === 'legal_company') {
+        throw new PlatformInputError('subject_link_kind_invalid', '法律公司不需要归属到另一家公司');
+      }
+      if (!input.targetCompanyId || input.targetCompanyId === input.companyId) {
+        throw new PlatformInputError('target_company_required', '请选择归属的法律公司');
+      }
+      target = this.#confirmedLegalCompany(input.targetCompanyId);
+    }
+    this.#transaction(() => {
+      const changed = this.#db.prepare(`
+        UPDATE companies SET subject_kind = ?, subject_kind_status = 'confirmed',
+          version = version + 1, updated_at = ?
+        WHERE company_id = ? AND version = ? AND status != 'merged'
+      `).run(kind, now, input.companyId, input.expectedVersion);
+      if (changed.changes !== 1) {
+        throw new PlatformConflictError('version_conflict', '主体档案已变更，请刷新后重试');
+      }
+      if (target) {
+        this.#db.prepare(`
+          INSERT INTO subject_company_links (
+            subject_id, company_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?)
+          ON CONFLICT(subject_id) DO UPDATE SET
+            company_id = excluded.company_id,
+            updated_at = excluded.updated_at
+        `).run(input.companyId, target.companyId, now, now);
+      } else {
+        this.#db.prepare('DELETE FROM subject_company_links WHERE subject_id = ?')
+          .run(input.companyId);
+      }
+      this.#audit(
+        `subject.${input.action}`,
+        'company',
+        input.companyId,
+        {
+          subjectKind: source.subjectKind,
+          subjectKindStatus: source.subjectKindStatus,
+          parentCompany: source.parentCompany,
+          version: source.version,
+        },
+        {
+          subjectKind: kind,
+          subjectKindStatus: 'confirmed',
+          ...(target ? { parentCompanyId: target.companyId } : {}),
+          version: source.version + 1,
+        },
+        now,
+      );
+    });
+    return this.getCompany(input.companyId);
   }
 
   async listIndustries(): Promise<IndustryRecord[]> {
@@ -3012,10 +3164,21 @@ class SqlitePlatformModule implements PlatformModule {
   #insertCompany(name: string, now: string): string {
     const companyId = this.#nextId();
     const active = hasLegalEntitySuffix(name);
+    const suggestion = suggestSubjectKind(name);
     this.#db.prepare(`
-      INSERT INTO companies (company_id, canonical_name, status, version, created_at, updated_at)
-      VALUES (?, ?, ?, 1, ?, ?)
-    `).run(companyId, name, active ? 'active' : 'provisional', now, now);
+      INSERT INTO companies (
+        company_id, canonical_name, status, subject_kind, subject_kind_status,
+        suggested_subject_kind, subject_kind_reason, version, created_at, updated_at
+      ) VALUES (?, ?, ?, 'unknown', 'pending', ?, ?, 1, ?, ?)
+    `).run(
+      companyId,
+      name,
+      active ? 'active' : 'provisional',
+      suggestion.kind,
+      suggestion.reason,
+      now,
+      now,
+    );
     for (const alias of companyAliases(name)) {
       this.#db.prepare(`
         INSERT OR IGNORE INTO company_aliases (alias_id, company_id, alias, alias_type, created_at)
@@ -3105,20 +3268,46 @@ class SqlitePlatformModule implements PlatformModule {
 
   #companyRecord(companyId: string): CompanyRecord {
     const row = this.#db.prepare(`
-      SELECT company_id, canonical_name, status, version, created_at, updated_at
+      SELECT company_id, canonical_name, status, subject_kind,
+        subject_kind_status, suggested_subject_kind, subject_kind_reason,
+        version, created_at, updated_at
       FROM companies WHERE company_id = ?
     `).get(companyId) as {
-      company_id: string; canonical_name: string; status: string; version: number; created_at: string; updated_at: string;
+      company_id: string; canonical_name: string; status: string;
+      subject_kind: string; subject_kind_status: string;
+      suggested_subject_kind: string | null; subject_kind_reason: string | null;
+      version: number; created_at: string; updated_at: string;
     } | undefined;
     if (!row) throw new PlatformNotFoundError(`company not found: ${companyId}`);
     const aliases = this.#db.prepare(`
       SELECT alias, alias_type FROM company_aliases WHERE company_id = ? ORDER BY alias_type, alias
     `).all(companyId) as unknown as Array<{ alias: string; alias_type: string }>;
+    const parent = this.#db.prepare(`
+      SELECT company.company_id, company.canonical_name
+      FROM subject_company_links link
+      JOIN companies company ON company.company_id = link.company_id
+      WHERE link.subject_id = ?
+    `).get(companyId) as {
+      company_id: string;
+      canonical_name: string;
+    } | undefined;
     return {
       companyId: row.company_id,
       canonicalName: row.canonical_name,
       status: row.status as CompanyRecord['status'],
       aliases: aliases.map((alias) => ({ alias: alias.alias, type: alias.alias_type })),
+      subjectKind: row.subject_kind as CompanyRecord['subjectKind'],
+      subjectKindStatus: row.subject_kind_status as CompanyRecord['subjectKindStatus'],
+      ...(row.suggested_subject_kind ? {
+        suggestedSubjectKind: row.suggested_subject_kind as SubjectKind,
+      } : {}),
+      ...(row.subject_kind_reason ? { subjectKindReason: row.subject_kind_reason } : {}),
+      ...(parent ? {
+        parentCompany: {
+          companyId: parent.company_id,
+          canonicalName: parent.canonical_name,
+        },
+      } : {}),
       version: row.version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -4665,6 +4854,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateSchemaReconciliation();
     this.#migrateIntakeAttachmentIdempotencySchema();
     this.#migrateCompanyIndustryNormalizationSchema();
+    this.#migrateSubjectIdentitySchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -5283,6 +5473,61 @@ class SqlitePlatformModule implements PlatformModule {
     });
   }
 
+  #migrateSubjectIdentitySchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 17',
+    ).get();
+    if (applied) return;
+    this.#transaction(() => {
+      const now = this.#now().toISOString();
+      const columns = new Set(
+        (this.#db.prepare('PRAGMA table_info(companies)').all() as unknown as Array<{
+          name: string;
+        }>).map((column) => column.name),
+      );
+      if (!columns.has('subject_kind')) {
+        this.#db.exec("ALTER TABLE companies ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'unknown'");
+      }
+      if (!columns.has('subject_kind_status')) {
+        this.#db.exec("ALTER TABLE companies ADD COLUMN subject_kind_status TEXT NOT NULL DEFAULT 'pending'");
+      }
+      if (!columns.has('suggested_subject_kind')) {
+        this.#db.exec('ALTER TABLE companies ADD COLUMN suggested_subject_kind TEXT');
+      }
+      if (!columns.has('subject_kind_reason')) {
+        this.#db.exec('ALTER TABLE companies ADD COLUMN subject_kind_reason TEXT');
+      }
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS subject_company_links (
+          subject_id TEXT PRIMARY KEY REFERENCES companies(company_id),
+          company_id TEXT NOT NULL REFERENCES companies(company_id),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          CHECK (subject_id != company_id)
+        );
+        CREATE INDEX IF NOT EXISTS subject_company_links_company_idx
+          ON subject_company_links(company_id, updated_at DESC);
+      `);
+      this.#normalizeExistingCompanyNames(now);
+      const companies = this.#db.prepare(`
+        SELECT company_id, canonical_name FROM companies WHERE status != 'merged'
+      `).all() as unknown as Array<{
+        company_id: string;
+        canonical_name: string;
+      }>;
+      for (const company of companies) {
+        const suggestion = suggestSubjectKind(company.canonical_name);
+        this.#db.prepare(`
+          UPDATE companies SET suggested_subject_kind = ?, subject_kind_reason = ?
+          WHERE company_id = ?
+        `).run(suggestion.kind, suggestion.reason, company.company_id);
+      }
+      this.#db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (17, ?)',
+      ).run(now);
+    });
+  }
+
   #normalizeExistingCompanyNames(now: string): void {
     const companies = this.#db.prepare(`
       SELECT company_id, canonical_name FROM companies
@@ -5309,6 +5554,13 @@ class SqlitePlatformModule implements PlatformModule {
           company_id: string;
         } | undefined;
         if (conflict) {
+          if (this.#databaseTableExists('subject_company_links')) {
+            this.#prepareSubjectLinksForMerge(
+              company.company_id,
+              conflict.company_id,
+              now,
+            );
+          }
           this.#mergeExistingCompany(
             company.company_id,
             conflict.company_id,
@@ -5625,6 +5877,42 @@ class SqlitePlatformModule implements PlatformModule {
       .run(sourceCompanyId);
   }
 
+  #confirmedLegalCompany(companyId: string): CompanyRecord {
+    const company = this.#companyRecord(companyId);
+    if (
+      company.subjectKind !== 'legal_company'
+      || company.subjectKindStatus !== 'confirmed'
+    ) {
+      throw new PlatformInputError(
+        'target_company_not_confirmed',
+        '目标主体必须先确认是法律公司',
+      );
+    }
+    return company;
+  }
+
+  #databaseTableExists(tableName: string): boolean {
+    return Boolean(this.#db.prepare(`
+      SELECT 1 AS present FROM sqlite_schema
+      WHERE type = 'table' AND name = ?
+    `).get(tableName));
+  }
+
+  #prepareSubjectLinksForMerge(
+    sourceCompanyId: string,
+    targetCompanyId: string,
+    now: string,
+  ): void {
+    this.#db.prepare(`
+      DELETE FROM subject_company_links
+      WHERE subject_id IN (?, ?)
+    `).run(sourceCompanyId, targetCompanyId);
+    this.#db.prepare(`
+      UPDATE subject_company_links SET company_id = ?, updated_at = ?
+      WHERE company_id = ? AND subject_id != ?
+    `).run(targetCompanyId, now, sourceCompanyId, targetCompanyId);
+  }
+
   #replaceCompanyIdInOptions(
     table: 'company_match_cases' | 'company_list_rows',
     idColumn: 'case_id' | 'row_id',
@@ -5652,7 +5940,7 @@ class SqlitePlatformModule implements PlatformModule {
     companyId: string,
     canonicalName: string,
   ): string | undefined {
-    const suspicious = /^(?:创新组|创业组)\s*\d+\s*[+＋]|推荐|^[^\p{L}\p{N}]|(?:已经?|已)?(?:纳入|进入)|(?:^|[）)】])(?:受|由)|(?:BP|MP)\s*@?|\.ocr$/iu
+    const suspicious = /^(?:创新组|创业组)\s*\d+\s*[+＋]|^一下|推荐|^[^\p{L}\p{N}]|(?:已经?|已)?(?:纳入|进入)|(?:^|[）)】])(?:受|由)|(?:BP|MP)\s*@?|\.ocr$/iu
       .test(canonicalName);
     if (suspicious) {
       const groupedDocument = this.#db.prepare(`
@@ -6081,6 +6369,28 @@ function hasLegalEntitySuffix(value: string): boolean {
   return /(?:股份有限公司|有限责任公司|有限公司)$/u.test(value);
 }
 
+function suggestSubjectKind(value: string): {
+  kind: SubjectKind;
+  reason: string;
+} {
+  if (hasLegalEntitySuffix(value) || /公司$/u.test(value)) {
+    return { kind: 'legal_company', reason: '名称包含明确的法律公司后缀' };
+  }
+  if (/(?:研究院|研究所|大学|学院|实验室|中心)$/u.test(value)) {
+    return { kind: 'institution', reason: '名称符合机构命名特征' };
+  }
+  if (/(?:团队|创新组|创业组)$/u.test(value)) {
+    return { kind: 'team', reason: '名称符合团队命名特征' };
+  }
+  if (
+    /^基于/u.test(value)
+    || /(?:项目|系统|平台|软件|技术(?:研究|开发)?|测试|测压|压力计|受感部|飞行器|装备制造|设计及应用|工艺|导航员)(?:$|——)/u.test(value)
+  ) {
+    return { kind: 'project', reason: '名称更像项目、产品或技术名称' };
+  }
+  return { kind: 'unknown', reason: '仅凭名称无法可靠判断主体类型' };
+}
+
 function companyAliases(value: string): string[] {
   const short = value.replace(/(?:股份有限公司|有限责任公司|有限公司)$/u, '');
   return short && short !== value ? [short] : [];
@@ -6099,4 +6409,17 @@ function extractDeclaredAliases(blocks: ParsedBlock[]): string[] {
 
 function normalizeComparable(value: string): string {
   return value.normalize('NFKC').replace(/\s+/gu, '').toLowerCase();
+}
+
+function batchConfirmationRiskReasons(
+  candidate: KnowledgeCandidateRecord,
+): string[] {
+  return [
+    ...(candidate.highImpact ? ['高影响'] : []),
+    ...(candidate.sensitive ? ['敏感信息'] : []),
+    ...(candidate.status === 'conflicted' ? ['存在冲突'] : []),
+    ...(candidate.evidence.length === 0 ? ['缺少支持证据'] : []),
+    ...((candidate.unsupportedEvidence?.length ?? 0) > 0 ? ['存在不支持证据'] : []),
+    ...((candidate.conflictingKnowledge?.length ?? 0) > 0 ? ['与正式知识冲突'] : []),
+  ];
 }

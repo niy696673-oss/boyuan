@@ -88,11 +88,19 @@ export interface ConversationReuseSuggestion {
   };
 }
 
+export type SubjectKind = 'legal_company' | 'project' | 'institution' | 'team' | 'unknown';
+export type SubjectKindStatus = 'pending' | 'confirmed';
+
 export interface CompanyRecord {
   companyId: string;
   canonicalName: string;
   status: 'active' | 'provisional' | 'merged';
   aliases: Array<{ alias: string; type: string }>;
+  subjectKind: SubjectKind;
+  subjectKindStatus: SubjectKindStatus;
+  suggestedSubjectKind?: SubjectKind;
+  subjectKindReason?: string;
+  parentCompany?: { companyId: string; canonicalName: string };
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -465,6 +473,22 @@ export interface DecideCandidateInput {
   effectiveAt?: string;
 }
 
+export interface DecideCandidatesBatchInput {
+  decisions: Array<{
+    candidateId: string;
+    expectedVersion: number;
+    action: 'confirm' | 'reject';
+  }>;
+}
+
+export interface ResolveSubjectInput {
+  companyId: string;
+  expectedVersion: number;
+  action: 'confirm' | 'link' | 'merge';
+  subjectKind?: Exclude<SubjectKind, 'unknown'>;
+  targetCompanyId?: string;
+}
+
 export interface ReviewCandidateEvidenceInput {
   candidateId: string;
   evidenceId: string;
@@ -581,10 +605,12 @@ export interface PlatformModule {
   resolveConversationReuse(input: ResolveConversationReuseInput): Promise<ConversationDetail>;
   listCandidates(status?: KnowledgeCandidateRecord['status']): Promise<KnowledgeCandidateRecord[]>;
   decideCandidate(input: DecideCandidateInput): Promise<KnowledgeCandidateRecord>;
+  decideCandidatesBatch(input: DecideCandidatesBatchInput): Promise<KnowledgeCandidateRecord[]>;
   reviewCandidateEvidence(input: ReviewCandidateEvidenceInput): Promise<KnowledgeCandidateRecord>;
   restoreKnowledge(knowledgeId: string, expectedCompanyVersion: number): Promise<CompanyDetail>;
   listCompanies(): Promise<CompanyCardRecord[]>;
   getCompany(companyId: string): Promise<CompanyDetail>;
+  resolveSubject(input: ResolveSubjectInput): Promise<CompanyDetail>;
   getCompanyResearchWorkflowSources(
     companyId: string,
   ): Promise<CompanyResearchWorkflowSourceRecord[]>;
