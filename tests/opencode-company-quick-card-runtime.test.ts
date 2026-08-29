@@ -5,7 +5,15 @@ import {
   createOpenCodeCompanyQuickCardAdapter,
   parseCompanyQuickCardJson,
 } from '../server/research-platform/company-quick-card/opencode-company-quick-card.js';
+import {
+  COMPANY_QUICK_CARD_LIST_FIELDS,
+  COMPANY_QUICK_CARD_TEXT_FIELDS,
+} from '../server/research-platform/company-quick-card/contracts.js';
 import { createRuntimeCompanyQuickCardAdapter } from '../server/research-platform/company-quick-card/runtime-company-quick-card.js';
+import {
+  COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
+  COMPANY_QUICK_CARD_CORE_TEXT_FIELDS,
+} from '../shared/company-quick-card.js';
 
 const fields = {
   companyIdentity: '博源科技有限公司 · 杭州 · 2021 年成立',
@@ -17,7 +25,9 @@ const fields = {
 };
 
 describe('OpenCode 公司快速卡适配器', () => {
-  it('复用 Luna 配置但使用独立公司研究契约，并禁止模型调用工具', async () => {
+  it('复用 BP Luna 配置和公司通用字段，并禁止模型调用工具', async () => {
+    expect(COMPANY_QUICK_CARD_TEXT_FIELDS).toEqual(COMPANY_QUICK_CARD_CORE_TEXT_FIELDS);
+    expect(COMPANY_QUICK_CARD_LIST_FIELDS.slice(0, 1)).toEqual(COMPANY_QUICK_CARD_COMMON_LIST_FIELDS);
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ id: 'company-quick-session' }))
       .mockResolvedValueOnce(jsonResponse({

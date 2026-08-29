@@ -1,4 +1,9 @@
 import type { WebSearchResultItem } from '../search/contracts.js';
+import {
+  COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
+  COMPANY_QUICK_CARD_CORE_TEXT_FIELDS,
+  type CompanyQuickCardCoreFields,
+} from '../../../shared/company-quick-card.js';
 
 export type CompanyIdentityState = 'existing' | 'provisional' | 'ambiguous';
 
@@ -18,21 +23,17 @@ export interface CompanyQuickCardAnalysisInput {
 }
 
 export const COMPANY_QUICK_CARD_TEXT_FIELDS = [
-  { name: 'companyIdentity', prompt: '公司主体、所在地与成立时间' },
-  { name: 'industryTrack', prompt: '行业与细分赛道' },
-  { name: 'financing', prompt: '融资轮次、金额与估值' },
-  { name: 'keyPeople', prompt: '团队关键人、职位与团队规模' },
+  ...COMPANY_QUICK_CARD_CORE_TEXT_FIELDS,
 ] as const;
 
 export const COMPANY_QUICK_CARD_LIST_FIELDS = [
-  { name: 'highlights', prompt: '公司核心亮点', maximum: 3 },
+  ...COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
   { name: 'recentSignals', prompt: '公开来源中的近期业务、产品或融资信号', maximum: 3 },
 ] as const;
 
 export type CompanyQuickCardTextFieldName = typeof COMPANY_QUICK_CARD_TEXT_FIELDS[number]['name'];
 export type CompanyQuickCardListFieldName = typeof COMPANY_QUICK_CARD_LIST_FIELDS[number]['name'];
-export type CompanyQuickCardFields = Record<CompanyQuickCardTextFieldName, string>
-  & Record<CompanyQuickCardListFieldName, string[]>;
+export type CompanyQuickCardFields = CompanyQuickCardCoreFields & { recentSignals: string[] };
 
 export type CompanyQuickCardExtractionResult = CompanyQuickCardFields & {
   providerId: string;

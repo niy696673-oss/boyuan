@@ -21,7 +21,7 @@ interface BotmuxBotConfig {
   apiOnly?: unknown;
 }
 
-interface LarkRequestClient {
+export interface LarkRequestClient {
   request(input: Record<string, unknown>): Promise<unknown>;
   im: {
     v1: {
@@ -61,10 +61,14 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
   #ws: Lark.WSClient | undefined;
   #reviveTimer: NodeJS.Timeout | undefined;
 
-  constructor(config: IntakeConfig, credentials: BotmuxLarkCredentials) {
+  constructor(
+    config: IntakeConfig,
+    credentials: BotmuxLarkCredentials,
+    client?: LarkRequestClient,
+  ) {
     this.#config = config;
     this.#credentials = credentials;
-    this.#client = new Lark.Client({
+    this.#client = client ?? new Lark.Client({
       appId: credentials.appId,
       appSecret: credentials.appSecret,
       domain: openApiDomain(credentials.brand),

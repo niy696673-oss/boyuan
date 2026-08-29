@@ -1,4 +1,9 @@
-import type { CompanyQuickCardResult, JsonObject, QuickCardResult } from './types.js';
+import type {
+  CommonCompanyQuickCardFields,
+  CompanyQuickCardResult,
+  JsonObject,
+  QuickCardResult,
+} from './types.js';
 
 export interface CompletionCardLinks {
   deepAnalysisUrl: string;
@@ -139,9 +144,6 @@ export function completionCard(result: QuickCardResult, links: CompletionCardLin
 
   const companyMatched = Boolean(result.navigation.companyId && links.companyNetworkUrl);
   const industryMatched = Boolean(result.navigation.industryId && links.industryChainUrl);
-  const highlights = result.highlights.length > 0
-    ? result.highlights.map((item) => `<text_tag color='blue'>${markdownValue(item, 48)}</text_tag>`).join(' ')
-    : '材料未披露';
   const identityStatus = companyMatched ? '已关联已有公司' : 'BP 自陈 · 待深度分析';
   const footer = companyMatched
     ? '深度分析继续运行；本卡仅反映并核验本份 BP 自陈事实，跨文档完整网络见公司实体页。'
@@ -149,14 +151,13 @@ export function completionCard(result: QuickCardResult, links: CompletionCardLin
 
   return bodyCard('BP 导入 · 事实核验', [
     designTitleRow('③ BP 导入 · 事实核验（6 维度 + 融资信息）', `置信度${result.confidenceLevel} ${result.confidence}%`),
-    markdown(`**${markdownValue(result.companyName, 80)}**`, 'heading-2'),
-    designPanel('关键信息（来自 BP 事实核验）', [
-      factCard('公司身份', result.companyIdentity, identityStatus),
-      factCard('行业 / 赛道', result.industryTrack, '自陈'),
-      factCard('融资信息', result.financing, '自陈'),
-      factCard('团队关键人', result.keyPeople, '自陈'),
-    ]),
-    designPanel('公司亮点（自陈）', [markdown(highlights)]),
+    ...commonCompanyPanels(result, {
+      informationTitle: '关键信息（来自 BP 事实核验）',
+      highlightsTitle: '公司亮点（自陈）',
+      identityStatus,
+      factStatus: '自陈',
+      emptyHighlights: '材料未披露',
+    }),
     designPanel('关联提示（本份 BP，可下钻）', [
       relationRow(
         '同业参考',
@@ -192,7 +193,6 @@ export function companyResearchCompletionCard(
       openUrlButton('进入深度研究确认', links.deepAnalysisUrl, true),
     ]);
   }
-  const highlights = tagList(result.highlights, '暂未检索到明确亮点');
   const recentSignals = tagList(result.recentSignals, '暂未检索到近期信号');
   const existing = result.identityState === 'existing';
   const footer = existing
@@ -209,14 +209,13 @@ export function companyResearchCompletionCard(
   }
   return bodyCard('公司研究 · 快速分析', [
     designTitleRow('公司研究 · 快速分析', `置信度${result.confidenceLevel} ${result.confidence}%`),
-    markdown(`**${markdownValue(result.companyName, 80)}**`, 'heading-2'),
-    designPanel('关键信息', [
-      factCard('公司身份', result.companyIdentity, existing ? '已有主体' : '待确认主体'),
-      factCard('行业 / 赛道', result.industryTrack, '综合分析'),
-      factCard('融资信息', result.financing, '综合分析'),
-      factCard('团队关键人', result.keyPeople, '综合分析'),
-    ]),
-    designPanel('公司亮点', [markdown(highlights)]),
+    ...commonCompanyPanels(result, {
+      informationTitle: '关键信息',
+      highlightsTitle: '公司亮点',
+      identityStatus: existing ? '已有主体' : '待确认主体',
+      factStatus: '综合分析',
+      emptyHighlights: '暂未检索到明确亮点',
+    }),
     designPanel('近期公开信号', [markdown(recentSignals)]),
     designPanel('本次分析依据', [markdown(
       `公开来源 **${result.sourceCount}** 条 · 已有材料 **${result.materialCount}** 份 · 正式知识 **${result.formalKnowledgeCount}** 条 · 待确认候选 **${result.pendingCandidateCount}** 条`,
@@ -224,6 +223,28 @@ export function companyResearchCompletionCard(
     designPanel('继续查看', navigationElements),
     markdown(`<font color='grey'>${footer}</font>`, 'notation'),
   ]);
+}
+
+function commonCompanyPanels(
+  result: CommonCompanyQuickCardFields,
+  options: {
+    informationTitle: string;
+    highlightsTitle: string;
+    identityStatus: string;
+    factStatus: string;
+    emptyHighlights: string;
+  },
+): JsonObject[] {
+  return [
+    markdown(`**${markdownValue(result.companyName, 80)}**`, 'heading-2'),
+    designPanel(options.informationTitle, [
+      factCard('公司身份', result.companyIdentity, options.identityStatus),
+      factCard('行业 / 赛道', result.industryTrack, options.factStatus),
+      factCard('融资信息', result.financing, options.factStatus),
+      factCard('团队关键人', result.keyPeople, options.factStatus),
+    ]),
+    designPanel(options.highlightsTitle, [markdown(tagList(result.highlights, options.emptyHighlights))]),
+  ];
 }
 
 function tagList(values: string[], empty: string): string {

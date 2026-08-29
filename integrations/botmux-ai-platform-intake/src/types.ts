@@ -1,3 +1,9 @@
+import {
+  COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
+  COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS,
+  type CompanyQuickCardViewFields,
+} from '../../../shared/company-quick-card.js';
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -74,16 +80,12 @@ export interface PlatformCompanyResearchResult {
   reusedResearch: boolean;
 }
 
-export const QUICK_CARD_TEXT_FIELDS = [
-  { name: 'companyName', label: '公司' },
-  { name: 'companyIdentity', label: '公司身份' },
-  { name: 'industryTrack', label: '行业 / 赛道' },
-  { name: 'financing', label: '融资信息' },
-  { name: 'keyPeople', label: '团队关键人' },
-] as const;
+export const COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS = COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS;
+export const COMMON_COMPANY_QUICK_CARD_LIST_FIELDS = COMPANY_QUICK_CARD_COMMON_LIST_FIELDS;
+export const QUICK_CARD_TEXT_FIELDS = COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS;
 
 export const QUICK_CARD_LIST_FIELDS = [
-  { name: 'highlights', label: '公司亮点' },
+  ...COMMON_COMPANY_QUICK_CARD_LIST_FIELDS,
   { name: 'competitorNames', label: '竞品' },
   { name: 'upstreamNames', label: '上游' },
   { name: 'downstreamNames', label: '下游' },
@@ -91,7 +93,13 @@ export const QUICK_CARD_LIST_FIELDS = [
 
 export type QuickCardTextFieldName = typeof QUICK_CARD_TEXT_FIELDS[number]['name'];
 export type QuickCardListFieldName = typeof QUICK_CARD_LIST_FIELDS[number]['name'];
-export type QuickCardFields = Record<QuickCardTextFieldName, string> & Record<QuickCardListFieldName, string[]>;
+export type CommonCompanyQuickCardFields = CompanyQuickCardViewFields;
+
+export type QuickCardFields = CommonCompanyQuickCardFields & {
+  competitorNames: string[];
+  upstreamNames: string[];
+  downstreamNames: string[];
+};
 
 export type QuickCardResult = QuickCardFields & {
   status: 'completed' | 'fallback';
@@ -107,16 +115,10 @@ export type QuickCardResult = QuickCardFields & {
   sessionId?: string;
 };
 
-export type CompanyQuickCardResult = {
+export type CompanyQuickCardResult = CommonCompanyQuickCardFields & {
   kind: 'company_research';
   status: 'completed' | 'pending_confirmation' | 'fallback';
-  companyName: string;
   identityState: 'existing' | 'provisional' | 'ambiguous';
-  companyIdentity: string;
-  industryTrack: string;
-  financing: string;
-  keyPeople: string;
-  highlights: string[];
   recentSignals: string[];
   confidence: number;
   confidenceLevel: '低' | '中' | '高';
@@ -162,27 +164,33 @@ export interface Messenger {
   updateCard?(input: UpdateCardInput): Promise<void>;
 }
 
-export interface IntakeJob {
+interface IntakeJobBase {
   key: string;
   chatId: string;
   sessionId: string;
   messageId: string;
   fileKey: string;
-  fileName: string;
   conversationId: string;
   statusCardMessageId?: string;
   platformAcceptedAt: string;
   completionCardMs: number;
   completionCardSent: boolean;
-  quickCard?: QuickCardResult;
-  kind?: 'bp' | 'company_research';
-  companyQuickCard?: CompanyQuickCardResult;
   createdAt: string;
   lastError?: string;
   cleanupAttachment?: IntakeAttachment;
   cleanupPending?: boolean;
   cleanupError?: string;
 }
+
+export type IntakeJob = IntakeJobBase & ({
+  kind?: 'bp';
+  fileName: string;
+  quickCard?: QuickCardResult;
+} | {
+  kind: 'company_research';
+  companyName: string;
+  companyQuickCard?: CompanyQuickCardResult;
+});
 
 export interface StatusCardReceipt {
   key: string;

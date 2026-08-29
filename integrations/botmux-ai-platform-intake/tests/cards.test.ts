@@ -98,6 +98,9 @@ describe('Feishu completion card', () => {
 
     expect(processing).toContain('完成后本卡片会自动更新');
     expect(completed).toContain('公司研究 · 快速分析');
+    for (const commonField of ['公司身份', '行业 / 赛道', '融资信息', '团队关键人', '公司亮点']) {
+      expect(completed).toContain(commonField);
+    }
     expect(completed).toContain('近期公开信号');
     expect(completed).toContain('公开来源 **4** 条');
     expect(completed).toContain('正式知识 **3** 条');

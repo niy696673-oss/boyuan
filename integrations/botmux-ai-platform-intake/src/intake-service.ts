@@ -240,7 +240,7 @@ export class IntakeService {
       sessionId: turn.sessionId,
       messageId: turn.messageId,
       fileKey: COMPANY_RESEARCH_FILE_KEY,
-      fileName: turn.companyName,
+      companyName: turn.companyName,
       conversationId: accepted.conversation.conversationId,
       ...(statusCardMessageId ? { statusCardMessageId } : {}),
       platformAcceptedAt: new Date(acceptedMs).toISOString(),
@@ -369,12 +369,14 @@ export class IntakeService {
     }
   }
 
-  async #finishCompanyResearch(job: IntakeJob): Promise<void> {
+  async #finishCompanyResearch(
+    job: Extract<IntakeJob, { kind: 'company_research' }>,
+  ): Promise<void> {
     if (!job.companyQuickCard) {
       try {
         job.companyQuickCard = await this.#platform.companyQuickCard(job.conversationId);
       } catch (error) {
-        job.companyQuickCard = failedCompanyQuickCard(job.fileName);
+        job.companyQuickCard = failedCompanyQuickCard(job.companyName);
         job.lastError = errorMessage(error);
       }
       this.#store.put(job);

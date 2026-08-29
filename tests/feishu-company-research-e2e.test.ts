@@ -10,6 +10,7 @@ import { createDemoServices } from '../server/platform/runtime.js';
 import type { CompanyQuickCardAnalysisPort } from '../server/research-platform/company-quick-card/contracts.js';
 import type { PlatformModule } from '../server/research-platform/contracts.js';
 import { createPlatformModule } from '../server/research-platform/platform-module.js';
+import { createPlatformWorker, type PlatformWorker } from '../server/research-platform/platform-worker.js';
 import { createDeterministicResearchAdapter } from '../server/research-platform/research/deterministic-research.js';
 import type { WebSearchPort } from '../server/research-platform/search/contracts.js';
 import { initialStoreData, Store } from '../server/store.js';
@@ -28,8 +29,10 @@ import { COMPANY_RESEARCH_FILE_KEY } from '../integrations/botmux-ai-platform-in
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 const servers: Server[] = [];
+const workers: PlatformWorker[] = [];
 
 afterEach(async () => {
+  while (workers.length) workers.pop()?.stop();
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   while (modules.length) modules.pop()?.close();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -66,6 +69,7 @@ describe('飞书公司名研究本地端到端', () => {
       search: { search },
     });
     modules.push(platform);
+    workers.push(createPlatformWorker(platform, { intervalMs: 5, batchSize: 10 }));
     const appStore = new Store({ initialData: initialStoreData(), persistToDisk: false });
     const app = createApp(appStore, createDemoServices(appStore), {
       researchPlatform: platform,
@@ -136,6 +140,9 @@ describe('飞书公司名研究本地端到端', () => {
     })).resolves.toEqual({ handled: true });
 
     expect(messenger.sendCard).toHaveBeenCalledOnce();
+    expect(messenger.sendCard.mock.invocationCallOrder[0]).toBeLessThan(
+      analyze.mock.invocationCallOrder[0]!,
+    );
     expect(updates).toHaveLength(1);
     expect(updates[0]?.cardMessageId).toBe('om_processing_card');
     const rendered = JSON.stringify(updates[0]?.card);
@@ -147,11 +154,11 @@ describe('飞书公司名研究本地端到端', () => {
     const [conversation] = await platform.listConversations();
     expect(conversation).toMatchObject({
       sourceChannel: 'feishu',
-      status: 'waiting',
       type: 'company',
     });
-    for (let index = 0; index < 20; index += 1) {
-      if ((await platform.runPendingSteps()) === 0) break;
+    for (let index = 0; index < 100; index += 1) {
+      if ((await platform.getConversation(conversation!.conversationId)).status === 'completed') break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
     }
     expect(await platform.getConversation(conversation!.conversationId)).toMatchObject({
       status: 'completed',

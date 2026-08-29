@@ -1,8 +1,13 @@
 import { createReadStream } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { QUICK_CARD_LIST_FIELDS, QUICK_CARD_TEXT_FIELDS } from './types.js';
+import {
+  COMMON_COMPANY_QUICK_CARD_LIST_FIELDS,
+  COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS,
+  QUICK_CARD_LIST_FIELDS,
+} from './types.js';
 import type {
+  CommonCompanyQuickCardFields,
   CompanyQuickCardResult,
   CompanyResearchTurn,
   IntakeAttachment,
@@ -158,8 +163,12 @@ function parseConversation(value: unknown): PlatformConversation {
 
 function parseQuickCard(value: unknown): QuickCardResult {
   const source = record(value);
-  const textFields = Object.fromEntries(QUICK_CARD_TEXT_FIELDS.map(({ name }) => [name, text(source[name])])) as Pick<QuickCardFields, typeof QUICK_CARD_TEXT_FIELDS[number]['name']>;
-  const listFields = Object.fromEntries(QUICK_CARD_LIST_FIELDS.map(({ name }) => [name, stringArray(source[name])])) as Pick<QuickCardFields, typeof QUICK_CARD_LIST_FIELDS[number]['name']>;
+  const commonFields = parseCommonCompanyQuickCardFields(source);
+  const relationFields = Object.fromEntries(
+    QUICK_CARD_LIST_FIELDS
+      .filter(({ name }) => name !== 'highlights')
+      .map(({ name }) => [name, stringArray(source[name])]),
+  ) as Pick<QuickCardFields, 'competitorNames' | 'upstreamNames' | 'downstreamNames'>;
   const confidence = source.confidence;
   if (typeof confidence !== 'number' || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) {
     throw new Error('platform_invalid_response');
@@ -168,8 +177,8 @@ function parseQuickCard(value: unknown): QuickCardResult {
   if (!['低', '中', '高'].includes(String(confidenceLevel))) throw new Error('platform_invalid_response');
   const navigation = record(source.navigation);
   return {
-    ...textFields,
-    ...listFields,
+    ...commonFields,
+    ...relationFields,
     status: 'completed',
     confidence,
     confidenceLevel: confidenceLevel as QuickCardResult['confidenceLevel'],
@@ -201,15 +210,10 @@ function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
   if (!['低', '中', '高'].includes(String(confidenceLevel))) throw new Error('platform_invalid_response');
   const navigation = record(source.navigation);
   return {
+    ...parseCommonCompanyQuickCardFields(source),
     kind: 'company_research',
     status: source.status as CompanyQuickCardResult['status'],
     identityState: source.identityState as CompanyQuickCardResult['identityState'],
-    companyName: text(source.companyName),
-    companyIdentity: text(source.companyIdentity),
-    industryTrack: text(source.industryTrack),
-    financing: text(source.financing),
-    keyPeople: text(source.keyPeople),
-    highlights: stringArray(source.highlights),
     recentSignals: stringArray(source.recentSignals),
     confidence,
     confidenceLevel: confidenceLevel as CompanyQuickCardResult['confidenceLevel'],
@@ -226,6 +230,18 @@ function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
     ...(typeof source.variant === 'string' ? { variant: source.variant } : {}),
     ...(typeof source.sessionId === 'string' ? { sessionId: source.sessionId } : {}),
   };
+}
+
+function parseCommonCompanyQuickCardFields(
+  source: Record<string, unknown>,
+): CommonCompanyQuickCardFields {
+  const textFields = Object.fromEntries(
+    COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS.map(({ name }) => [name, text(source[name])]),
+  ) as Record<typeof COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS[number]['name'], string>;
+  const listFields = Object.fromEntries(
+    COMMON_COMPANY_QUICK_CARD_LIST_FIELDS.map(({ name }) => [name, stringArray(source[name])]),
+  ) as Record<typeof COMMON_COMPANY_QUICK_CARD_LIST_FIELDS[number]['name'], string[]>;
+  return { ...textFields, ...listFields };
 }
 
 function nonNegativeInteger(value: unknown): number {
