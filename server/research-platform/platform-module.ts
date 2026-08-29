@@ -82,6 +82,7 @@ import { validateWorkflowResearchOutput } from './research/workflow-policy.js';
 import { SearchAdapterError, type SearchTriggerReason, type WebSearchPort, type WebSearchResultItem } from './search/contracts.js';
 import { createDeterministicSemanticSearchAdapter } from './semantic-search/deterministic-semantic-search.js';
 import type { SemanticCorpusItem, SemanticSearchPort } from './semantic-search/contracts.js';
+import { reviewCandidateRiskReasons } from '../../shared/review-packages.js';
 
 const PIPELINE_STEPS = [
   'persist_document',
@@ -610,89 +611,10 @@ class SqlitePlatformModule implements PlatformModule {
     if (!['pending', 'conflicted'].includes(candidate.status) || candidate.version !== input.expectedVersion) {
       throw new PlatformConflictError('version_conflict', 'candidate has changed; refresh and retry');
     }
-    if (input.action !== 'confirm' && input.action !== 'modify' && input.action !== 'reject') {
-      throw new PlatformInputError('invalid_confirmation_action', 'confirmation action is invalid');
-    }
-    if (input.action !== 'reject' && candidate.evidence.length === 0) {
-      throw new PlatformInputError('candidate_evidence_required', '候选至少需要一条支持证据才能确认');
-    }
-    const statement = input.action === 'modify' ? input.statement?.trim() : candidate.statement;
-    if (input.action === 'modify' && !statement) throw new PlatformInputError('statement_required', 'modified statement is required');
-    const decidedStatement = statement ?? candidate.statement;
-    const value = input.action === 'modify' ? input.value?.trim() : candidate.value;
-    const effectiveAt = input.action === 'modify' ? input.effectiveAt?.trim() : candidate.effectiveAt;
+    this.#validateCandidateDecision(candidate, input);
     const now = this.#now().toISOString();
     this.#transaction(() => {
-      const resultingStatus = input.action === 'reject' ? 'rejected' : input.action === 'modify' ? 'modified_confirmed' : 'confirmed';
-      let knowledgeId: string | undefined;
-      let after: Record<string, unknown> | undefined;
-      if (input.action !== 'reject') {
-        const previous = this.#db.prepare(`
-          SELECT knowledge_id, statement, value, version, status FROM knowledge
-          WHERE company_id = ? AND knowledge_type = ? AND status IN ('current', 'disputed')
-          ORDER BY version DESC, created_at DESC LIMIT 1
-        `).get(candidate.companyId, candidate.knowledgeType) as {
-          knowledge_id: string; statement: string; value: string | null; version: number; status: string;
-        } | undefined;
-        knowledgeId = this.#nextId();
-        if (previous) {
-          this.#db.prepare("UPDATE knowledge SET status = 'superseded' WHERE knowledge_id = ?")
-            .run(previous.knowledge_id);
-        }
-        this.#db.prepare(`
-          INSERT INTO knowledge (
-            knowledge_id, company_id, knowledge_type, statement, value, effective_at, status,
-            version, supersedes_id, source_candidate_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          knowledgeId, candidate.companyId, candidate.knowledgeType, decidedStatement,
-          value || null, effectiveAt || null, 'current',
-          (previous?.version ?? 0) + 1, previous?.knowledge_id ?? null,
-          candidate.candidateId, now,
-        );
-        this.#db.prepare(`
-          INSERT INTO knowledge_evidence (knowledge_id, evidence_id)
-          SELECT ?, evidence_id FROM candidate_evidence WHERE candidate_id = ? AND status = 'supporting'
-        `).run(knowledgeId, candidate.candidateId);
-        this.#db.prepare('UPDATE companies SET version = version + 1, updated_at = ? WHERE company_id = ?')
-          .run(now, candidate.companyId);
-        after = { knowledgeId, statement: decidedStatement, value, effectiveAt, status: 'current' };
-      }
-      const changed = this.#db.prepare(`
-        UPDATE knowledge_candidates SET status = ?, version = version + 1, statement = ?, value = ?, effective_at = ?, updated_at = ?
-        WHERE candidate_id = ? AND version = ? AND status IN ('pending', 'conflicted')
-      `).run(resultingStatus, decidedStatement, value || null, effectiveAt || null, now, candidate.candidateId, input.expectedVersion);
-      if (changed.changes !== 1) throw new PlatformConflictError('version_conflict', 'candidate has changed; refresh and retry');
-      this.#db.prepare(`
-        INSERT INTO confirmation_records (
-          confirmation_id, candidate_id, action, before_json, after_json,
-          expected_version, resulting_knowledge_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        this.#nextId(), candidate.candidateId, input.action, JSON.stringify(candidate),
-        after ? JSON.stringify(after) : null, input.expectedVersion, knowledgeId ?? null, now,
-      );
-      this.#audit(`candidate.${input.action}`, 'knowledge_candidate', candidate.candidateId, candidate as unknown as Record<string, unknown>, {
-        status: resultingStatus, version: candidate.version + 1, ...(after ?? {}),
-      }, now);
-      if (input.action !== 'reject') this.#applyOrganizationCandidate(candidate, decidedStatement, value, now);
-      if (input.action !== 'reject' && candidate.sectionKey === 'industry_chain_position') {
-        this.#db.prepare(`
-          UPDATE company_industries SET status = 'confirmed', position_label = ?, updated_at = ?
-          WHERE company_id = ? AND industry_id IN (
-            SELECT im.industry_id FROM industry_materials im
-            JOIN analysis_tasks task ON task.conversation_id = im.conversation_id
-            WHERE task.task_id = (
-              SELECT task_id FROM knowledge_candidates WHERE candidate_id = ?
-            )
-          )
-        `).run(value || decidedStatement, now, candidate.companyId, candidate.candidateId);
-        this.#db.prepare(`
-          UPDATE industries SET status = 'active', updated_at = ? WHERE industry_id IN (
-            SELECT industry_id FROM company_industries WHERE company_id = ? AND status = 'confirmed'
-          )
-        `).run(now, candidate.companyId);
-      }
+      this.#applyCandidateDecision(candidate, input, now);
     });
     const updated = this.#candidateRecords('WHERE kc.candidate_id = ?', input.candidateId)[0];
     if (!updated) throw new Error('candidate_update_missing');
@@ -737,14 +659,17 @@ class SqlitePlatformModule implements PlatformModule {
       ) {
         throw new PlatformConflictError('version_conflict', '候选已变化，请刷新后重试');
       }
+      const reasons = reviewCandidateRiskReasons(candidate);
+      if (reasons.length) {
+        throw new PlatformInputError(
+          decision.action === 'confirm'
+            ? 'unsafe_batch_confirmation'
+            : 'unsafe_batch_rejection',
+          `候选需要逐条处理：${reasons.join('、')}`,
+        );
+      }
+      this.#validateCandidateDecision(candidate, decision);
       if (decision.action === 'confirm') {
-        const reasons = batchConfirmationRiskReasons(candidate);
-        if (reasons.length) {
-          throw new PlatformInputError(
-            'unsafe_batch_confirmation',
-            `候选需要逐条确认：${reasons.join('、')}`,
-          );
-        }
         const typeKey = `${candidate.companyId}:${candidate.knowledgeType}`;
         if (confirmedTypes.has(typeKey)) {
           throw new PlatformInputError(
@@ -755,11 +680,132 @@ class SqlitePlatformModule implements PlatformModule {
         confirmedTypes.add(typeKey);
       }
     }
-    const updated: KnowledgeCandidateRecord[] = [];
-    for (const decision of input.decisions) {
-      updated.push(await this.decideCandidate(decision));
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      for (const decision of input.decisions) {
+        const candidate = candidates.get(decision.candidateId);
+        if (!candidate) throw new Error('validated_batch_candidate_missing');
+        this.#applyCandidateDecision(candidate, decision, now);
+      }
+    });
+    return candidateIds.map((candidateId) => {
+      const candidate = this.#candidateRecords(
+        'WHERE kc.candidate_id = ?',
+        candidateId,
+      )[0];
+      if (!candidate) throw new Error('candidate_update_missing');
+      return candidate;
+    });
+  }
+
+  #validateCandidateDecision(
+    candidate: KnowledgeCandidateRecord,
+    input: DecideCandidateInput,
+  ): void {
+    if (input.action !== 'confirm' && input.action !== 'modify' && input.action !== 'reject') {
+      throw new PlatformInputError('invalid_confirmation_action', 'confirmation action is invalid');
     }
-    return updated;
+    if (input.action !== 'reject' && candidate.evidence.length === 0) {
+      throw new PlatformInputError('candidate_evidence_required', '候选至少需要一条支持证据才能确认');
+    }
+    if (input.action === 'modify' && !input.statement?.trim()) {
+      throw new PlatformInputError('statement_required', 'modified statement is required');
+    }
+  }
+
+  #applyCandidateDecision(
+    candidate: KnowledgeCandidateRecord,
+    input: DecideCandidateInput,
+    now: string,
+  ): void {
+    const statement = input.action === 'modify'
+      ? input.statement?.trim()
+      : candidate.statement;
+    const decidedStatement = statement ?? candidate.statement;
+    const value = input.action === 'modify' ? input.value?.trim() : candidate.value;
+    const effectiveAt = input.action === 'modify'
+      ? input.effectiveAt?.trim()
+      : candidate.effectiveAt;
+    const resultingStatus = input.action === 'reject'
+      ? 'rejected'
+      : input.action === 'modify'
+        ? 'modified_confirmed'
+        : 'confirmed';
+    let knowledgeId: string | undefined;
+    let after: Record<string, unknown> | undefined;
+
+    if (input.action !== 'reject') {
+      const previous = this.#db.prepare(`
+        SELECT knowledge_id, statement, value, version, status FROM knowledge
+        WHERE company_id = ? AND knowledge_type = ? AND status IN ('current', 'disputed')
+        ORDER BY version DESC, created_at DESC, knowledge_id DESC LIMIT 1
+      `).get(candidate.companyId, candidate.knowledgeType) as {
+        knowledge_id: string; statement: string; value: string | null; version: number; status: string;
+      } | undefined;
+      knowledgeId = this.#nextId();
+      this.#db.prepare(`
+        UPDATE knowledge SET status = 'superseded'
+        WHERE company_id = ? AND knowledge_type = ? AND status IN ('current', 'disputed')
+      `).run(candidate.companyId, candidate.knowledgeType);
+      this.#db.prepare(`
+        INSERT INTO knowledge (
+          knowledge_id, company_id, knowledge_type, statement, value, effective_at, status,
+          version, supersedes_id, source_candidate_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        knowledgeId, candidate.companyId, candidate.knowledgeType, decidedStatement,
+        value || null, effectiveAt || null, 'current',
+        (previous?.version ?? 0) + 1, previous?.knowledge_id ?? null,
+        candidate.candidateId, now,
+      );
+      this.#db.prepare(`
+        INSERT INTO knowledge_evidence (knowledge_id, evidence_id)
+        SELECT ?, evidence_id FROM candidate_evidence WHERE candidate_id = ? AND status = 'supporting'
+      `).run(knowledgeId, candidate.candidateId);
+      this.#db.prepare('UPDATE companies SET version = version + 1, updated_at = ? WHERE company_id = ?')
+        .run(now, candidate.companyId);
+      after = { knowledgeId, statement: decidedStatement, value, effectiveAt, status: 'current' };
+    }
+
+    const changed = this.#db.prepare(`
+      UPDATE knowledge_candidates SET status = ?, version = version + 1, statement = ?, value = ?, effective_at = ?, updated_at = ?
+      WHERE candidate_id = ? AND version = ? AND status IN ('pending', 'conflicted')
+    `).run(resultingStatus, decidedStatement, value || null, effectiveAt || null, now, candidate.candidateId, input.expectedVersion);
+    if (changed.changes !== 1) {
+      throw new PlatformConflictError('version_conflict', 'candidate has changed; refresh and retry');
+    }
+    this.#db.prepare(`
+      INSERT INTO confirmation_records (
+        confirmation_id, candidate_id, action, before_json, after_json,
+        expected_version, resulting_knowledge_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      this.#nextId(), candidate.candidateId, input.action, JSON.stringify(candidate),
+      after ? JSON.stringify(after) : null, input.expectedVersion, knowledgeId ?? null, now,
+    );
+    this.#audit(`candidate.${input.action}`, 'knowledge_candidate', candidate.candidateId, candidate as unknown as Record<string, unknown>, {
+      status: resultingStatus, version: candidate.version + 1, ...(after ?? {}),
+    }, now);
+    if (input.action !== 'reject') {
+      this.#applyOrganizationCandidate(candidate, decidedStatement, value, now);
+    }
+    if (input.action !== 'reject' && candidate.sectionKey === 'industry_chain_position') {
+      this.#db.prepare(`
+        UPDATE company_industries SET status = 'confirmed', position_label = ?, updated_at = ?
+        WHERE company_id = ? AND industry_id IN (
+          SELECT im.industry_id FROM industry_materials im
+          JOIN analysis_tasks task ON task.conversation_id = im.conversation_id
+          WHERE task.task_id = (
+            SELECT task_id FROM knowledge_candidates WHERE candidate_id = ?
+          )
+        )
+      `).run(value || decidedStatement, now, candidate.companyId, candidate.candidateId);
+      this.#db.prepare(`
+        UPDATE industries SET status = 'active', updated_at = ? WHERE industry_id IN (
+          SELECT industry_id FROM company_industries WHERE company_id = ? AND status = 'confirmed'
+        )
+      `).run(now, candidate.companyId);
+    }
   }
 
   async reviewCandidateEvidence(input: ReviewCandidateEvidenceInput): Promise<KnowledgeCandidateRecord> {
@@ -2445,6 +2491,14 @@ class SqlitePlatformModule implements PlatformModule {
           this.#db.prepare('INSERT INTO analysis_section_evidence (section_id, evidence_id) VALUES (?, ?)').run(sectionId, evidenceId);
         }
       }
+      this.#updateSubjectSuggestion(
+        company.company_id,
+        company.canonical_name,
+        result.sections.find(
+          (section) => section.key === 'company_and_project_stage',
+        )?.summary,
+        now,
+      );
       const industryMarketSection = result.sections.find(
         (section) => section.key === 'industry_market_and_policy',
       );
@@ -3186,6 +3240,36 @@ class SqlitePlatformModule implements PlatformModule {
       `).run(this.#nextId(), companyId, alias, now);
     }
     return companyId;
+  }
+
+  #updateSubjectSuggestion(
+    companyId: string,
+    canonicalName: string,
+    analysisSummary: string | undefined,
+    now: string,
+  ): void {
+    const suggestion = suggestSubjectKind(canonicalName, analysisSummary);
+    this.#db.prepare(`
+      UPDATE companies SET suggested_subject_kind = ?, subject_kind_reason = ?,
+        updated_at = ?
+      WHERE company_id = ? AND subject_kind_status = 'pending'
+    `).run(suggestion.kind, suggestion.reason, now, companyId);
+  }
+
+  #latestSubjectAnalysisSummary(companyId: string): string | undefined {
+    const row = this.#db.prepare(`
+      SELECT section.summary
+      FROM analysis_sections section
+      JOIN analysis_tasks task ON task.task_id = section.task_id
+      JOIN conversation_companies link
+        ON link.conversation_id = task.conversation_id AND link.role = 'primary'
+      WHERE link.company_id = ?
+        AND section.section_key = 'company_and_project_stage'
+        AND task.result_status = 'validated'
+      ORDER BY section.created_at DESC, section.section_id DESC
+      LIMIT 1
+    `).get(companyId) as { summary: string } | undefined;
+    return row?.summary;
   }
 
   #addDocumentAliases(companyId: string, blocks: ParsedBlock[]): void {
@@ -5516,7 +5600,10 @@ class SqlitePlatformModule implements PlatformModule {
         canonical_name: string;
       }>;
       for (const company of companies) {
-        const suggestion = suggestSubjectKind(company.canonical_name);
+        const suggestion = suggestSubjectKind(
+          company.canonical_name,
+          this.#latestSubjectAnalysisSummary(company.company_id),
+        );
         this.#db.prepare(`
           UPDATE companies SET suggested_subject_kind = ?, subject_kind_reason = ?
           WHERE company_id = ?
@@ -5820,6 +5907,7 @@ class SqlitePlatformModule implements PlatformModule {
     `).run(targetCompanyId, now, sourceCompanyId);
     this.#db.prepare('UPDATE knowledge SET company_id = ? WHERE company_id = ?')
       .run(targetCompanyId, sourceCompanyId);
+    this.#reconcileMergedKnowledge(targetCompanyId);
     this.#db.prepare(`
       UPDATE company_list_rows SET confirmed_company_id = ?, updated_at = ?
       WHERE confirmed_company_id = ?
@@ -5875,6 +5963,55 @@ class SqlitePlatformModule implements PlatformModule {
     );
     this.#db.prepare('DELETE FROM companies WHERE company_id = ?')
       .run(sourceCompanyId);
+  }
+
+  #reconcileMergedKnowledge(companyId: string): void {
+    const types = this.#db.prepare(`
+      SELECT knowledge_type
+      FROM knowledge
+      WHERE company_id = ? AND status IN ('current', 'disputed')
+      GROUP BY knowledge_type
+      HAVING COUNT(*) > 1
+    `).all(companyId) as unknown as Array<{ knowledge_type: string }>;
+    for (const { knowledge_type: knowledgeType } of types) {
+      const rows = this.#db.prepare(`
+        SELECT knowledge_id, statement, value, effective_at, version,
+          supersedes_id, status
+        FROM knowledge
+        WHERE company_id = ? AND knowledge_type = ?
+          AND status IN ('current', 'disputed')
+        ORDER BY version DESC, created_at DESC, knowledge_id DESC
+      `).all(companyId, knowledgeType) as unknown as Array<{
+        knowledge_id: string;
+        statement: string;
+        value: string | null;
+        effective_at: string | null;
+        version: number;
+        supersedes_id: string | null;
+        status: string;
+      }>;
+      const keeper = rows[0];
+      const superseded = rows.slice(1);
+      const distinctValues = new Set(
+        rows.map((row) => normalizeComparable(
+          `${row.statement}\u0000${row.value ?? ''}\u0000${row.effective_at ?? ''}`,
+        )),
+      );
+      for (const row of superseded) {
+        this.#db.prepare(`
+          UPDATE knowledge SET status = 'superseded' WHERE knowledge_id = ?
+        `).run(row.knowledge_id);
+      }
+      this.#db.prepare(`
+        UPDATE knowledge SET status = ?, version = ?, supersedes_id = ?
+        WHERE knowledge_id = ?
+      `).run(
+        distinctValues.size > 1 ? 'disputed' : 'current',
+        Math.max(...rows.map((row) => row.version)),
+        keeper.supersedes_id ?? superseded[0]?.knowledge_id ?? null,
+        keeper.knowledge_id,
+      );
+    }
   }
 
   #confirmedLegalCompany(companyId: string): CompanyRecord {
@@ -6369,7 +6506,7 @@ function hasLegalEntitySuffix(value: string): boolean {
   return /(?:股份有限公司|有限责任公司|有限公司)$/u.test(value);
 }
 
-function suggestSubjectKind(value: string): {
+function suggestSubjectKind(value: string, analysisSummary?: string): {
   kind: SubjectKind;
   reason: string;
 } {
@@ -6382,13 +6519,37 @@ function suggestSubjectKind(value: string): {
   if (/(?:团队|创新组|创业组)$/u.test(value)) {
     return { kind: 'team', reason: '名称符合团队命名特征' };
   }
+  const summary = analysisSummary?.trim();
+  if (summary) {
+    if (
+      /(?:法律主体|工商主体|运营主体|融资主体|项目公司|公司全称)\s*(?:为|是|[:：])?\s*[^。；;\n]{0,80}(?:股份有限公司|有限责任公司|有限公司)/u.test(summary)
+    ) {
+      return { kind: 'legal_company', reason: '材料分析明确披露了法律公司主体' };
+    }
+    if (/(?:主体类型|组织性质)\s*(?:为|是|[:：])?\s*(?:研究院|研究所|大学|学院|实验室|中心)/u.test(summary)) {
+      return { kind: 'institution', reason: '材料分析将主体描述为机构' };
+    }
+    if (/(?:主体类型|组织形式|项目团队)\s*(?:为|是|[:：])?\s*(?:团队|创新组|创业组)/u.test(summary)) {
+      return { kind: 'team', reason: '材料分析将主体描述为团队' };
+    }
+    if (
+      /(?:项目|产品|系统|平台|技术).{0,32}(?:阶段|研发|验证|测试|商业化|应用|解决方案)/u.test(summary)
+      || /(?:项目名称|产品名称|技术名称|本项目|该项目)/u.test(summary)
+      || /材料主体为[^。；;\n]{0,80}项目/u.test(summary)
+    ) {
+      return { kind: 'project', reason: '材料分析表明该主体是项目、产品或技术' };
+    }
+  }
   if (
     /^基于/u.test(value)
     || /(?:项目|系统|平台|软件|技术(?:研究|开发)?|测试|测压|压力计|受感部|飞行器|装备制造|设计及应用|工艺|导航员)(?:$|——)/u.test(value)
   ) {
     return { kind: 'project', reason: '名称更像项目、产品或技术名称' };
   }
-  return { kind: 'unknown', reason: '仅凭名称无法可靠判断主体类型' };
+  if (summary) {
+    return { kind: 'unknown', reason: '材料分析未能可靠确定主体类型' };
+  }
+  return { kind: 'unknown', reason: '尚无足够名称或材料证据判断主体类型' };
 }
 
 function companyAliases(value: string): string[] {
@@ -6409,17 +6570,4 @@ function extractDeclaredAliases(blocks: ParsedBlock[]): string[] {
 
 function normalizeComparable(value: string): string {
   return value.normalize('NFKC').replace(/\s+/gu, '').toLowerCase();
-}
-
-function batchConfirmationRiskReasons(
-  candidate: KnowledgeCandidateRecord,
-): string[] {
-  return [
-    ...(candidate.highImpact ? ['高影响'] : []),
-    ...(candidate.sensitive ? ['敏感信息'] : []),
-    ...(candidate.status === 'conflicted' ? ['存在冲突'] : []),
-    ...(candidate.evidence.length === 0 ? ['缺少支持证据'] : []),
-    ...((candidate.unsupportedEvidence?.length ?? 0) > 0 ? ['存在不支持证据'] : []),
-    ...((candidate.conflictingKnowledge?.length ?? 0) > 0 ? ['与正式知识冲突'] : []),
-  ];
 }

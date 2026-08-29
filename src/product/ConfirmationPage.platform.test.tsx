@@ -239,6 +239,7 @@ describe("持久候选知识待确认页面接缝", () => {
     const web: ReviewQueueItem = {
       ...reviewItem(),
       candidateId: "candidate-web",
+      companyId: "company-web",
       statement: "雪松科技已发布新的行业解决方案。",
       highImpact: true,
       evidence: [
@@ -258,6 +259,7 @@ describe("持久候选知识待确认页面接缝", () => {
     const conflicted: ReviewQueueItem = {
       ...reviewItem(),
       candidateId: "candidate-conflicted",
+      companyId: "company-conflicted",
       statement: "冷杉智能的收入信息存在冲突。",
       status: "conflicted",
       company: {
@@ -357,6 +359,7 @@ describe("持久候选知识待确认页面接缝", () => {
   it("确认成功后移除候选并同步全局数量", async () => {
     const item = reviewItem();
     const onQueueCountChange = vi.fn();
+    const reload = vi.fn();
     const client: ReviewQueueClient = {
       list: vi.fn().mockResolvedValue({ items: [item], total: 1 }),
       decide: vi.fn().mockResolvedValue({
@@ -371,7 +374,7 @@ describe("持久候选知识待确认页面接缝", () => {
       <MemoryRouter>
         <ConfirmationPage
           data={emptyBootstrap()}
-          reload={vi.fn()}
+          reload={reload}
           reviewClient={client}
           onQueueCountChange={onQueueCountChange}
         />
@@ -390,6 +393,54 @@ describe("持久候选知识待确认页面接缝", () => {
       await screen.findByRole("heading", { name: "待确认内容已处理完毕" }),
     ).toBeTruthy();
     expect(onQueueCountChange).toHaveBeenLastCalledWith(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("批量确认重复低风险候选后刷新主体卡片和详情数据", async () => {
+    const first = reviewItem();
+    const duplicate: ReviewQueueItem = {
+      ...reviewItem(),
+      candidateId: "candidate-duplicate",
+      statement: `  ${first.statement}。 `,
+    };
+    const reload = vi.fn();
+    const client: ReviewQueueClient = {
+      list: vi.fn().mockResolvedValue({ items: [first, duplicate], total: 2 }),
+      decide: vi.fn(),
+      decideBatch: vi.fn().mockResolvedValue({
+        candidates: [
+          { ...first, status: "confirmed", version: 2 },
+          { ...duplicate, status: "rejected", version: 2 },
+        ],
+        remainingCount: 0,
+      }),
+    };
+
+    render(
+      <MemoryRouter>
+        <ConfirmationPage
+          data={emptyBootstrap()}
+          reload={reload}
+          reviewClient={client}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "批量确认低风险组（2）",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(client.decideBatch).toHaveBeenCalledWith({
+        decisions: [
+          { candidateId: first.candidateId, expectedVersion: 1, action: "confirm" },
+          { candidateId: duplicate.candidateId, expectedVersion: 1, action: "reject" },
+        ],
+      }),
+    );
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it("修改候选后以修改确认动作提交新陈述", async () => {

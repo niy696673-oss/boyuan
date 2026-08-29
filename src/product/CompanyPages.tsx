@@ -168,7 +168,7 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
         <div className="by-directory-toolbar">
           <span><Filter />当前显示 {companies.length} 个主体</span>
           <div>
-            <select aria-label="公司排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近更新</option><option>材料数量</option></select>
+            <select aria-label="主体排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近更新</option><option>材料数量</option></select>
             <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")}>卡片</button>
             <button className={view === "rows" ? "active" : ""} onClick={() => setView("rows")}>列表</button>
           </div>
@@ -288,9 +288,9 @@ export function CompanyDetailPage({ data, reload, companyClient = defaultCompany
     if (resolved.id !== id) navigate(`/companies/${resolved.id}`, { replace: true });
   };
 
-  if (state === "loading") return <CompanyLoadState title="正在加载公司档案…" />;
-  if (state === "not-found") return <CompanyLoadState title="找不到这家公司" description="该公司可能不存在，或已经被合并。" />;
-  if (state === "error" || !company) return <CompanyLoadState title="公司档案加载失败" />;
+  if (state === "loading") return <CompanyLoadState title="正在加载主体档案…" />;
+  if (state === "not-found") return <CompanyLoadState title="找不到这个研究主体" description="该主体可能不存在，或已经被合并。" />;
+  if (state === "error" || !company) return <CompanyLoadState title="主体档案加载失败" />;
   return <CompanyDetailContent data={data} company={company} directory={directory} onUpload={uploadCompanyMaterial} onWatch={updateWatched} onResolveSubject={resolveSubject} />;
 }
 
@@ -479,8 +479,8 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
             <div className="by-company-primary-column">
               <MaterialAnalysisOverview company={company} />
               <section className="by-confirmed-overview">
-                <header><h2>机构已确认认知</h2><span><ShieldCheck />仅展示正式知识</span></header>
-                {["公司身份", "产品与技术", "商业与融资", "风险与待验证"].map((category, index) => {
+                <header><h2>主体已确认知识</h2><span><ShieldCheck />仅展示正式知识</span></header>
+                {["主体身份", "产品与技术", "商业与融资", "风险与待验证"].map((category, index) => {
                   const claim = confirmed[index];
                   return <KnowledgeRow key={category} icon={index === 0 ? <Building2 /> : index === 1 ? <Sparkles /> : index === 2 ? <Globe2 /> : <ShieldCheck />} category={category} claim={claim} evidenceCount={claim?.evidenceIds.length || 0} />;
                 })}
@@ -520,7 +520,7 @@ function CompanyDirectory({ companies, activeId }: { companies: CompanyView[]; a
 
 function KnowledgeRow({ icon, category, claim, evidenceCount }: { icon: React.ReactNode; category: string; claim?: Claim; evidenceCount: number }) {
   return (
-    <article className="by-knowledge-row"><span>{icon}</span><div><h3>{category}</h3><p>{claim?.text || "暂无经过确认的机构知识。"}</p><small>证据来源 {evidenceCount} · 最后确认 {claim?.eventTime || "待补充"}</small></div>{claim && <button>查看 {evidenceCount} 条证据<ChevronRight /></button>}</article>
+    <article className="by-knowledge-row"><span>{icon}</span><div><h3>{category}</h3><p>{claim?.text || "暂无经过确认的主体知识。"}</p><small>证据来源 {evidenceCount} · 最后确认 {claim?.eventTime || "待补充"}</small></div>{claim && <button>查看 {evidenceCount} 条证据<ChevronRight /></button>}</article>
   );
 }
 
@@ -534,7 +534,7 @@ function MaterialAnalysisOverview({ company }: { company: CompanyView }) {
         <div className="by-inline-empty">暂无材料分析结果</div>
       ) : (
         <>
-          <article className="by-knowledge-row"><span><FileText /></span><div><h3>{analysis.fileName}</h3><p>{analysis.summary || company.description}</p><small>材料分析摘要 · 不等于机构正式知识 · {analysis.sectionCount} 个维度</small></div></article>
+          <article className="by-knowledge-row"><span><FileText /></span><div><h3>{analysis.fileName}</h3><p>{analysis.summary || company.description}</p><small>材料分析摘要 · 不等于主体正式知识 · {analysis.sectionCount} 个维度</small></div></article>
           {sections.map((section) => (
             <article className="by-knowledge-row by-material-analysis-section" key={section.key}>
               <span><FileSearch /></span>
@@ -602,7 +602,7 @@ function SupportList({ title, action, rows, emptyText }: { title: string; action
 }
 
 function CompanyMaterials({ company, uploading, onUpload }: { company: CompanyView; uploading: boolean; onUpload: () => void }) {
-  return <section className="by-tab-panel"><header><div><h2>公司材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "completed" ? "success" : "warning"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
+  return <section className="by-tab-panel"><header><div><h2>主体材料</h2><p>原始材料按权限归档，抽取内容仍需确认。</p></div><button className="primary" disabled={uploading} onClick={onUpload}><Upload />{uploading ? "处理中…" : "上传材料"}</button></header><div className="by-material-table"><div className="head"><span>文件</span><span>来源</span><span>时间</span><span>权限</span><span>状态</span></div>{company.materials.map((item) => <button key={item.documentId}><span><FileText /><strong>{item.fileName}</strong></span><span>{item.sourceChannel}</span><span>{relativeDate(item.updatedAt)}</span><span><ShieldCheck />机构</span><span className={item.status === "completed" ? "success" : "warning"}>{materialStatusLabel(item.status)}</span></button>)}</div></section>;
 }
 
 function CompanyClaims({ claims, title }: { claims: Claim[]; title: string }) {

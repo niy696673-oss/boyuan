@@ -1,6 +1,5 @@
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createHash } from "node:crypto";
 import express from "express";
 import multer from "multer";
 import { normalizeUploadedFileName } from "../upload-file-name.js";
@@ -20,10 +19,10 @@ import type {
   IndustryReclassificationResponseV1,
   ReviewDecisionResponse,
   ReviewBatchDecisionResponseV1,
-  ReviewPackageV1,
   ReviewQueueItem,
   ReviewQueueResponse,
 } from "../../shared/research-platform-v1.js";
+import { buildReviewPackages } from "../../shared/review-packages.js";
 import { BP_SECTION_TITLES } from "./analysis/contracts.js";
 import {
   PlatformConflictError,
@@ -396,7 +395,12 @@ export function createResearchPlatformV1Router(
         if (!company) throw new Error("review_queue_company_missing");
         return toReviewQueueItem(candidate, company);
       });
-      const packages = reviewPackages(items);
+      const packages = buildReviewPackages(items, {
+        sectionTitle: (sectionKey) =>
+          BP_SECTION_TITLES[
+            sectionKey as keyof typeof BP_SECTION_TITLES
+          ] ?? sectionKey,
+      });
       const response = {
         items,
         total: items.length,
@@ -479,130 +483,6 @@ function toReviewQueueItem(
         knowledge.status !== "superseded",
     ),
   };
-}
-
-function reviewPackages(items: ReviewQueueItem[]): ReviewPackageV1[] {
-  const byCompany = new Map<string, ReviewQueueItem[]>();
-  for (const item of items) {
-    const bucket = byCompany.get(item.companyId) ?? [];
-    bucket.push(item);
-    byCompany.set(item.companyId, bucket);
-  }
-  return [...byCompany.values()]
-    .map((companyItems) => {
-      const company = companyItems[0].company;
-      const byGroup = new Map<string, ReviewQueueItem[]>();
-      for (const item of companyItems) {
-        const key = `${item.sectionKey}\u0000${item.knowledgeType}`;
-        const bucket = byGroup.get(key) ?? [];
-        bucket.push(item);
-        byGroup.set(key, bucket);
-      }
-      const groups = [...byGroup.values()].map((groupItems) => {
-        const first = groupItems[0];
-        const byFingerprint = new Map<string, ReviewQueueItem[]>();
-        for (const item of groupItems) {
-          const fingerprint = reviewFingerprint(item);
-          const bucket = byFingerprint.get(fingerprint) ?? [];
-          bucket.push(item);
-          byFingerprint.set(fingerprint, bucket);
-        }
-        return {
-          groupId: stableReviewId(
-            'group',
-            company.companyId,
-            first.sectionKey,
-            first.knowledgeType,
-          ),
-          sectionKey: first.sectionKey,
-          sectionTitle:
-            BP_SECTION_TITLES[
-              first.sectionKey as keyof typeof BP_SECTION_TITLES
-            ] ?? first.sectionKey,
-          knowledgeType: first.knowledgeType,
-          candidateCount: groupItems.length,
-          clusters: [...byFingerprint.entries()].map(
-            ([fingerprint, candidates]) => {
-              const reasons = reviewRiskReasons(candidates[0]);
-              return {
-                clusterId: stableReviewId(
-                  'cluster',
-                  company.companyId,
-                  first.sectionKey,
-                  first.knowledgeType,
-                  fingerprint,
-                ),
-                fingerprint,
-                candidateIds: candidates.map((candidate) => candidate.candidateId),
-                candidateCount: candidates.length,
-                safeToConfirm: reasons.length === 0,
-                riskReasons: reasons,
-              };
-            },
-          ),
-        };
-      });
-      const safeCandidateCount = groups.reduce(
-        (total, group) =>
-          total
-          + group.clusters
-            .filter((cluster) => cluster.safeToConfirm)
-            .reduce((count, cluster) => count + cluster.candidateCount, 0),
-        0,
-      );
-      return {
-        packageId: stableReviewId('package', company.companyId),
-        company,
-        candidateCount: companyItems.length,
-        groupCount: groups.length,
-        safeCandidateCount,
-        riskCandidateCount: companyItems.length - safeCandidateCount,
-        groups,
-      };
-    })
-    .sort(
-      (left, right) =>
-        right.candidateCount - left.candidateCount
-        || left.company.canonicalName.localeCompare(
-          right.company.canonicalName,
-          'zh-CN',
-        ),
-    );
-}
-
-function reviewFingerprint(item: ReviewQueueItem): string {
-  return [item.statement, item.value ?? '', item.effectiveAt ?? '']
-    .map(normalizeReviewText)
-    .join('\u0000');
-}
-
-function normalizeReviewText(value: string): string {
-  return value
-    .normalize('NFKC')
-    .toLocaleLowerCase('zh-CN')
-    .replace(/[\s\p{P}\p{S}]+/gu, '');
-}
-
-function reviewRiskReasons(item: ReviewQueueItem): string[] {
-  return [
-    ...(item.highImpact ? ['高影响'] : []),
-    ...(item.sensitive ? ['敏感信息'] : []),
-    ...(item.status === 'conflicted' ? ['存在冲突'] : []),
-    ...(item.evidence.length === 0 ? ['缺少支持证据'] : []),
-    ...((item.unsupportedEvidence?.length ?? 0) > 0
-      ? ['存在不支持证据']
-      : []),
-    ...((item.conflictingKnowledge?.length ?? 0) > 0
-      ? ['与正式知识冲突']
-      : []),
-  ];
-}
-
-function stableReviewId(prefix: string, ...parts: string[]): string {
-  return `${prefix}-${createHash('sha256')
-    .update(parts.join('\u0000'))
-    .digest('hex')
-    .slice(0, 16)}`;
 }
 
 function reviewDecisionInput(

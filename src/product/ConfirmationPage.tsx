@@ -32,6 +32,7 @@ import type {
   ReviewPackageV1,
   ReviewQueueItem,
 } from "../../shared/research-platform-v1";
+import { buildReviewPackages } from "../../shared/review-packages";
 import { AuthenticatedDocumentDownload } from "./AuthenticatedDocumentDownload";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -59,7 +60,7 @@ const confirmationFilters: ConfirmationFilter[] = [
 
 export function ConfirmationPage({
   data: _data,
-  reload: _reload,
+  reload,
   reviewClient = defaultReviewClient,
   onQueueCountChange,
 }: {
@@ -93,7 +94,10 @@ export function ConfirmationPage({
       candidateMatchesFilter(item, filter) &&
       candidateMatchesQuery(item, query),
   );
-  const packages = packageReviewItems(visibleItems);
+  const packages = buildReviewPackages(visibleItems, {
+    includeCandidates: true,
+    sectionTitle: (sectionKey) => sectionTitles[sectionKey] || sectionKey,
+  });
   const selected =
     visibleItems.find((item) => item.candidateId === selectedId) ||
     visibleItems.find(
@@ -185,7 +189,7 @@ export function ConfirmationPage({
       action: edited ? "modify" : action,
       ...(edited ? { statement: draft.trim() } : {}),
     };
-    await queue.decide(input);
+    if (await queue.decide(input)) reload();
   };
 
   const batchReview = async (action: "confirm" | "reject") => {
@@ -193,7 +197,7 @@ export function ConfirmationPage({
     const decisions = action === "confirm"
       ? safePackageConfirmDecisions(selectedPackage)
       : safePackageRejectDecisions(selectedPackage);
-    await queue.decideBatch({ decisions });
+    if (await queue.decideBatch({ decisions })) reload();
   };
 
   if (loadError) return <ConfirmationLoadError message={loadError} />;
@@ -292,7 +296,7 @@ export function ConfirmationPage({
                 <header>
                   <span className="ai">
                     <Sparkles />
-                    主体确认包
+                    候选确认包
                   </span>
                   <time>{reviewPackage.groupCount} 组</time>
                 </header>
@@ -324,14 +328,14 @@ export function ConfirmationPage({
               <h2>核验候选知识</h2>
             </div>
             <Link to={`/companies/${selected.company.companyId}`}>
-              打开公司
+              打开主体
               <ExternalLink />
             </Link>
           </header>
           {selectedPackage && (
             <section className="by-existing-knowledge">
               <header>
-                <h3>主体候选确认包</h3>
+                <h3>候选确认包</h3>
                 <span>
                   {selectedPackage.groupCount} 组 · {selectedPackage.candidateCount} 条
                 </span>
@@ -541,108 +545,6 @@ const sectionTitles: Record<string, string> = {
   provenance_versions_conflicts_confirmations:
     "13 来源、时间、版本、冲突和人工确认",
 };
-
-function packageReviewItems(items: ReviewQueueItem[]): ReviewPackageV1[] {
-  const byCompany = new Map<string, ReviewQueueItem[]>();
-  for (const item of items) {
-    const bucket = byCompany.get(item.company.companyId) ?? [];
-    bucket.push(item);
-    byCompany.set(item.company.companyId, bucket);
-  }
-  return [...byCompany.values()]
-    .map((companyItems) => {
-      const company = companyItems[0].company;
-      const byGroup = new Map<string, ReviewQueueItem[]>();
-      for (const item of companyItems) {
-        const key = `${item.sectionKey}:${item.knowledgeType}`;
-        const bucket = byGroup.get(key) ?? [];
-        bucket.push(item);
-        byGroup.set(key, bucket);
-      }
-      const groups = [...byGroup.entries()].map(([key, groupItems]) => {
-        const first = groupItems[0];
-        const byFingerprint = new Map<string, ReviewQueueItem[]>();
-        for (const item of groupItems) {
-          const fingerprint = normalizedCandidateFingerprint(item);
-          const bucket = byFingerprint.get(fingerprint) ?? [];
-          bucket.push(item);
-          byFingerprint.set(fingerprint, bucket);
-        }
-        return {
-          groupId: `${company.companyId}:${key}`,
-          sectionKey: first.sectionKey,
-          sectionTitle: sectionTitles[first.sectionKey] || first.sectionKey,
-          knowledgeType: first.knowledgeType,
-          candidateCount: groupItems.length,
-          clusters: [...byFingerprint.entries()].map(
-            ([fingerprint, candidates]) => {
-              const riskReasons = candidateRiskReasons(candidates[0]);
-              return {
-                clusterId: `${company.companyId}:${key}:${fingerprint}`,
-                fingerprint,
-                candidateIds: candidates.map((candidate) => candidate.candidateId),
-                candidates,
-                candidateCount: candidates.length,
-                safeToConfirm: riskReasons.length === 0,
-                riskReasons,
-              };
-            },
-          ),
-        };
-      });
-      const safeCandidateCount = groups.reduce(
-        (total, group) =>
-          total
-          + group.clusters
-            .filter((cluster) => cluster.safeToConfirm)
-            .reduce((count, cluster) => count + cluster.candidateCount, 0),
-        0,
-      );
-      return {
-        packageId: company.companyId,
-        company,
-        candidateCount: companyItems.length,
-        groupCount: groups.length,
-        safeCandidateCount,
-        riskCandidateCount: companyItems.length - safeCandidateCount,
-        groups,
-      };
-    })
-    .sort(
-      (left, right) =>
-        right.candidateCount - left.candidateCount
-        || left.company.canonicalName.localeCompare(
-          right.company.canonicalName,
-          "zh-CN",
-        ),
-    );
-}
-
-function normalizedCandidateFingerprint(item: ReviewQueueItem): string {
-  return [item.statement, item.value || "", item.effectiveAt || ""]
-    .map((value) =>
-      value
-        .normalize("NFKC")
-        .toLocaleLowerCase("zh-CN")
-        .replace(/[\s\p{P}\p{S}]+/gu, ""),
-    )
-    .join(":");
-}
-
-function candidateRiskReasons(item: ReviewQueueItem): string[] {
-  return [
-    ...(item.highImpact ? ["高影响"] : []),
-    ...(item.sensitive ? ["敏感信息"] : []),
-    ...(item.status === "conflicted" ? ["存在冲突"] : []),
-    ...(item.evidence.length === 0 ? ["缺少支持证据"] : []),
-    ...((item.unsupportedEvidence?.length || 0) > 0
-      ? ["存在不支持证据"]
-      : []),
-    ...((item.conflictingKnowledge?.length || 0) > 0
-      ? ["与正式知识冲突"]
-      : []),
-  ];
-}
 
 function safePackageConfirmDecisions(reviewPackage: ReviewPackageV1) {
   const typeCounts = new Map<string, number>();
