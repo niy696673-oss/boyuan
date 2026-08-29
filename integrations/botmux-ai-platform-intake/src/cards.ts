@@ -1,4 +1,4 @@
-import type { JsonObject, QuickCardResult } from './types.js';
+import type { CompanyQuickCardResult, JsonObject, QuickCardResult } from './types.js';
 
 export interface CompletionCardLinks {
   deepAnalysisUrl: string;
@@ -107,6 +107,18 @@ export function processingCard(fileName: string): JsonObject {
   ]);
 }
 
+export function companyResearchProcessingCard(companyName: string): JsonObject {
+  return bodyCard('公司研究处理中', [
+    designTitleRow('公司研究 · 快速分析', '处理中'),
+    markdown(`**${markdownValue(companyName, 120)}**`, 'heading-2'),
+    designPanel('处理进度', [
+      factCard('研究会话', '正在创建工作台深度研究任务', '已开始'),
+      factCard('快速分析', 'Luna 正在结合平台资料与公开来源生成摘要', '处理中'),
+    ]),
+    markdown("<font color='grey'>分析完成后本卡片会自动更新；深度研究在工作台后台独立运行。</font>", 'notation'),
+  ]);
+}
+
 function productUrl(publicProductUrl: string, path: string, tab: string): string {
   const url = new URL(publicProductUrl);
   const base = url.pathname.replace(/\/$/u, '');
@@ -161,6 +173,63 @@ export function completionCard(result: QuickCardResult, links: CompletionCardLin
     ]),
     markdown(`<font color='grey'>${footer}</font>`, 'notation'),
   ]);
+}
+
+export function companyResearchCompletionCard(
+  result: CompanyQuickCardResult,
+  links: CompletionCardLinks,
+): JsonObject {
+  if (result.status === 'fallback') {
+    return card('orange', '公司研究已受理 · 快速分析未完成', '工作台深度研究继续运行', '深度研究中', [
+      highlightBlock('快速分析', '快速分析暂未完成，请进入工作台查看独立运行的深度研究。', 'orange-50', 'orange'),
+      openUrlButton('进入深度研究', links.deepAnalysisUrl, true),
+    ]);
+  }
+  if (result.status === 'pending_confirmation' || result.identityState === 'ambiguous') {
+    return card('orange', '公司主体需要确认', result.companyName, '待确认', [
+      highlightBlock('主体匹配', result.companyIdentity, 'orange-50', 'orange'),
+      markdown("<font color='grey'>系统不会自动猜测主体；确认后深度研究会继续。</font>", 'notation'),
+      openUrlButton('进入深度研究确认', links.deepAnalysisUrl, true),
+    ]);
+  }
+  const highlights = tagList(result.highlights, '暂未检索到明确亮点');
+  const recentSignals = tagList(result.recentSignals, '暂未检索到近期信号');
+  const existing = result.identityState === 'existing';
+  const footer = existing
+    ? '本卡综合平台正式知识、已有材料和本次公开检索；待确认候选不视为正式知识。深度研究继续运行。'
+    : '本次研究新建了待确认主体；快速卡仅作预览，正式建档与知识确认在深度研究链路完成。';
+  const navigationElements: JsonObject[] = [
+    relationRow('深度研究', '查看完整来源、分析过程与待确认知识', '进入工作台 →', links.deepAnalysisUrl),
+  ];
+  if (existing && links.companyNetworkUrl) {
+    navigationElements.push(relationRow('公司网络', '查看已有公司关系与网络', '公司网络 →', links.companyNetworkUrl));
+  }
+  if (existing && links.industryChainUrl) {
+    navigationElements.push(relationRow('产业链', '查看已确认行业归属与产业链', '产业链 →', links.industryChainUrl));
+  }
+  return bodyCard('公司研究 · 快速分析', [
+    designTitleRow('公司研究 · 快速分析', `置信度${result.confidenceLevel} ${result.confidence}%`),
+    markdown(`**${markdownValue(result.companyName, 80)}**`, 'heading-2'),
+    designPanel('关键信息', [
+      factCard('公司身份', result.companyIdentity, existing ? '已有主体' : '待确认主体'),
+      factCard('行业 / 赛道', result.industryTrack, '综合分析'),
+      factCard('融资信息', result.financing, '综合分析'),
+      factCard('团队关键人', result.keyPeople, '综合分析'),
+    ]),
+    designPanel('公司亮点', [markdown(highlights)]),
+    designPanel('近期公开信号', [markdown(recentSignals)]),
+    designPanel('本次分析依据', [markdown(
+      `公开来源 **${result.sourceCount}** 条 · 已有材料 **${result.materialCount}** 份 · 正式知识 **${result.formalKnowledgeCount}** 条 · 待确认候选 **${result.pendingCandidateCount}** 条`,
+    )]),
+    designPanel('继续查看', navigationElements),
+    markdown(`<font color='grey'>${footer}</font>`, 'notation'),
+  ]);
+}
+
+function tagList(values: string[], empty: string): string {
+  return values.length > 0
+    ? values.map((item) => `<text_tag color='blue'>${markdownValue(item, 64)}</text_tag>`).join(' ')
+    : empty;
 }
 
 function designTitleRow(title: string, badge: string): JsonObject {
@@ -252,4 +321,12 @@ export function failureCard(fileName: string, workbenchUrl?: string): JsonObject
   ];
   if (workbenchUrl) elements.push(openUrlButton('在工作台查看', workbenchUrl, true));
   return card('red', '材料处理失败', '接入任务未完成', '需要处理', elements);
+}
+
+export function companyResearchFailureCard(companyName: string, workbenchUrl?: string): JsonObject {
+  const elements: JsonObject[] = [
+    highlightBlock('处理未完成', `公司：${companyName}\n系统已记录失败，可稍后重试或在工作台查看。`, 'grey-50', 'grey'),
+  ];
+  if (workbenchUrl) elements.push(openUrlButton('在工作台查看', workbenchUrl, true));
+  return card('red', '公司研究接入失败', '研究任务未完成', '需要处理', elements);
 }

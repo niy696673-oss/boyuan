@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { IntakeConfig, PlatformConversation, QuickCardResult } from '../src/types.js';
+import type { CompanyQuickCardResult, IntakeConfig, PlatformConversation, QuickCardResult } from '../src/types.js';
 
 export function tempDir() {
   const path = mkdtempSync(join(tmpdir(), 'boyuan-intake-'));
@@ -47,6 +47,33 @@ export function quickCard(overrides: Partial<QuickCardResult> = {}): QuickCardRe
     modelId: 'gpt-5.6-luna',
     variant: 'none',
     sessionId: 'session-quick',
+    ...overrides,
+  };
+}
+
+export function companyQuickCard(overrides: Partial<CompanyQuickCardResult> = {}): CompanyQuickCardResult {
+  return {
+    kind: 'company_research',
+    status: 'completed',
+    companyName: '博源科技',
+    identityState: 'existing',
+    companyIdentity: '博源科技 · 杭州 · 2021 年成立',
+    industryTrack: '企业研究智能化 · 机构知识平台',
+    financing: 'A 轮 · 2000 万元',
+    keyPeople: 'CEO 田阳',
+    highlights: ['机构知识沉淀闭环'],
+    recentSignals: ['发布新一代研究工作台'],
+    confidence: 82,
+    confidenceLevel: '高',
+    sourceCount: 5,
+    materialCount: 2,
+    formalKnowledgeCount: 3,
+    pendingCandidateCount: 1,
+    navigation: {},
+    providerId: 'openai',
+    modelId: 'gpt-5.6-luna',
+    variant: 'none',
+    sessionId: 'session-company-quick',
     ...overrides,
   };
 }

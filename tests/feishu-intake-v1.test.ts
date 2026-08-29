@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import express from "express";
 import request from "supertest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
@@ -13,6 +13,9 @@ import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createFeishuIntakeRouter } from "../server/research-platform/feishu-intake-router.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 import type { QuickCardAnalysisPort } from "../server/research-platform/quick-card/contracts.js";
+import type { CompanyQuickCardAnalysisPort } from "../server/research-platform/company-quick-card/contracts.js";
+import { createDeterministicResearchAdapter } from "../server/research-platform/research/deterministic-research.js";
+import type { WebSearchPort } from "../server/research-platform/search/contracts.js";
 import { initialStoreData, Store } from "../server/store.js";
 
 const roots: string[] = [];
@@ -26,6 +29,152 @@ afterEach(async () => {
 });
 
 describe("飞书材料接入新工作台", () => {
+  it("公司名研究按消息幂等创建深度会话，并让快速与深度链路共享一次公开检索", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-company-"));
+    roots.push(dataRoot);
+    const search = vi.fn<WebSearchPort['search']>(async (input) => [{
+      title: `${input.companyName}发布新产品`,
+      url: "https://example.com/boyuan/new-product",
+      site: "example.com",
+      highlights: ["公司发布新一代机构研究工作台。"],
+      accessStatus: "accessible",
+      retrievedAt: "2026-08-29T00:00:00.000Z",
+    }]);
+    const analyze = vi.fn<CompanyQuickCardAnalysisPort['analyze']>(async (input) => ({
+      companyIdentity: `${input.companyName}，平台已有正式主体`,
+      industryTrack: "企业研究智能化",
+      financing: "暂未检索到",
+      keyPeople: "暂未检索到",
+      highlights: ["机构知识沉淀闭环"],
+      recentSignals: input.webResults.flatMap((item) => item.highlights).slice(0, 3),
+      providerId: "openai",
+      modelId: "gpt-5.6-luna",
+      variant: "none",
+      sessionId: "company-quick-session",
+    }));
+    const platform = createPlatformModule({
+      dataRoot,
+      companyQuickCardAnalysis: { analyze },
+      research: createDeterministicResearchAdapter(),
+      search: { search },
+    });
+    modules.push(platform);
+    const store = new Store({ initialData: initialStoreData(), persistToDisk: false });
+    const app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform,
+      feishuIntakeKey: "test-feishu-intake-key-123",
+    });
+
+    const started = await request(app)
+      .post("/api/v1/feishu/company-research")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
+      .set("x-boyuan-message-id", "om_company_research")
+      .set("x-boyuan-sender-id", "ou_sender")
+      .send({ companyName: "博源科技有限公司" });
+    const replayed = await request(app)
+      .post("/api/v1/feishu/company-research")
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
+      .set("x-boyuan-message-id", "om_company_research")
+      .set("x-boyuan-sender-id", "ou_sender")
+      .send({ companyName: "不应创建的新主体有限公司" });
+
+    expect(started.status).toBe(201);
+    expect(started.body).toMatchObject({
+      reusedResearch: false,
+      conversation: {
+        sourceChannel: "feishu",
+        status: "waiting",
+        company: { canonicalName: "博源科技有限公司", status: "active" },
+      },
+    });
+    expect(replayed.body).toMatchObject({
+      reusedResearch: true,
+      conversation: { conversationId: started.body.conversation.conversationId },
+    });
+    expect(await platform.listCompanies()).toHaveLength(1);
+
+    const conversationId = started.body.conversation.conversationId as string;
+    const firstQuick = await request(app)
+      .post(`/api/v1/feishu/company-research/${encodeURIComponent(conversationId)}/quick-card`)
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123");
+    const repeatedQuick = await request(app)
+      .post(`/api/v1/feishu/company-research/${encodeURIComponent(conversationId)}/quick-card`)
+      .set("x-boyuan-intake-key", "test-feishu-intake-key-123");
+
+    expect(firstQuick.status).toBe(200);
+    expect(firstQuick.body).toMatchObject({
+      kind: "company_research",
+      status: "completed",
+      companyName: "博源科技有限公司",
+      identityState: "existing",
+      recentSignals: ["公司发布新一代机构研究工作台。"],
+      sourceCount: 1,
+      navigation: { companyId: expect.any(String) },
+      modelId: "gpt-5.6-luna",
+    });
+    expect(repeatedQuick.body).toEqual(firstQuick.body);
+    expect(search).toHaveBeenCalledOnce();
+    expect(analyze).toHaveBeenCalledOnce();
+
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    const completed = await platform.getConversation(conversationId);
+    expect(completed).toMatchObject({
+      sourceChannel: "feishu",
+      status: "completed",
+      companyResearch: { sources: [{ url: "https://example.com/boyuan/new-product" }] },
+    });
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it("公司名匹配多个主体时返回待确认快速卡并暂停深度研究", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-company-ambiguous-"));
+    roots.push(dataRoot);
+    const analyze = vi.fn<CompanyQuickCardAnalysisPort['analyze']>();
+    const search = vi.fn<WebSearchPort['search']>();
+    const platform = createPlatformModule({
+      dataRoot,
+      companyQuickCardAnalysis: { analyze },
+      research: createDeterministicResearchAdapter(),
+      search: { search },
+    });
+    modules.push(platform);
+    const firstSeed = await platform.startCompanyResearch({
+      companyName: "白杨智能有限公司",
+      intent: "建立第一个测试主体",
+      explicitWebSearch: false,
+    });
+    const secondSeed = await platform.startCompanyResearch({
+      companyName: "白杨智能有限责任公司",
+      intent: "建立第二个测试主体",
+      explicitWebSearch: false,
+    });
+    await platform.cancelTask(firstSeed.task.taskId);
+    await platform.cancelTask(secondSeed.task.taskId);
+    const started = await platform.startFeishuCompanyResearch({
+      companyName: "白杨智能",
+      sourceMessageId: "om_ambiguous_company",
+      senderId: "ou_sender",
+    });
+
+    expect(started.conversation).toMatchObject({
+      sourceChannel: "feishu",
+      status: "pending_confirmation",
+      companyMatch: { status: "pending", options: [{}, {}] },
+    });
+    await expect(platform.quickAnalyzeCompanyResearch(
+      started.conversation.conversationId,
+    )).resolves.toMatchObject({
+      status: "pending_confirmation",
+      identityState: "ambiguous",
+      navigation: {},
+    });
+    expect(analyze).not.toHaveBeenCalled();
+    expect(search).not.toHaveBeenCalled();
+    expect(await platform.runPendingSteps()).toBe(0);
+  });
+
   it("同一条飞书消息按附件标识分别接入，并只复用重试的附件", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-v1-"));
     roots.push(dataRoot);

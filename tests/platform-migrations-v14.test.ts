@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 17;
+const CURRENT_SCHEMA_VERSION = 18;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -432,6 +432,7 @@ function expectCurrentSchema(dataRoot: string): void {
   );
   expect(tableExists(dataRoot, "notification_reads")).toBe(true);
   expect(tableExists(dataRoot, "industry_research_runs")).toBe(true);
+  expect(tableExists(dataRoot, "company_quick_card_results")).toBe(true);
   expect(columnNames(dataRoot, "industries")).toEqual(
     expect.arrayContaining(["watched", "version"]),
   );

@@ -10,6 +10,7 @@ import { createPlatformModule } from "./research-platform/platform-module.js";
 import { loadPlatformWorkerOptions } from "./research-platform/worker-config.js";
 import { createPlatformWorker } from "./research-platform/platform-worker.js";
 import { createRuntimeQuickCardAdapter } from "./research-platform/quick-card/runtime-quick-card.js";
+import { createRuntimeCompanyQuickCardAdapter } from "./research-platform/company-quick-card/runtime-company-quick-card.js";
 import { createRuntimeResearchAdapters } from "./research-platform/research/runtime-research.js";
 import { mountSpa } from "./spa-static.js";
 
@@ -27,6 +28,9 @@ const researchPlatform = createPlatformModule({
     path.join(root, "data", "research-platform"),
   analysis: createRuntimeAnalysisAdapter(process.env, { directory: root }),
   quickCardAnalysis: createRuntimeQuickCardAdapter(process.env, {
+    directory: root,
+  }),
+  companyQuickCardAnalysis: createRuntimeCompanyQuickCardAdapter(process.env, {
     directory: root,
   }),
   ...researchAdapters,

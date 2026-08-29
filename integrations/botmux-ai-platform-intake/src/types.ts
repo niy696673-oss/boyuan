@@ -57,6 +57,21 @@ export interface PlatformUploadResult {
   reusedDocument: boolean;
 }
 
+export interface CompanyResearchTurn {
+  chatId: string;
+  sessionId: string;
+  messageId: string;
+  companyName: string;
+  receivedAt?: string;
+  senderId?: string;
+  statusCardMessageId?: string;
+}
+
+export interface PlatformCompanyResearchResult {
+  conversation: PlatformConversation;
+  reusedResearch: boolean;
+}
+
 export const QUICK_CARD_TEXT_FIELDS = [
   { name: 'companyName', label: '公司' },
   { name: 'companyIdentity', label: '公司身份' },
@@ -90,9 +105,38 @@ export type QuickCardResult = QuickCardFields & {
   sessionId?: string;
 };
 
+export type CompanyQuickCardResult = {
+  kind: 'company_research';
+  status: 'completed' | 'pending_confirmation' | 'fallback';
+  companyName: string;
+  identityState: 'existing' | 'provisional' | 'ambiguous';
+  companyIdentity: string;
+  industryTrack: string;
+  financing: string;
+  keyPeople: string;
+  highlights: string[];
+  recentSignals: string[];
+  confidence: number;
+  confidenceLevel: '低' | '中' | '高';
+  sourceCount: number;
+  materialCount: number;
+  formalKnowledgeCount: number;
+  pendingCandidateCount: number;
+  navigation: {
+    companyId?: string;
+    industryId?: string;
+  };
+  providerId?: string;
+  modelId?: string;
+  variant?: string;
+  sessionId?: string;
+};
+
 export interface PlatformClient {
   upload(input: IntakeTurn, attachment: IntakeAttachment, timeoutMs: number): Promise<PlatformUploadResult>;
   quickCard(conversationId: string): Promise<QuickCardResult>;
+  startCompanyResearch(input: CompanyResearchTurn): Promise<PlatformCompanyResearchResult>;
+  companyQuickCard(conversationId: string): Promise<CompanyQuickCardResult>;
 }
 
 export interface SendCardInput {
@@ -129,6 +173,8 @@ export interface IntakeJob {
   completionCardMs: number;
   completionCardSent: boolean;
   quickCard?: QuickCardResult;
+  kind?: 'bp' | 'company_research';
+  companyQuickCard?: CompanyQuickCardResult;
   createdAt: string;
   lastError?: string;
   cleanupAttachment?: IntakeAttachment;

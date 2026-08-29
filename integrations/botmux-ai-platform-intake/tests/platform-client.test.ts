@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HttpPlatformClient } from '../src/platform-client.js';
-import { conversation, quickCard, tempDir } from './helpers.js';
+import { companyQuickCard, conversation, quickCard, tempDir } from './helpers.js';
 
 describe('HTTP platform client', () => {
   const servers: ReturnType<typeof createServer>[] = [];
@@ -68,5 +68,57 @@ describe('HTTP platform client', () => {
     expect(requestPath).toBe('/api/v1/feishu/conversations/conversation%2Fone/quick-card');
     expect(intakeKey).toBe('platform-secret-123456');
     expect(requestSignal).toBeUndefined();
+  });
+
+  it('starts idempotent company research and reads the company quick-card contract', async () => {
+    const requests: Array<{ path: string; body: string; messageId: string }> = [];
+    const server = createServer(async (request, response) => {
+      let body = '';
+      for await (const chunk of request) body += Buffer.from(chunk).toString('utf8');
+      requests.push({
+        path: request.url ?? '',
+        body,
+        messageId: String(request.headers['x-boyuan-message-id'] ?? ''),
+      });
+      response.writeHead(request.url === '/api/v1/feishu/company-research' ? 201 : 200, {
+        'content-type': 'application/json',
+      });
+      response.end(JSON.stringify(request.url === '/api/v1/feishu/company-research'
+        ? { conversation: conversation('conversation-company', 'processing'), reusedResearch: false }
+        : companyQuickCard({ navigation: { companyId: 'company-one' } })));
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('test_server_missing');
+    const client = new HttpPlatformClient(
+      `http://127.0.0.1:${address.port}`,
+      'platform-secret-123456',
+      10_000,
+    );
+
+    await expect(client.startCompanyResearch({
+      chatId: 'oc_chat',
+      sessionId: 'feishu:om_company',
+      messageId: 'om_company',
+      companyName: '博源科技',
+      senderId: 'ou_sender',
+    })).resolves.toMatchObject({
+      reusedResearch: false,
+      conversation: { conversationId: 'conversation-company' },
+    });
+    await expect(client.companyQuickCard('conversation/company')).resolves.toMatchObject({
+      kind: 'company_research',
+      companyName: '博源科技',
+      sourceCount: 5,
+      navigation: { companyId: 'company-one' },
+    });
+
+    expect(requests[0]).toEqual({
+      path: '/api/v1/feishu/company-research',
+      body: JSON.stringify({ companyName: '博源科技' }),
+      messageId: 'om_company',
+    });
+    expect(requests[1]?.path).toBe('/api/v1/feishu/company-research/conversation%2Fcompany/quick-card');
   });
 });

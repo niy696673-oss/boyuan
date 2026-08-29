@@ -1,6 +1,6 @@
 # Boyuan AI Platform Intake
 
-BotMux service plugin for routing Feishu file messages to the Boyuan AI platform. Feishu immediately receives one processing card; the same message is replaced with the concise Luna result when analysis finishes while the independent deep-analysis task continues in the workbench. Thirty seconds is a performance target, not a delivery deadline.
+BotMux service plugin for routing Feishu BP files and explicit company-research commands to the Boyuan AI platform. Feishu immediately receives one processing card; the same message is replaced with the concise Luna result when analysis finishes while the independent deep-analysis task continues in the workbench. Thirty seconds is a performance target, not a delivery deadline.
 
 ## Configuration
 
@@ -33,6 +33,10 @@ The platform process must use the same `BOYUAN_FEISHU_INTAKE_KEY` value as `plat
 
 ## Runtime behavior
 
+- Private-chat commands `分析 <公司名>` and `研究 <公司名>` start company research. Group-chat commands are accepted only when the bot is explicitly mentioned; ordinary chat text never enters the research path.
+- A company command creates a durable platform conversation and starts the Sol deep-research task before requesting the independent Luna quick card. The quick card combines existing formal knowledge and material summaries with the same persisted public-search snapshot consumed by deep research, so a research run does not search twice.
+- Company quick cards reuse the BP card's common identity, industry, financing, people, highlight, confidence, and navigation skeleton. Their company-specific section shows recent signals and source/material/formal-knowledge/pending-candidate counts; BP-mentioned competitor and upstream/downstream semantics are not reused.
+- Active matched companies may link to existing company-network and confirmed industry-chain pages. New provisional companies and ambiguous matches link only to the deep conversation. Ambiguous matches pause without calling search or Luna and require identity confirmation in the workbench.
 - Every Feishu file creates an independent receipt and conversation. Byte-identical files may reuse the stored document. Conversation reuse is a non-blocking platform relevance proposal followed by user confirmation; no fixed time window is used, and the concise Feishu result does not wait for that decision.
 - The auto-start service owns the dedicated bot's Feishu long connection and consumes file events before any AI conversation exists. Ordinary BotMux Sol status cards and text replies are structurally absent from this path.
 - The direct ingress replies with one processing card before downloading the file. Its Feishu message ID and the minimal source-message metadata needed to redownload are persisted immediately, before file download or platform upload. Startup resumes an orphan receipt after a crash, and completion, failure, and delivery retries update that same card instead of adding another bot reply.

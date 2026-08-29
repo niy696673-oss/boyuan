@@ -2,9 +2,13 @@ import { createServer, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseIntakeConfig, prepareRuntimeDirectories } from '../config.js';
-import { DirectFeishuFileIngress, FeishuCardMessenger } from '../direct-feishu-intake.js';
+import {
+  DirectFeishuCompanyResearchIngress,
+  DirectFeishuFileIngress,
+  FeishuCardMessenger,
+} from '../direct-feishu-intake.js';
 import { LarkFeishuTransport, loadBotmuxLarkCredentials } from '../feishu-runtime.js';
-import { IntakeService } from '../intake-service.js';
+import { COMPANY_RESEARCH_FILE_KEY, IntakeService } from '../intake-service.js';
 import { JsonJobStore } from '../job-store.js';
 import { HttpPlatformClient } from '../platform-client.js';
 
@@ -45,13 +49,44 @@ const ingress = new DirectFeishuFileIngress({
   markStatusCardTerminal: (message) =>
     service.markStatusCardTerminal(message.messageId, message.fileKey),
 });
+const companyIngress = new DirectFeishuCompanyResearchIngress({
+  researchCompany: (turn) => service.researchCompany(turn),
+  messenger,
+  statusCardId: (message) =>
+    service.statusCardId(message.messageId, COMPANY_RESEARCH_FILE_KEY),
+  rememberStatusCard: (message, cardMessageId) =>
+    service.rememberStatusCard({
+      chatId: message.chatId,
+      messageId: message.messageId,
+      fileKey: COMPANY_RESEARCH_FILE_KEY,
+      fileName: message.companyName,
+      cardMessageId,
+      createdAt: message.receivedAt,
+      ...(message.senderId ? { senderId: message.senderId } : {}),
+    }),
+  markStatusCardTerminal: (message) =>
+    service.markStatusCardTerminal(message.messageId, COMPANY_RESEARCH_FILE_KEY),
+});
 const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
   process.stderr.write(`[ai-platform-intake] Feishu ingress error: ${message.slice(0, 300)}\n`);
 };
-feishu.start((data) => ingress.handle(data), reportIngressError);
+feishu.start(async (data) => {
+  const company = await companyIngress.handle(data);
+  return company.handled ? company : ingress.handle(data);
+}, reportIngressError);
 service.resumePending();
 for (const receipt of service.listOrphanStatusCards()) {
+  if (receipt.fileKey === COMPANY_RESEARCH_FILE_KEY) {
+    void companyIngress.resume({
+      chatId: receipt.chatId,
+      messageId: receipt.messageId,
+      companyName: receipt.fileName,
+      receivedAt: receipt.createdAt,
+      ...(receipt.senderId ? { senderId: receipt.senderId } : {}),
+    }).catch(reportIngressError);
+    continue;
+  }
   void ingress.resume({
     chatId: receipt.chatId,
     messageId: receipt.messageId,

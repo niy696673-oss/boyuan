@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { companyNetworkUrl, completionCard, industryChainUrl, processingCard } from '../src/cards.js';
-import { quickCard } from './helpers.js';
+import {
+  companyNetworkUrl,
+  companyResearchCompletionCard,
+  companyResearchProcessingCard,
+  completionCard,
+  industryChainUrl,
+  processingCard,
+} from '../src/cards.js';
+import { companyQuickCard, quickCard } from './helpers.js';
 
 describe('Feishu completion card', () => {
   it('renders an immediate processing state that promises an in-place update', () => {
@@ -72,5 +79,51 @@ describe('Feishu completion card', () => {
     expect(industryChainUrl('https://demo.example/product', 'industry/1')).toBe(
       'https://demo.example/product/industry/industry%2F1?tab=chain',
     );
+  });
+
+  it('reuses the common card skeleton for company research with company-specific evidence fields', () => {
+    const processing = JSON.stringify(companyResearchProcessingCard('白杨智能'));
+    const completed = JSON.stringify(companyResearchCompletionCard(companyQuickCard({
+      companyName: '白杨智能',
+      sourceCount: 4,
+      materialCount: 2,
+      formalKnowledgeCount: 3,
+      pendingCandidateCount: 1,
+      navigation: { companyId: 'company-one', industryId: 'industry-one' },
+    }), {
+      deepAnalysisUrl: 'https://demo.example/workbench/conversations/conversation-one',
+      companyNetworkUrl: 'https://demo.example/companies/company-one?tab=relations',
+      industryChainUrl: 'https://demo.example/industry/industry-one?tab=chain',
+    }));
+
+    expect(processing).toContain('完成后本卡片会自动更新');
+    expect(completed).toContain('公司研究 · 快速分析');
+    expect(completed).toContain('近期公开信号');
+    expect(completed).toContain('公开来源 **4** 条');
+    expect(completed).toContain('正式知识 **3** 条');
+    expect(completed).toContain('公司网络');
+    expect(completed).toContain('产业链');
+    expect(completed).not.toContain('本份 BP');
+    expect(completed).not.toContain('竞品');
+  });
+
+  it('routes provisional and ambiguous companies only to the deep research conversation', () => {
+    const deepAnalysisUrl = 'https://demo.example/workbench/conversations/conversation-one';
+    const provisional = JSON.stringify(companyResearchCompletionCard(companyQuickCard({
+      identityState: 'provisional',
+      navigation: {},
+    }), { deepAnalysisUrl }));
+    const ambiguous = JSON.stringify(companyResearchCompletionCard(companyQuickCard({
+      status: 'pending_confirmation',
+      identityState: 'ambiguous',
+      companyIdentity: '匹配到多个已有主体，请确认',
+      navigation: {},
+    }), { deepAnalysisUrl }));
+
+    expect(provisional).toContain('本次研究新建了待确认主体');
+    expect(provisional).not.toContain('公司网络 →');
+    expect(ambiguous).toContain('公司主体需要确认');
+    expect(ambiguous).toContain('系统不会自动猜测主体');
+    expect(ambiguous).toContain(deepAnalysisUrl);
   });
 });

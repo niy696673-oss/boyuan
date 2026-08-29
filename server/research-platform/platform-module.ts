@@ -14,6 +14,11 @@ import {
 import { createDeterministicConversationRelatednessAdapter } from './conversation-relatedness/deterministic-relatedness.js';
 import type { ConversationRelatednessPort } from './conversation-relatedness/contracts.js';
 import type {
+  CompanyQuickCardAnalysisPort,
+  CompanyQuickCardExtractionResult,
+  CompanyQuickCardResult,
+} from './company-quick-card/contracts.js';
+import type {
   AdminOverview,
   AnalysisTaskRecord,
   AnalysisSectionRecord,
@@ -53,6 +58,8 @@ import type {
   SourceChannel,
   StartCompanyListResearchInput,
   StartCompanyResearchInput,
+  StartFeishuCompanyResearchInput,
+  StartFeishuCompanyResearchResult,
   StartIndustryResearchInput,
   TaskStatus,
   TaskStepRecord,
@@ -127,6 +134,7 @@ interface PlatformModuleOptions {
   parser?: DocumentParser;
   analysis?: MaterialAnalysisPort;
   quickCardAnalysis?: QuickCardAnalysisPort;
+  companyQuickCardAnalysis?: CompanyQuickCardAnalysisPort;
   research?: CompanyResearchPort;
   industryResearch?: IndustryResearchPort;
   search?: WebSearchPort;
@@ -269,12 +277,15 @@ class SqlitePlatformModule implements PlatformModule {
   readonly #parser: DocumentParser;
   readonly #analysis?: MaterialAnalysisPort;
   readonly #quickCardAnalysis?: QuickCardAnalysisPort;
+  readonly #companyQuickCardAnalysis?: CompanyQuickCardAnalysisPort;
   readonly #research?: CompanyResearchPort;
   readonly #industryResearch?: IndustryResearchPort;
   readonly #search?: WebSearchPort;
   readonly #semanticSearch: SemanticSearchPort;
   readonly #companyListExtraction: CompanyListExtractionPort;
   readonly #conversationRelatedness: ConversationRelatednessPort;
+  readonly #companySearches = new Map<string, Promise<void>>();
+  readonly #companyQuickAnalyses = new Map<string, Promise<CompanyQuickCardResult>>();
   #finalizeQueue: Promise<void> = Promise.resolve();
   #closed = false;
 
@@ -297,6 +308,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#parser = options.parser ?? createDocumentParser();
     this.#analysis = options.analysis;
     this.#quickCardAnalysis = options.quickCardAnalysis;
+    this.#companyQuickCardAnalysis = options.companyQuickCardAnalysis;
     this.#research = options.research;
     this.#industryResearch = options.industryResearch;
     this.#search = options.search;
@@ -443,6 +455,134 @@ class SqlitePlatformModule implements PlatformModule {
         ...(placement ? { industryId: placement.industry_id } : {}),
       },
     };
+  }
+
+  async quickAnalyzeCompanyResearch(conversationId: string): Promise<CompanyQuickCardResult> {
+    this.#assertOpen();
+    const target = this.#db.prepare(`
+      SELECT r.run_id, r.task_id, r.company_id, m.proposed_name,
+        c.canonical_name, c.status AS company_status
+      FROM company_research_runs r
+      JOIN analysis_tasks t ON t.task_id = r.task_id
+      LEFT JOIN companies c ON c.company_id = r.company_id
+      LEFT JOIN company_match_cases m ON m.conversation_id = t.conversation_id
+      WHERE t.conversation_id = ?
+    `).get(conversationId) as {
+      run_id: string;
+      task_id: string;
+      company_id: string | null;
+      proposed_name: string | null;
+      canonical_name: string | null;
+      company_status: string | null;
+    } | undefined;
+    if (!target) {
+      throw new PlatformNotFoundError(`company research conversation not found: ${conversationId}`);
+    }
+    if (!target.company_id || !target.canonical_name) {
+      return pendingCompanyIdentityQuickCard(target.proposed_name ?? '待确认公司主体');
+    }
+    const stored = this.#db.prepare(`
+      SELECT result_json FROM company_quick_card_results WHERE run_id = ?
+    `).get(target.run_id) as { result_json: string } | undefined;
+    if (stored) return JSON.parse(stored.result_json) as CompanyQuickCardResult;
+    let active = this.#companyQuickAnalyses.get(target.run_id);
+    if (!active) {
+      active = this.#buildCompanyQuickCard({
+        conversationId,
+        runId: target.run_id,
+        taskId: target.task_id,
+        companyId: target.company_id,
+        companyName: target.canonical_name,
+        identityState: target.company_status === 'active' ? 'existing' : 'provisional',
+      });
+      this.#companyQuickAnalyses.set(target.run_id, active);
+      void active.finally(() => this.#companyQuickAnalyses.delete(target.run_id)).catch(() => undefined);
+    }
+    return active;
+  }
+
+  async #buildCompanyQuickCard(input: {
+    conversationId: string;
+    runId: string;
+    taskId: string;
+    companyId: string;
+    companyName: string;
+    identityState: 'existing' | 'provisional';
+  }): Promise<CompanyQuickCardResult> {
+    if (!this.#companyQuickCardAnalysis) {
+      throw new PlatformInputError('company_quick_card_unavailable', '公司快速卡分析尚未配置');
+    }
+    await this.#ensureCompanyResearchSearch(input.taskId).catch(() => undefined);
+    const existingKnowledge = this.#db.prepare(`
+      SELECT knowledge_type, statement, value FROM knowledge
+      WHERE company_id = ? AND status IN ('current', 'disputed')
+      ORDER BY created_at DESC LIMIT 80
+    `).all(input.companyId) as unknown as Array<{
+      knowledge_type: string;
+      statement: string;
+      value: string | null;
+    }>;
+    const materialSummaries = this.#db.prepare(`
+      SELECT section.summary FROM analysis_sections section
+      JOIN analysis_tasks task ON task.task_id = section.task_id
+      JOIN conversation_companies link ON link.conversation_id = task.conversation_id
+      WHERE link.company_id = ? AND task.task_id != ?
+      ORDER BY section.created_at DESC LIMIT 20
+    `).all(input.companyId, input.taskId) as unknown as Array<{ summary: string }>;
+    const webResults = this.#researchWebResults(input.runId);
+    const extraction = await this.#companyQuickCardAnalysis.analyze({
+      conversationId: input.conversationId,
+      companyName: input.companyName,
+      identityState: input.identityState,
+      existingKnowledge: existingKnowledge.map((item) => ({
+        knowledgeType: item.knowledge_type,
+        statement: item.statement,
+        ...(item.value ? { value: item.value } : {}),
+      })),
+      materialSummaries: materialSummaries.map((item) => item.summary),
+      webResults,
+    });
+    const materialCount = this.#companyMaterials(input.companyId).length;
+    const pending = this.#db.prepare(`
+      SELECT COUNT(*) AS count FROM knowledge_candidates
+      WHERE company_id = ? AND status IN ('pending', 'conflicted')
+    `).get(input.companyId) as { count: number };
+    const placement = input.identityState === 'existing' ? this.#db.prepare(`
+      SELECT industry_id FROM company_industries
+      WHERE company_id = ? AND status = 'confirmed'
+      ORDER BY updated_at DESC, industry_id LIMIT 1
+    `).get(input.companyId) as { industry_id: string } | undefined : undefined;
+    const confidence = companyQuickCardConfidence(extraction, {
+      identityState: input.identityState,
+      sourceCount: webResults.length,
+      materialCount,
+      formalKnowledgeCount: existingKnowledge.length,
+    });
+    const result: CompanyQuickCardResult = {
+      kind: 'company_research',
+      status: 'completed',
+      companyName: input.companyName,
+      identityState: input.identityState,
+      ...extraction,
+      confidence,
+      confidenceLevel: confidence >= 80 ? '高' : confidence >= 50 ? '中' : '低',
+      sourceCount: webResults.length,
+      materialCount,
+      formalKnowledgeCount: existingKnowledge.length,
+      pendingCandidateCount: pending.count,
+      navigation: input.identityState === 'existing' ? {
+        companyId: input.companyId,
+        ...(placement ? { industryId: placement.industry_id } : {}),
+      } : {},
+    };
+    this.#db.prepare(`
+      INSERT OR IGNORE INTO company_quick_card_results (run_id, result_json, created_at)
+      VALUES (?, ?, ?)
+    `).run(input.runId, JSON.stringify(result), this.#now().toISOString());
+    const saved = this.#db.prepare(`
+      SELECT result_json FROM company_quick_card_results WHERE run_id = ?
+    `).get(input.runId) as { result_json: string };
+    return JSON.parse(saved.result_json) as CompanyQuickCardResult;
   }
 
   async listConversations(): Promise<ConversationSummary[]> {
@@ -1364,7 +1504,52 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async startCompanyResearch(input: StartCompanyResearchInput): Promise<ConversationDetail> {
+    return (await this.#startCompanyResearchWithSource(input, {
+      sourceChannel: 'web',
+    })).conversation;
+  }
+
+  async startFeishuCompanyResearch(
+    input: StartFeishuCompanyResearchInput,
+  ): Promise<StartFeishuCompanyResearchResult> {
+    const sourceMessageId = input.sourceMessageId.trim();
+    if (!sourceMessageId || sourceMessageId.length > 500 || /[\r\n]/u.test(sourceMessageId)) {
+      throw new PlatformInputError('invalid_feishu_metadata', 'source message id is invalid');
+    }
+    const senderId = input.senderId?.trim();
+    if (senderId !== undefined && (!senderId || senderId.length > 500 || /[\r\n]/u.test(senderId))) {
+      throw new PlatformInputError('invalid_feishu_metadata', 'sender id is invalid');
+    }
+    const companyName = canonicalCompanyName(input.companyName);
+    assertCompanyListName(companyName);
+    return this.#startCompanyResearchWithSource({
+      companyName,
+      intent: `研究 ${companyName} 的公司概况、行业赛道、融资、团队、核心亮点与近期公开信号`,
+      explicitWebSearch: true,
+    }, {
+      sourceChannel: 'feishu',
+      sourceMessageId,
+      sourceAttachmentKey: 'company-research',
+      ...(senderId ? { senderId } : {}),
+    });
+  }
+
+  async #startCompanyResearchWithSource(
+    input: StartCompanyResearchInput,
+    source: Pick<IngestDocumentInput, 'sourceChannel' | 'sourceMessageId' | 'sourceAttachmentKey' | 'senderId'>,
+  ): Promise<StartFeishuCompanyResearchResult> {
     this.#assertOpen();
+    if (source.sourceMessageId) {
+      const sourceReplay = await this.#idempotentIngestResult({
+        fileName: '公司研究请求.json',
+        mimeType: 'application/json',
+        ...source,
+        content: singleChunk(Buffer.from('{}', 'utf8')),
+      });
+      if (sourceReplay) {
+        return { conversation: sourceReplay.conversation, reusedResearch: true };
+      }
+    }
     const intent = input.intent.trim();
     if (!intent || intent.length > 500) throw new PlatformInputError('invalid_research_intent', '研究意图不能为空且不能超过 500 字');
     const workflow = normalizeCompanyResearchWorkflow(input.workflow);
@@ -1407,21 +1592,28 @@ class SqlitePlatformModule implements PlatformModule {
     const documentInput: IngestDocumentInput = {
       fileName: `公司研究请求-${this.#now().toISOString().replace(/[-:]/gu, '').slice(0, 15)}.json`,
       mimeType: 'application/json',
-      sourceChannel: 'web',
+      ...source,
       content: singleChunk(payload),
     };
     const staged = await this.#stage(documentInput);
-    const result = await this.#exclusive(() => this.#finalize(documentInput, staged, {
-      research: {
-        ...(companyId ? { companyId } : {}),
-        companyName,
-        ambiguousOptions,
-        intent,
-        explicitWebSearch: input.explicitWebSearch,
-        ...(workflow ? { workflow } : {}),
-      },
-    }));
-    return result.conversation;
+    return this.#exclusive(async () => {
+      const concurrentReplay = await this.#idempotentIngestResult(documentInput, staged.sha256);
+      if (concurrentReplay) {
+        await rm(staged.directory, { recursive: true, force: true });
+        return { conversation: concurrentReplay.conversation, reusedResearch: true };
+      }
+      const result = await this.#finalize(documentInput, staged, {
+        research: {
+          ...(companyId ? { companyId } : {}),
+          companyName,
+          ambiguousOptions,
+          intent,
+          explicitWebSearch: input.explicitWebSearch,
+          ...(workflow ? { workflow } : {}),
+        },
+      });
+      return { conversation: result.conversation, reusedResearch: false };
+    });
   }
 
   async startIndustryResearch(input: StartIndustryResearchInput): Promise<ConversationDetail> {
@@ -2617,14 +2809,30 @@ class SqlitePlatformModule implements PlatformModule {
   }
 
   async #planExternalSearch(step: ClaimedStep): Promise<StepOutcome> {
+    this.#planCompanyResearchSearch(step.taskId);
+    return 'completed';
+  }
+
+  #planCompanyResearchSearch(taskId: string): {
+    runId: string;
+    companyName: string;
+    triggerReason: SearchTriggerReason | 'not_needed';
+    publicQuery?: string;
+    searchExecutedAt?: string;
+  } {
     const run = this.#db.prepare(`
-      SELECT r.company_id, r.explicit_search, r.workflow_skill, c.canonical_name
+      SELECT r.run_id, r.company_id, r.explicit_search, r.workflow_skill,
+        r.trigger_reason, r.public_query, r.search_executed_at, c.canonical_name
       FROM company_research_runs r JOIN companies c ON c.company_id = r.company_id
       WHERE r.task_id = ?
-    `).get(step.taskId) as {
+    `).get(taskId) as {
+      run_id: string;
       company_id: string;
       explicit_search: number;
       workflow_skill: string | null;
+      trigger_reason: string | null;
+      public_query: string | null;
+      search_executed_at: string | null;
       canonical_name: string;
     } | undefined;
     if (!run) throw new Error('company_research_run_missing');
@@ -2636,33 +2844,63 @@ class SqlitePlatformModule implements PlatformModule {
       ? 'not_needed'
       : researchSearchTrigger(Boolean(run.explicit_search), knowledge, this.#now());
     const query = trigger === 'not_needed' ? undefined : `${run.canonical_name} 公司 最新 业务 产品 融资`;
-    this.#db.prepare(`
-      UPDATE company_research_runs SET trigger_reason = ?, public_query = ?, updated_at = ? WHERE task_id = ?
-    `).run(trigger, query ?? null, this.#now().toISOString(), step.taskId);
-    return 'completed';
+    if (run.trigger_reason !== trigger || run.public_query !== (query ?? null)) {
+      this.#db.prepare(`
+        UPDATE company_research_runs SET trigger_reason = ?, public_query = ?, updated_at = ? WHERE task_id = ?
+      `).run(trigger, query ?? null, this.#now().toISOString(), taskId);
+    }
+    return {
+      runId: run.run_id,
+      companyName: run.canonical_name,
+      triggerReason: trigger,
+      ...(query ? { publicQuery: query } : {}),
+      ...(run.search_executed_at ? { searchExecutedAt: run.search_executed_at } : {}),
+    };
   }
 
   async #executeExternalSearch(step: ClaimedStep): Promise<StepOutcome> {
-    const run = this.#db.prepare(`
-      SELECT r.run_id, r.trigger_reason, r.public_query, r.search_executed_at, c.canonical_name
-      FROM company_research_runs r JOIN companies c ON c.company_id = r.company_id
-      WHERE r.task_id = ?
-    `).get(step.taskId) as {
-      run_id: string; trigger_reason: string; public_query: string | null; search_executed_at: string | null; canonical_name: string;
-    } | undefined;
-    if (!run) throw new Error('company_research_run_missing');
-    if (run.trigger_reason === 'not_needed') return 'skipped';
-    if (run.search_executed_at) return 'completed';
-    if (!run.public_query) throw new Error('research_public_query_missing');
-    if (!this.#search) throw new SearchAdapterError('search_adapter_unavailable', 'Exa search adapter is not configured');
+    const planned = this.#planCompanyResearchSearch(step.taskId);
+    if (planned.triggerReason === 'not_needed') return 'skipped';
+    await this.#ensureCompanyResearchSearch(step.taskId);
+    return 'completed';
+  }
+
+  async #ensureCompanyResearchSearch(taskId: string): Promise<void> {
+    const planned = this.#planCompanyResearchSearch(taskId);
+    if (planned.triggerReason === 'not_needed' || planned.searchExecutedAt) return;
+    let active = this.#companySearches.get(planned.runId);
+    if (!active) {
+      active = this.#executeCompanyResearchSearch(planned);
+      this.#companySearches.set(planned.runId, active);
+      void active.finally(() => this.#companySearches.delete(planned.runId)).catch(() => undefined);
+    }
+    await active;
+  }
+
+  async #executeCompanyResearchSearch(input: {
+    runId: string;
+    companyName: string;
+    triggerReason: SearchTriggerReason | 'not_needed';
+    publicQuery?: string;
+  }): Promise<void> {
+    if (input.triggerReason === 'not_needed') return;
+    if (!input.publicQuery) throw new Error('research_public_query_missing');
+    if (!this.#search) {
+      throw new SearchAdapterError('search_adapter_unavailable', 'Exa search adapter is not configured');
+    }
     const results = await this.#search.search({
-      companyName: run.canonical_name,
-      reason: run.trigger_reason as SearchTriggerReason,
-      query: run.public_query,
+      companyName: input.companyName,
+      reason: input.triggerReason,
+      query: input.publicQuery,
       maxResults: 5,
     });
     const now = this.#now().toISOString();
     this.#transaction(() => {
+      const latest = this.#db.prepare(`
+        SELECT search_executed_at FROM company_research_runs WHERE run_id = ?
+      `).get(input.runId) as { search_executed_at: string | null } | undefined;
+      if (!latest) throw new Error('company_research_run_missing');
+      if (latest.search_executed_at) return;
       for (const [index, result] of results.entries()) {
         const evidenceId = this.#nextId();
         const quote = result.highlights.join('\n').trim() || result.title;
@@ -2677,12 +2915,12 @@ class SqlitePlatformModule implements PlatformModule {
         this.#db.prepare(`
           INSERT INTO web_search_results (result_id, run_id, evidence_id, rank, access_status)
           VALUES (?, ?, ?, ?, ?)
-        `).run(this.#nextId(), run.run_id, evidenceId, index + 1, result.accessStatus);
+        `).run(this.#nextId(), input.runId, evidenceId, index + 1, result.accessStatus);
       }
-      this.#db.prepare('UPDATE company_research_runs SET search_executed_at = ?, updated_at = ? WHERE run_id = ?')
-        .run(now, now, run.run_id);
+      this.#db.prepare(`
+        UPDATE company_research_runs SET search_executed_at = ?, updated_at = ? WHERE run_id = ?
+      `).run(now, now, input.runId);
     });
-    return 'completed';
   }
 
   async #analyzeCompany(step: ClaimedStep): Promise<StepOutcome> {
@@ -4939,6 +5177,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateIntakeAttachmentIdempotencySchema();
     this.#migrateCompanyIndustryNormalizationSchema();
     this.#migrateSubjectIdentitySchema();
+    this.#migrateCompanyQuickCardSchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -5561,14 +5800,20 @@ class SqlitePlatformModule implements PlatformModule {
     const applied = this.#db.prepare(
       'SELECT 1 AS applied FROM schema_migrations WHERE version = 17',
     ).get();
-    if (applied) return;
+    const columns = new Set(
+      (this.#db.prepare('PRAGMA table_info(companies)').all() as unknown as Array<{
+        name: string;
+      }>).map((column) => column.name),
+    );
+    const complete = [
+      'subject_kind',
+      'subject_kind_status',
+      'suggested_subject_kind',
+      'subject_kind_reason',
+    ].every((column) => columns.has(column)) && this.#databaseTableExists('subject_company_links');
+    if (applied && complete) return;
     this.#transaction(() => {
       const now = this.#now().toISOString();
-      const columns = new Set(
-        (this.#db.prepare('PRAGMA table_info(companies)').all() as unknown as Array<{
-          name: string;
-        }>).map((column) => column.name),
-      );
       if (!columns.has('subject_kind')) {
         this.#db.exec("ALTER TABLE companies ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'unknown'");
       }
@@ -5610,8 +5855,27 @@ class SqlitePlatformModule implements PlatformModule {
         `).run(suggestion.kind, suggestion.reason, company.company_id);
       }
       this.#db.prepare(
-        'INSERT INTO schema_migrations (version, applied_at) VALUES (17, ?)',
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (17, ?)',
       ).run(now);
+    });
+  }
+
+  #migrateCompanyQuickCardSchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 18',
+    ).get();
+    if (applied && this.#databaseTableExists('company_quick_card_results')) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS company_quick_card_results (
+          run_id TEXT PRIMARY KEY REFERENCES company_research_runs(run_id),
+          result_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+      this.#db.prepare(
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (18, ?)',
+      ).run(this.#now().toISOString());
     });
   }
 
@@ -6263,6 +6527,60 @@ function normalizeCompanyResearchWorkflow(
         }
       : {}),
   };
+}
+
+function pendingCompanyIdentityQuickCard(companyName: string): CompanyQuickCardResult {
+  return {
+    kind: 'company_research',
+    status: 'pending_confirmation',
+    companyName,
+    identityState: 'ambiguous',
+    companyIdentity: '匹配到多个已有主体，请在深度分析对话中确认',
+    industryTrack: '待主体确认',
+    financing: '待主体确认',
+    keyPeople: '待主体确认',
+    highlights: [],
+    recentSignals: [],
+    confidence: 0,
+    confidenceLevel: '低',
+    sourceCount: 0,
+    materialCount: 0,
+    formalKnowledgeCount: 0,
+    pendingCandidateCount: 0,
+    navigation: {},
+    providerId: 'boyuan',
+    modelId: 'identity-matcher',
+    variant: 'deterministic',
+    sessionId: '',
+  };
+}
+
+function companyQuickCardConfidence(
+  result: CompanyQuickCardExtractionResult,
+  context: {
+    identityState: 'existing' | 'provisional';
+    sourceCount: number;
+    materialCount: number;
+    formalKnowledgeCount: number;
+  },
+): number {
+  const disclosedText = [
+    result.companyIdentity,
+    result.industryTrack,
+    result.financing,
+    result.keyPeople,
+  ].filter((value) => value !== '暂未检索到').length;
+  const disclosedGroups = disclosedText
+    + (result.highlights.length > 0 ? 1 : 0)
+    + (result.recentSignals.length > 0 ? 1 : 0);
+  return Math.min(90, Math.round(
+    10
+      + (context.identityState === 'existing' ? 15 : 5)
+      + Math.min(25, context.sourceCount * 5)
+      + Math.min(20, context.formalKnowledgeCount * 4)
+      + Math.min(8, context.materialCount * 2)
+      + (disclosedGroups / 6) * 12,
+  ));
 }
 
 function quickCardConfidence(

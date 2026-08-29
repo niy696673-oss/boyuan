@@ -86,6 +86,52 @@ export function createFeishuIntakeRouter(
     },
   );
 
+  router.post(
+    "/company-research",
+    authorize,
+    async (request, response, next) => {
+      try {
+        const body = request.body as unknown;
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          throw new PlatformInputError("invalid_company_research", "请提供公司名称");
+        }
+        const companyName = (body as Record<string, unknown>).companyName;
+        if (typeof companyName !== "string") {
+          throw new PlatformInputError("invalid_company_research", "请提供公司名称");
+        }
+        const sourceMessageId = requiredMetadataHeader(
+          request.header("x-boyuan-message-id"),
+          "source message",
+        );
+        const senderId = optionalMetadataHeader(
+          request.header("x-boyuan-sender-id"),
+          "sender",
+        );
+        response.status(201).json(await platform.startFeishuCompanyResearch({
+          companyName,
+          sourceMessageId,
+          ...(senderId ? { senderId } : {}),
+        }));
+      } catch (error) {
+        handlePlatformError(error, response, next);
+      }
+    },
+  );
+
+  router.post(
+    "/company-research/:conversationId/quick-card",
+    authorize,
+    async (request, response, next) => {
+      try {
+        response.json(await platform.quickAnalyzeCompanyResearch(
+          requiredPathParameter(request.params.conversationId),
+        ));
+      } catch (error) {
+        handlePlatformError(error, response, next);
+      }
+    },
+  );
+
   return router;
 }
 
