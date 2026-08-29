@@ -93,6 +93,43 @@ describe('intake service', () => {
     } finally { temp.cleanup(); }
   });
 
+  it('resumes a durable company job after delivery failure without restarting deep research or Luna', async () => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    const store = new MemoryJobStore();
+    const updateCard = vi.fn()
+      .mockRejectedValueOnce(new Error('lark_update_failed'))
+      .mockResolvedValue(undefined);
+    const input = {
+      chatId: 'oc_chat',
+      sessionId: 'feishu:om_company',
+      messageId: 'om_company',
+      companyName: '博源科技',
+      statusCardMessageId: 'om_processing',
+    };
+    try {
+      const service = new IntakeService({
+        config: testConfig(temp.path),
+        platform,
+        messenger: { sendCard: vi.fn(async () => undefined), updateCard },
+        store,
+        setTimer: () => undefined,
+      });
+
+      await expect(service.researchCompany(input)).rejects.toThrow('lark_update_failed');
+      expect(store.get(jobKey('om_company', 'company-research'))).toMatchObject({
+        kind: 'company_research',
+        completionCardSent: false,
+        companyQuickCard: { modelId: 'gpt-5.6-luna' },
+      });
+      await expect(service.researchCompany(input)).resolves.toMatchObject({ status: 'completed' });
+
+      expect(platform.startCompanyResearch).toHaveBeenCalledOnce();
+      expect(platform.companyQuickCard).toHaveBeenCalledOnce();
+      expect(updateCard).toHaveBeenCalledTimes(2);
+    } finally { temp.cleanup(); }
+  });
+
   it('resumes orphan processing receipts and removes the redundant receipt after upload is durable', async () => {
     const temp = tempDir();
     const store = new MemoryJobStore();

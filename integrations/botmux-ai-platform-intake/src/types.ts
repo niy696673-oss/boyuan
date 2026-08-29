@@ -2,6 +2,8 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
+export const COMPANY_RESEARCH_FILE_KEY = 'company-research';
+
 export interface IntakeConfig {
   schemaVersion: 1;
   larkAppId: string;

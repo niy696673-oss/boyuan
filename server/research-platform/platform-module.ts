@@ -512,7 +512,7 @@ class SqlitePlatformModule implements PlatformModule {
     if (!this.#companyQuickCardAnalysis) {
       throw new PlatformInputError('company_quick_card_unavailable', '公司快速卡分析尚未配置');
     }
-    await this.#ensureCompanyResearchSearch(input.taskId).catch(() => undefined);
+    await this.#ensureCompanyResearchSearch(input.taskId);
     const existingKnowledge = this.#db.prepare(`
       SELECT knowledge_type, statement, value FROM knowledge
       WHERE company_id = ? AND status IN ('current', 'disputed')
@@ -1569,7 +1569,8 @@ class SqlitePlatformModule implements PlatformModule {
       assertCompanyListName(companyName);
       const matches = this.#matchCompanies(companyName);
       if (matches.length > 1) ambiguousOptions = matches;
-      else companyId = matches[0] ?? this.#createCompany(companyName);
+      else companyId = matches[0]
+        ?? this.#createCompany(companyName, source.sourceChannel === 'feishu');
     }
     if (workflow) {
       if (!companyId) {
@@ -3448,14 +3449,14 @@ class SqlitePlatformModule implements PlatformModule {
     return rows.map((row) => row.company_id);
   }
 
-  #createCompany(name: string): string {
+  #createCompany(name: string, forceProvisional = false): string {
     const now = this.#now().toISOString();
-    return this.#transaction(() => this.#insertCompany(name, now));
+    return this.#transaction(() => this.#insertCompany(name, now, forceProvisional));
   }
 
-  #insertCompany(name: string, now: string): string {
+  #insertCompany(name: string, now: string, forceProvisional = false): string {
     const companyId = this.#nextId();
-    const active = hasLegalEntitySuffix(name);
+    const active = !forceProvisional && hasLegalEntitySuffix(name);
     const suggestion = suggestSubjectKind(name);
     this.#db.prepare(`
       INSERT INTO companies (

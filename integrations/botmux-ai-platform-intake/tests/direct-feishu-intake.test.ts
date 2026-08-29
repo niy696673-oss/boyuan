@@ -369,11 +369,15 @@ describe('direct Feishu company research intake', () => {
   it('requires an @ mention in a group and removes the mention token before parsing', () => {
     expect(parseFeishuCompanyResearchMessage(textEvent('研究 白杨智能', {
       chat_type: 'group',
-    }))).toBeNull();
+    }), new Date(), 'ou_bot')).toBeNull();
     expect(parseFeishuCompanyResearchMessage(textEvent('@_user_1 研究 白杨智能', {
       chat_type: 'group',
       mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' } }],
-    }))).toMatchObject({ companyName: '白杨智能' });
+    }), new Date(), 'ou_bot')).toMatchObject({ companyName: '白杨智能' });
+    expect(parseFeishuCompanyResearchMessage(textEvent('@_user_1 研究 白杨智能', {
+      chat_type: 'group',
+      mentions: [{ key: '@_user_1', id: { open_id: 'ou_someone_else' } }],
+    }), new Date(), 'ou_bot')).toBeNull();
   });
 
   it('sends and persists the processing card before starting both research lanes', async () => {
@@ -384,6 +388,7 @@ describe('direct Feishu company research intake', () => {
       return { fileKey: 'company-research', fileName: '白杨智能', status: 'completed' as const };
     });
     const ingress = new DirectFeishuCompanyResearchIngress({
+      botOpenId: 'ou_bot',
       researchCompany,
       messenger: {
         sendCard: vi.fn(async () => { order.push('loading'); return { messageId: 'om_status' }; }),
@@ -409,6 +414,7 @@ describe('direct Feishu company research intake', () => {
       fileKey: 'company-research', fileName: '白杨智能', status: 'completed' as const,
     }));
     const ingress = new DirectFeishuCompanyResearchIngress({
+      botOpenId: 'ou_bot',
       researchCompany,
       messenger: { sendCard, updateCard: vi.fn(async () => undefined) },
       statusCardId: () => 'om_status',

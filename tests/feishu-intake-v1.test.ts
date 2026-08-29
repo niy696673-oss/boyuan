@@ -59,6 +59,12 @@ describe("飞书材料接入新工作台", () => {
       search: { search },
     });
     modules.push(platform);
+    const seededCompany = await platform.startCompanyResearch({
+      companyName: "博源科技有限公司",
+      intent: "建立已有正式主体测试数据",
+      explicitWebSearch: false,
+    });
+    await platform.cancelTask(seededCompany.task.taskId);
     const store = new Store({ initialData: initialStoreData(), persistToDisk: false });
     const app = createApp(store, createDemoServices(store), {
       researchPlatform: platform,
@@ -126,6 +132,22 @@ describe("飞书材料接入新工作台", () => {
       companyResearch: { sources: [{ url: "https://example.com/boyuan/new-product" }] },
     });
     expect(search).toHaveBeenCalledOnce();
+
+    const provisional = await platform.startFeishuCompanyResearch({
+      companyName: "新研科技有限公司",
+      sourceMessageId: "om_new_company_research",
+      senderId: "ou_sender",
+    });
+    expect(provisional.conversation).toMatchObject({
+      sourceChannel: "feishu",
+      company: { canonicalName: "新研科技有限公司", status: "provisional" },
+    });
+    await expect(platform.quickAnalyzeCompanyResearch(
+      provisional.conversation.conversationId,
+    )).resolves.toMatchObject({
+      identityState: "provisional",
+      navigation: {},
+    });
   });
 
   it("公司名匹配多个主体时返回待确认快速卡并暂停深度研究", async () => {
@@ -173,6 +195,65 @@ describe("飞书材料接入新工作台", () => {
     expect(analyze).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
     expect(await platform.runPendingSteps()).toBe(0);
+  });
+
+  it("公开检索失败时快速卡失败且不缓存空快照，深度链路可独立重试", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-company-search-retry-"));
+    roots.push(dataRoot);
+    const search = vi.fn<WebSearchPort['search']>()
+      .mockRejectedValueOnce(new Error("temporary_search_failure"))
+      .mockResolvedValueOnce([{
+        title: "重试后的公开来源",
+        url: "https://example.com/retry-success",
+        site: "example.com",
+        highlights: ["公开检索重试成功。"],
+        accessStatus: "accessible",
+        retrievedAt: "2026-08-29T00:00:00.000Z",
+      }]);
+    const analyze = vi.fn<CompanyQuickCardAnalysisPort['analyze']>(async (input) => ({
+      companyIdentity: input.companyName,
+      industryTrack: "企业服务",
+      financing: "暂未检索到",
+      keyPeople: "暂未检索到",
+      highlights: [],
+      recentSignals: input.webResults.flatMap((item) => item.highlights),
+      providerId: "openai",
+      modelId: "gpt-5.6-luna",
+      variant: "none",
+      sessionId: "retry-quick-session",
+    }));
+    const platform = createPlatformModule({
+      dataRoot,
+      companyQuickCardAnalysis: { analyze },
+      research: createDeterministicResearchAdapter(),
+      search: { search },
+    });
+    modules.push(platform);
+    const started = await platform.startFeishuCompanyResearch({
+      companyName: "重试科技",
+      sourceMessageId: "om_search_retry",
+    });
+
+    await expect(platform.quickAnalyzeCompanyResearch(
+      started.conversation.conversationId,
+    )).rejects.toThrow("temporary_search_failure");
+    expect(analyze).not.toHaveBeenCalled();
+
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    expect(await platform.getConversation(started.conversation.conversationId)).toMatchObject({
+      status: "completed",
+      companyResearch: { sources: [{ url: "https://example.com/retry-success" }] },
+    });
+    await expect(platform.quickAnalyzeCompanyResearch(
+      started.conversation.conversationId,
+    )).resolves.toMatchObject({
+      recentSignals: ["公开检索重试成功。"],
+      sourceCount: 1,
+    });
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(analyze).toHaveBeenCalledOnce();
   });
 
   it("同一条飞书消息按附件标识分别接入，并只复用重试的附件", async () => {

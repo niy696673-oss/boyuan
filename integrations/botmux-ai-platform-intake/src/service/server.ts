@@ -8,9 +8,10 @@ import {
   FeishuCardMessenger,
 } from '../direct-feishu-intake.js';
 import { LarkFeishuTransport, loadBotmuxLarkCredentials } from '../feishu-runtime.js';
-import { COMPANY_RESEARCH_FILE_KEY, IntakeService } from '../intake-service.js';
+import { IntakeService } from '../intake-service.js';
 import { JsonJobStore } from '../job-store.js';
 import { HttpPlatformClient } from '../platform-client.js';
+import { COMPANY_RESEARCH_FILE_KEY } from '../types.js';
 
 const configPath = process.env.BOTMUX_AI_PLATFORM_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('intake_config_path_missing');
@@ -22,6 +23,7 @@ const port = Number(process.env.PORT ?? config.servicePort);
 const host = process.env.HOST ?? '127.0.0.1';
 if (host !== '127.0.0.1' && host !== '::1') throw new Error('intake_service_must_be_loopback');
 const feishu = new LarkFeishuTransport(config, loadBotmuxLarkCredentials(config));
+const botOpenId = await feishu.botOpenId();
 const messenger = new FeishuCardMessenger(feishu);
 const service = new IntakeService({
   config,
@@ -50,6 +52,7 @@ const ingress = new DirectFeishuFileIngress({
     service.markStatusCardTerminal(message.messageId, message.fileKey),
 });
 const companyIngress = new DirectFeishuCompanyResearchIngress({
+  botOpenId,
   researchCompany: (turn) => service.researchCompany(turn),
   messenger,
   statusCardId: (message) =>

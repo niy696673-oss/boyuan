@@ -11,8 +11,7 @@ import type {
   CompanyQuickCardResult, CompanyResearchTurn, IntakeConfig, IntakeJob, IntakeOutcome, IntakeTurn, JobStore, Messenger, PlatformClient, QuickCardResult,
   StatusCardReceipt,
 } from './types.js';
-
-export const COMPANY_RESEARCH_FILE_KEY = 'company-research';
+import { COMPANY_RESEARCH_FILE_KEY } from './types.js';
 
 export interface IntakeServiceOptions {
   config: IntakeConfig;

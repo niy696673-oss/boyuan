@@ -14,8 +14,7 @@ import type {
   SendCardInput,
   UpdateCardInput,
 } from './types.js';
-
-const COMPANY_RESEARCH_FILE_KEY = 'company-research';
+import { COMPANY_RESEARCH_FILE_KEY } from './types.js';
 
 export interface FeishuFileMessage {
   chatId: string;
@@ -47,6 +46,7 @@ export interface FeishuCompanyResearchMessage {
 }
 
 export interface DirectFeishuCompanyResearchIngressOptions {
+  botOpenId: string;
   researchCompany(turn: CompanyResearchTurn): Promise<IntakeOutcome>;
   messenger: Messenger;
   statusCardId(message: FeishuCompanyResearchMessage): string | undefined;
@@ -157,6 +157,7 @@ export class DirectFeishuFileIngress {
 }
 
 export class DirectFeishuCompanyResearchIngress {
+  readonly #botOpenId: string;
   readonly #researchCompany: DirectFeishuCompanyResearchIngressOptions['researchCompany'];
   readonly #messenger: Messenger;
   readonly #statusCardId: DirectFeishuCompanyResearchIngressOptions['statusCardId'];
@@ -165,6 +166,10 @@ export class DirectFeishuCompanyResearchIngress {
   readonly #active = new Map<string, Promise<void>>();
 
   constructor(options: DirectFeishuCompanyResearchIngressOptions) {
+    if (!/^ou_[A-Za-z0-9_-]{1,500}$/u.test(options.botOpenId)) {
+      throw new Error('lark_bot_open_id_invalid');
+    }
+    this.#botOpenId = options.botOpenId;
     this.#researchCompany = options.researchCompany;
     this.#messenger = options.messenger;
     this.#statusCardId = options.statusCardId;
@@ -173,7 +178,7 @@ export class DirectFeishuCompanyResearchIngress {
   }
 
   async handle(data: unknown): Promise<{ handled: boolean }> {
-    const message = parseFeishuCompanyResearchMessage(data);
+    const message = parseFeishuCompanyResearchMessage(data, new Date(), this.#botOpenId);
     if (!message) return { handled: false };
     await this.#enqueue(message);
     return { handled: true };
@@ -298,6 +303,7 @@ export function parseFeishuFileMessage(data: unknown, now = new Date()): FeishuF
 export function parseFeishuCompanyResearchMessage(
   data: unknown,
   now = new Date(),
+  botOpenId?: string,
 ): FeishuCompanyResearchMessage | null {
   const event = record(data);
   const sender = record(event?.sender);
@@ -318,11 +324,14 @@ export function parseFeishuCompanyResearchMessage(
     ? message.mentions.flatMap((value) => {
         const mention = record(value);
         const key = text(mention?.key);
-        return key ? [key] : [];
+        const openId = text(record(mention?.id)?.open_id);
+        return key ? [{ key, openId }] : [];
       })
     : [];
-  if (chatType === 'group' && mentions.length === 0) return null;
-  for (const mention of mentions) command = command.split(mention).join(' ');
+  if (chatType === 'group' && (
+    !botOpenId || !mentions.some((mention) => mention.openId === botOpenId)
+  )) return null;
+  for (const mention of mentions) command = command.split(mention.key).join(' ');
   command = command.replace(/\s+/gu, ' ').trim();
   const match = /^(?:分析|研究)(?:一下|下)?\s*[：:]?\s*(.{2,80})$/u.exec(command);
   const companyName = match?.[1]?.trim();
