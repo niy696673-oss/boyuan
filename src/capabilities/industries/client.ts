@@ -16,6 +16,11 @@ export interface IndustryDirectoryClient {
     industryId: string,
     signal?: AbortSignal,
   ): Promise<IndustryDetailResponseV1>;
+  confirmClassification(
+    industryId: string,
+    expectedVersion: number,
+    signal?: AbortSignal,
+  ): Promise<IndustryDetailResponseV1>;
   uploadDocument(
     industryId: string,
     file: File,
@@ -50,6 +55,17 @@ export function createIndustryDirectoryClient(
         fetcher,
         `/api/v1/industries/${encodeURIComponent(industryId)}`,
         { signal },
+      ),
+    confirmClassification: (industryId, expectedVersion, signal) =>
+      requestPlatformJson<IndustryDetailResponseV1>(
+        fetcher,
+        `/api/v1/industries/${encodeURIComponent(industryId)}/confirmation`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expectedVersion }),
+          signal,
+        },
       ),
     uploadDocument: (industryId, file, signal) => {
       const body = new FormData();

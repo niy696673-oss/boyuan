@@ -399,7 +399,7 @@ export function IndustryDetailPage({ data, industryClient = defaultIndustryClien
       return;
     }
     const controller = new AbortController();
-    setState("loading");
+    setState((current) => current === "ready" ? "ready" : "loading");
     void industryClient.get(id, controller.signal)
       .then((response) => {
         setDetail(response);
@@ -441,7 +441,7 @@ function IndustryDetailContent({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") === "chain" ? "产业链" : "概览");
-  const [busyAction, setBusyAction] = useState<"upload" | "watch" | "">("");
+  const [busyAction, setBusyAction] = useState<"confirm" | "upload" | "watch" | "">("");
   const [notice, setNotice] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const descendants = useMemo(
@@ -472,6 +472,9 @@ function IndustryDetailContent({
     ["公司", companies.length],
   ] as const;
   const isActive = detail.status === "active";
+  const candidatePlacementCount = detail.companies.filter(
+    (placement) => placement.status === "candidate",
+  ).length;
   const selectTab = (name: (typeof tabs)[number][0]) => {
     setTab(name);
     const next = new URLSearchParams(searchParams);
@@ -509,6 +512,23 @@ function IndustryDetailContent({
       onRefresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "订阅状态保存失败");
+    } finally {
+      setBusyAction("");
+    }
+  };
+  const confirmClassification = async () => {
+    if (busyAction || (isActive && candidatePlacementCount === 0)) return;
+    setBusyAction("confirm");
+    setNotice("");
+    try {
+      await industryClient.confirmClassification(
+        detail.industryId,
+        detail.version,
+      );
+      setNotice(`行业分类已确认，${candidatePlacementCount} 家公司归属已写入正式知识。`);
+      onRefresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "行业分类确认失败");
     } finally {
       setBusyAction("");
     }
@@ -552,6 +572,20 @@ function IndustryDetailContent({
           </div>
         </dl>
         <div>
+          {(!isActive || candidatePlacementCount > 0) && (
+            <button
+              className="primary"
+              disabled={Boolean(busyAction)}
+              onClick={() => void confirmClassification()}
+            >
+              <ShieldCheck />
+              {busyAction === "confirm"
+                ? "确认中…"
+                : isActive
+                  ? `确认 ${candidatePlacementCount} 家公司归属`
+                  : "确认行业分类"}
+            </button>
+          )}
           <button
             aria-pressed={detail.watched}
             disabled={Boolean(busyAction)}

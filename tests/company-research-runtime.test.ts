@@ -506,7 +506,7 @@ describe("公司外部调研运行时", () => {
       query: "白杨智能有限公司 公司 最新 业务 产品 融资",
       type: "auto",
       numResults: 5,
-      contents: { highlights: { maxCharacters: 1200 } },
+      contents: { highlights: true },
     });
     expect(results).toEqual([
       {

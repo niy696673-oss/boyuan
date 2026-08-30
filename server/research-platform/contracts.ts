@@ -632,6 +632,10 @@ export interface PlatformModule {
   reclassifyIndustries(): Promise<IndustryReclassificationResult>;
   countUnclassifiedIndustryMaterials(): Promise<number>;
   getIndustry(industryId: string): Promise<IndustryDetail>;
+  confirmIndustryClassification(
+    industryId: string,
+    expectedVersion: number,
+  ): Promise<IndustryDetail>;
   setIndustryWatched(industryId: string, watched: boolean, expectedVersion: number): Promise<IndustryDetail>;
   search(query: string): Promise<GlobalSearchResults>;
   listNotifications(): Promise<PlatformNotification[]>;

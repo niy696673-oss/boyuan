@@ -167,6 +167,70 @@ describe("研究平台 v1 行业目录接缝", () => {
     });
   });
 
+  it("使用聚合版本确认行业及其候选公司归属", async () => {
+    const { app, platform } = await fixture();
+    await seedIndustry(app, platform);
+    const directory = await request(app).get("/api/v1/industries");
+    const industry = directory.body.items[0] as {
+      industryId: string;
+      version: number;
+    };
+    const before = await platform.getIndustry(industry.industryId);
+    expect(before.status).toBe("draft");
+    expect(before.companies).toEqual([
+      expect.objectContaining({ status: "candidate" }),
+    ]);
+    const companyVersion = before.companies[0]?.company.version;
+
+    const confirmed = await request(app)
+      .put(`/api/v1/industries/${industry.industryId}/confirmation`)
+      .send({ expectedVersion: industry.version });
+
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body).toMatchObject({
+      status: "active",
+      version: industry.version + 1,
+      companies: [{
+        status: "confirmed",
+        company: { version: Number(companyVersion) + 1 },
+      }],
+    });
+    const stale = await request(app)
+      .put(`/api/v1/industries/${industry.industryId}/confirmation`)
+      .send({ expectedVersion: industry.version });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: "version_conflict" });
+
+    const second = await request(app)
+      .post("/api/v1/documents")
+      .attach(
+        "file",
+        Buffer.from(
+          "松柏软件有限公司\n公司位于人工智能产业中游，提供企业智能化软件。",
+        ),
+        "松柏软件 BP.txt",
+      );
+    expect(second.status).toBe(201);
+    for (let index = 0; index < 20; index += 1) {
+      if ((await platform.runPendingSteps()) === 0) break;
+    }
+    const withNewPlacement = await platform.getIndustry(industry.industryId);
+    expect(withNewPlacement.status).toBe("active");
+    expect(withNewPlacement.companies.map((placement) => placement.status))
+      .toEqual(expect.arrayContaining(["confirmed", "candidate"]));
+
+    const appended = await request(app)
+      .put(`/api/v1/industries/${industry.industryId}/confirmation`)
+      .send({ expectedVersion: withNewPlacement.version });
+    expect(appended.status).toBe(200);
+    expect(appended.body.version).toBe(withNewPlacement.version + 1);
+    expect(
+      appended.body.companies.every(
+        (placement: { status: string }) => placement.status === "confirmed",
+      ),
+    ).toBe(true);
+  });
+
   it("返回尚未形成行业证据的持久材料数量", async () => {
     const { app, platform } = await fixture();
     const uploaded = await request(app)

@@ -83,4 +83,20 @@ describe("行业目录客户端", () => {
       expect.objectContaining({ method: "POST", signal: undefined }),
     );
   });
+
+  it("使用行业版本确认分类和公司归属", async () => {
+    const response = { industryId: "industry/1", status: "active", version: 4 };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+    const client = createIndustryDirectoryClient(fetcher);
+
+    await expect(client.confirmClassification("industry/1", 3)).resolves.toEqual(response);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/industries/industry%2F1/confirmation",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ expectedVersion: 3 }),
+        signal: undefined,
+      }),
+    );
+  });
 });

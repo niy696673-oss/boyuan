@@ -37,7 +37,7 @@ export function createExaSearchAdapter(options: ExaSearchOptions): WebSearchPort
             query: input.query,
             type: 'auto',
             numResults: input.maxResults ?? 5,
-            contents: { highlights: { maxCharacters: 1_200 } },
+            contents: { highlights: true },
           }),
         });
       } catch (error) {
