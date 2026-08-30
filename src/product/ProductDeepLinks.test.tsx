@@ -95,6 +95,7 @@ function industryClient(): IndustryDirectoryClient {
   return {
     list: vi.fn(),
     reclassify: vi.fn(),
+    confirmClassification: vi.fn(),
     uploadDocument: vi.fn(),
     setWatched: vi.fn(),
     get: vi.fn().mockResolvedValue({

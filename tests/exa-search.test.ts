@@ -20,4 +20,24 @@ describe('Exa search adapter', () => {
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]?.[1]?.signal).toBeUndefined();
   });
+
+  it('requests token-efficient highlights without deprecated tuning fields', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json({ results: [] }));
+    const search = createExaSearchAdapter({ apiKey: 'test-key', fetcher });
+
+    await search.search({
+      companyName: '白杨智能',
+      reason: 'user_requested',
+      query: '白杨智能 公司研究',
+      maxResults: 5,
+    });
+
+    const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({
+      query: '白杨智能 公司研究',
+      type: 'auto',
+      numResults: 5,
+      contents: { highlights: true },
+    });
+  });
 });

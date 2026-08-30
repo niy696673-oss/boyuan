@@ -311,6 +311,18 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.put("/industries/:industryId/confirmation", async (req, res, next) => {
+    try {
+      const input = industryConfirmationInput(req.body);
+      res.json(await platform.confirmIndustryClassification(
+        String(req.params.industryId),
+        input.expectedVersion,
+      ));
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
   router.post(
     "/industries/:industryId/documents",
     upload.single("file"),
@@ -645,6 +657,20 @@ function companyResearchInput(body: unknown): StartCompanyResearchInput {
       ? { workflow: companyResearchWorkflowInput(input.workflow) }
       : {}),
   };
+}
+
+function industryConfirmationInput(body: unknown): { expectedVersion: number } {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const expectedVersion = (body as Record<string, unknown>).expectedVersion;
+  if (!Number.isSafeInteger(expectedVersion) || Number(expectedVersion) < 1) {
+    throw new PlatformInputError(
+      "invalid_expected_version",
+      "行业版本必须是正整数",
+    );
+  }
+  return { expectedVersion: Number(expectedVersion) };
 }
 
 function companyResearchWorkflowInput(

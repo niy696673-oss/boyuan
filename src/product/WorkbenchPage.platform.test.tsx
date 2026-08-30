@@ -725,6 +725,7 @@ function industryClient(items: IndustryDirectoryItemV1[] = []): IndustryDirector
     }),
     reclassify: vi.fn(),
     get: vi.fn(),
+    confirmClassification: vi.fn(),
     uploadDocument: vi.fn(),
     setWatched: vi.fn(),
   };

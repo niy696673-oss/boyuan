@@ -84,7 +84,10 @@ import type {
   IndustryResearchMaterial,
   IndustryResearchPort,
 } from './industry-research/contracts.js';
-import { researchSearchTrigger } from './research/search-policy.js';
+import {
+  planCompanyPublicQuery,
+  researchSearchTrigger,
+} from './research/search-policy.js';
 import { validateWorkflowResearchOutput } from './research/workflow-policy.js';
 import { SearchAdapterError, type SearchTriggerReason, type WebSearchPort, type WebSearchResultItem } from './search/contracts.js';
 import { createDeterministicSemanticSearchAdapter } from './semantic-search/deterministic-semantic-search.js';
@@ -1354,6 +1357,80 @@ class SqlitePlatformModule implements PlatformModule {
         ...(item.evidence_id ? { evidence: this.#evidenceById(item.evidence_id) } : {}),
       })),
     };
+  }
+
+  async confirmIndustryClassification(
+    industryId: string,
+    expectedVersion: number,
+  ): Promise<IndustryDetail> {
+    this.#assertOpen();
+    const before = this.#industryRecord(industryId);
+    if (before.version !== expectedVersion) {
+      throw new PlatformConflictError(
+        'version_conflict',
+        '行业档案已变更，请刷新后重试',
+      );
+    }
+    const conflicted = this.#db.prepare(`
+      SELECT COUNT(*) AS total FROM company_industries
+      WHERE industry_id = ? AND status = 'conflicted'
+    `).get(industryId) as { total: number };
+    if (conflicted.total > 0) {
+      throw new PlatformConflictError(
+        'industry_placement_conflict',
+        '该行业仍有冲突的公司归属，请先处理后再确认',
+      );
+    }
+    const placements = this.#db.prepare(`
+      SELECT company_id FROM company_industries
+      WHERE industry_id = ? AND status = 'candidate'
+      ORDER BY company_id
+    `).all(industryId) as unknown as Array<{ company_id: string }>;
+    const companyIds = placements.map((placement) => placement.company_id);
+    if (before.status === 'active' && companyIds.length === 0) {
+      return this.getIndustry(industryId);
+    }
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      const changed = this.#db.prepare(`
+        UPDATE industries SET status = 'active', version = version + 1, updated_at = ?
+        WHERE industry_id = ? AND status = ? AND version = ?
+      `).run(now, industryId, before.status, expectedVersion);
+      if (changed.changes !== 1) {
+        throw new PlatformConflictError(
+          'version_conflict',
+          '行业档案已变更，请刷新后重试',
+        );
+      }
+      this.#db.prepare(`
+        UPDATE company_industries SET status = 'confirmed', updated_at = ?
+        WHERE industry_id = ? AND status = 'candidate'
+      `).run(now, industryId);
+      if (companyIds.length > 0) {
+        const updateCompany = this.#db.prepare(`
+          UPDATE companies SET version = version + 1, updated_at = ?
+          WHERE company_id = ?
+        `);
+        for (const companyId of companyIds) updateCompany.run(now, companyId);
+      }
+      this.#audit(
+        'industry.classification.confirmed',
+        'industry',
+        industryId,
+        {
+          status: before.status,
+          version: before.version,
+          candidateCompanyIds: companyIds,
+        },
+        {
+          status: 'active',
+          version: expectedVersion + 1,
+          confirmedCompanyIds: companyIds,
+        },
+        now,
+      );
+    });
+    return this.getIndustry(industryId);
   }
 
   async setIndustryWatched(
@@ -2822,13 +2899,14 @@ class SqlitePlatformModule implements PlatformModule {
     searchExecutedAt?: string;
   } {
     const run = this.#db.prepare(`
-      SELECT r.run_id, r.company_id, r.explicit_search, r.workflow_skill,
+      SELECT r.run_id, r.company_id, r.intent, r.explicit_search, r.workflow_skill,
         r.trigger_reason, r.public_query, r.search_executed_at, c.canonical_name
       FROM company_research_runs r JOIN companies c ON c.company_id = r.company_id
       WHERE r.task_id = ?
     `).get(taskId) as {
       run_id: string;
       company_id: string;
+      intent: string;
       explicit_search: number;
       workflow_skill: string | null;
       trigger_reason: string | null;
@@ -2844,7 +2922,9 @@ class SqlitePlatformModule implements PlatformModule {
     const trigger = run.workflow_skill
       ? 'not_needed'
       : researchSearchTrigger(Boolean(run.explicit_search), knowledge, this.#now());
-    const query = trigger === 'not_needed' ? undefined : `${run.canonical_name} 公司 最新 业务 产品 融资`;
+    const query = trigger === 'not_needed'
+      ? undefined
+      : planCompanyPublicQuery(run.canonical_name, run.intent);
     if (run.trigger_reason !== trigger || run.public_query !== (query ?? null)) {
       this.#db.prepare(`
         UPDATE company_research_runs SET trigger_reason = ?, public_query = ?, updated_at = ? WHERE task_id = ?

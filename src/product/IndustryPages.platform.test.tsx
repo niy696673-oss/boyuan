@@ -79,6 +79,65 @@ describe("持久行业目录页面", () => {
     expect(screen.queryByText("BP 正式知识")).toBeNull();
   });
 
+  it("确认草稿行业后同步正式化公司归属", async () => {
+    const draft = industryDetail();
+    draft.status = "draft";
+    draft.companies = draft.companies.map((placement) => ({
+      ...placement,
+      status: "candidate" as const,
+    }));
+    const confirmed = industryDetail();
+    confirmed.version = draft.version + 1;
+    const client = fakeClient(draft);
+    vi.mocked(client.get)
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce(confirmed);
+    vi.mocked(client.confirmClassification).mockResolvedValue(confirmed);
+
+    render(
+      <MemoryRouter initialEntries={["/industry/industry-1"]}>
+        <Routes>
+          <Route path="/industry/:id" element={<IndustryDetailPage data={bootstrap()} industryClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "人工智能" });
+    fireEvent.click(screen.getByRole("button", { name: "确认行业分类" }));
+
+    await waitFor(() => expect(client.confirmClassification).toHaveBeenCalledWith(
+      "industry-1",
+      1,
+    ));
+    expect(await screen.findByText("行业分类已确认，1 家公司归属已写入正式知识。")).toBeTruthy();
+    await waitFor(() => expect(client.get).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("正式知识")).toBeTruthy();
+  });
+
+  it("正式行业新增候选公司归属后仍提供确认入口", async () => {
+    const detail = industryDetail();
+    detail.companies[0] = {
+      ...detail.companies[0],
+      status: "candidate",
+    };
+    const client = fakeClient(detail);
+
+    render(
+      <MemoryRouter initialEntries={["/industry/industry-1"]}>
+        <Routes>
+          <Route path="/industry/:id" element={<IndustryDetailPage data={bootstrap()} industryClient={client} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "人工智能" });
+    fireEvent.click(screen.getByRole("button", { name: "确认 1 家公司归属" }));
+    await waitFor(() => expect(client.confirmClassification).toHaveBeenCalledWith(
+      "industry-1",
+      1,
+    ));
+  });
+
   it("详情展示持久节点、材料和公司，不对未知 ID 回退", async () => {
     const client = fakeClient();
     render(
@@ -245,6 +304,7 @@ function fakeClient(detail = industryDetail()): IndustryDirectoryClient {
     }),
     reclassify: vi.fn(),
     get: vi.fn().mockResolvedValue(detail),
+    confirmClassification: vi.fn().mockResolvedValue(detail),
     uploadDocument: vi.fn(),
     setWatched: vi.fn().mockResolvedValue(detail),
   };
