@@ -486,7 +486,10 @@ class SqlitePlatformModule implements PlatformModule {
       throw new PlatformNotFoundError(`company research conversation not found: ${conversationId}`);
     }
     if (!target.company_id || !target.canonical_name) {
-      return pendingCompanyIdentityQuickCard(target.proposed_name ?? '待确认公司主体');
+      return pendingCompanyIdentityQuickCard(
+        target.proposed_name ?? '待确认公司主体',
+        this.#fundProfiles(),
+      );
     }
     const stored = this.#db.prepare(`
       SELECT result_json FROM company_quick_card_results WHERE run_id = ?
@@ -6789,7 +6792,10 @@ function normalizeCompanyResearchWorkflow(
   };
 }
 
-function pendingCompanyIdentityQuickCard(companyName: string): CompanyQuickCardResult {
+function pendingCompanyIdentityQuickCard(
+  companyName: string,
+  fundProfiles: FundProfile[],
+): CompanyQuickCardResult {
   return {
     kind: 'company_research',
     status: 'pending_confirmation',
@@ -6824,7 +6830,7 @@ function pendingCompanyIdentityQuickCard(companyName: string): CompanyQuickCardR
       financingStage: '待主体确认',
       financingAmountWan: null,
       companyRegion: '待主体确认',
-    }, MOCK_CHENGDU_FUNDS),
+    }, fundProfiles),
     providerId: 'boyuan',
     modelId: 'identity-matcher',
     variant: 'deterministic',

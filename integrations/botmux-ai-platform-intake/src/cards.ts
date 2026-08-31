@@ -290,7 +290,7 @@ function fundMatchPanel(result: QuickCardResult['fundMatch']): JsonObject {
     return `${icon} **${markdownValue(item.label, 40)} ${item.score}/${item.maxScore}**　${markdownValue(item.summary, 120)}`;
   }).join('\n');
   const alternatives = result.alternatives.length > 0
-    ? `备选：${result.alternatives.map((item) => `${markdownValue(shortFundName(item.fundName), 40)} ${item.score}%`).join(' · ')}`
+    ? `备选（展开后查看评分依据）：${result.alternatives.map((item) => markdownValue(shortFundName(item.fundName), 40)).join(' · ')}`
     : '';
   const sourceLine = `来源：${markdownValue(source, 100)} · 可匹配 ${result.eligibleFundCount} 只 · 排除 ${result.excludedFundCount} 只`;
   return designPanel('基金匹配（确定性规则）', [

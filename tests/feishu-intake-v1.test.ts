@@ -206,6 +206,16 @@ describe("飞书材料接入新工作台", () => {
       status: "pending_confirmation",
       identityState: "ambiguous",
       navigation: {},
+      fundMatch: {
+        status: "insufficient_input",
+        eligibleFundCount: 3,
+        excludedFundCount: 1,
+        source: {
+          fileName: "模拟私募基金清单_4只_成都.xlsx",
+          asOfDate: "2026-08-28",
+          simulated: true,
+        },
+      },
     });
     expect(analyze).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
