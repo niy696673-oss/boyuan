@@ -16,6 +16,8 @@ if (pkg.botmux?.schemaVersion !== 1 || pkg.botmux?.id !== 'ai-platform-intake') 
 if (pkg.botmux?.service?.mode !== 'auto') fail('service mode must be auto');
 for (const file of [
   'package.json', 'index.js', 'cli/index.js', 'cli/commands.json', 'service/index.js', 'service/server.js',
+  'service/wecom-server.js',
+  'wecom.config.example.json',
   'skills/ai-platform-intake/SKILL.md',
 ]) if (!existsSync(join(distRoot, file))) fail(`missing dist/${file}`);
 assertNoSymlinks(distRoot);

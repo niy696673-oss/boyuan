@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "platformBaseUrl": "http://127.0.0.1:4174",
+  "platformIntakeKey": "replace-with-the-same-value-as-BOYUAN_WECOM_INTAKE_KEY",
+  "publicWorkbenchUrl": "https://example.com/workbench",
+  "publicProductUrl": "https://example.com",
+  "servicePort": 9480,
+  "attachmentRoot": "./runtime/wecom/attachments",
+  "statePath": "./runtime/wecom/jobs.json",
+  "retryDelayMs": 1500,
+  "timeoutMs": 600000
+}

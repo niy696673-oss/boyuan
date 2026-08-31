@@ -1,33 +1,69 @@
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import type { IntakeConfig } from './types.js';
+import type { IntakeConfig, IntakeServiceConfig, WeComIntakeConfig } from './types.js';
 
 export function parseIntakeConfig(value: Record<string, unknown>, configDirectory: string): IntakeConfig {
+  const common = parseCommonConfig(value, configDirectory, 9470);
+  return {
+    ...common,
+    larkAppId: larkAppId(value.larkAppId),
+    botmuxConfigPath: configPath(value, configDirectory, 'botmuxConfigPath', resolve(homedir(), '.botmux', 'bots.json')),
+  };
+}
+
+export function parseWeComIntakeConfig(
+  value: Record<string, unknown>,
+  configDirectory: string,
+): WeComIntakeConfig {
+  const wsUrl = stringValue(value.wsUrl);
+  if (wsUrl) {
+    const parsed = new URL(wsUrl);
+    if (parsed.protocol !== 'wss:' || parsed.username || parsed.password) {
+      throw new Error('invalid_wsUrl');
+    }
+  }
+  return {
+    ...parseCommonConfig(value, configDirectory, 9480),
+    ...(wsUrl ? { wsUrl: new URL(wsUrl).toString().replace(/\/$/u, '') } : {}),
+  };
+}
+
+function parseCommonConfig(
+  value: Record<string, unknown>,
+  configDirectory: string,
+  defaultPort: number,
+): IntakeServiceConfig {
   const path = (name: string, fallback: string) => {
-    const raw = stringValue(value[name]) ?? fallback;
-    const resolved = resolve(configDirectory, raw);
-    if (!isAbsolute(resolved)) throw new Error(`invalid_${name}`);
-    return resolved;
+    return configPath(value, configDirectory, name, fallback);
   };
   const attachmentRoot = path('attachmentRoot', './attachments');
   const statePath = path('statePath', './state/jobs.json');
   const publicWorkbenchUrl = httpUrl(value.publicWorkbenchUrl, 'publicWorkbenchUrl');
-  const config: IntakeConfig = {
+  return {
     schemaVersion: 1,
-    larkAppId: larkAppId(value.larkAppId),
-    botmuxConfigPath: path('botmuxConfigPath', resolve(homedir(), '.botmux', 'bots.json')),
     platformBaseUrl: httpUrl(value.platformBaseUrl, 'platformBaseUrl'),
     platformIntakeKey: requiredSecret(value.platformIntakeKey, 'platformIntakeKey'),
     publicWorkbenchUrl,
     publicProductUrl: httpUrl(value.publicProductUrl ?? new URL(publicWorkbenchUrl).origin, 'publicProductUrl'),
-    servicePort: integer(value.servicePort, 'servicePort', 9470, 1, 65_535),
+    servicePort: integer(value.servicePort, 'servicePort', defaultPort, 1, 65_535),
     attachmentRoot,
     statePath,
     retryDelayMs: integer(value.retryDelayMs ?? value.pollIntervalMs, 'retryDelayMs', 1_500, 250, 60_000),
     timeoutMs: integer(value.timeoutMs, 'timeoutMs', 600_000, 10_000, 3_600_000),
   };
-  return config;
+}
+
+function configPath(
+  value: Record<string, unknown>,
+  configDirectory: string,
+  name: string,
+  fallback: string,
+): string {
+  const raw = stringValue(value[name]) ?? fallback;
+  const resolved = resolve(configDirectory, raw);
+  if (!isAbsolute(resolved)) throw new Error(`invalid_${name}`);
+  return resolved;
 }
 
 function larkAppId(value: unknown): string {
@@ -36,7 +72,9 @@ function larkAppId(value: unknown): string {
   return appId;
 }
 
-export function prepareRuntimeDirectories(config: IntakeConfig): void {
+export function prepareRuntimeDirectories(
+  config: Pick<IntakeServiceConfig, 'attachmentRoot' | 'statePath'>,
+): void {
   for (const directory of [config.attachmentRoot, dirname(config.statePath)]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stat = lstatSync(directory);

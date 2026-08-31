@@ -12,10 +12,8 @@ export type JsonObject = { [key: string]: JsonValue };
 
 export const COMPANY_RESEARCH_FILE_KEY = 'company-research';
 
-export interface IntakeConfig {
+export interface IntakeServiceConfig {
   schemaVersion: 1;
-  larkAppId: string;
-  botmuxConfigPath: string;
   platformBaseUrl: string;
   platformIntakeKey: string;
   publicWorkbenchUrl: string;
@@ -25,6 +23,26 @@ export interface IntakeConfig {
   statePath: string;
   retryDelayMs: number;
   timeoutMs: number;
+}
+
+export interface IntakeConfig extends IntakeServiceConfig {
+  larkAppId: string;
+  botmuxConfigPath: string;
+}
+
+export interface WeComIntakeConfig extends IntakeServiceConfig {
+  wsUrl?: string;
+}
+
+export interface WeComBotPort {
+  replyStream(
+    reqId: string,
+    streamId: string,
+    content: string,
+    finish: boolean,
+  ): Promise<void>;
+  sendMarkdown(chatId: string, content: string): Promise<void>;
+  downloadFile(url: string, aesKey?: string): Promise<{ buffer: Buffer; filename?: string }>;
 }
 
 export interface IntakeAttachment {
@@ -172,6 +190,40 @@ export interface Messenger {
   updateCard?(input: UpdateCardInput): Promise<void>;
 }
 
+export interface CompletionLinks {
+  deepAnalysisUrl: string;
+  companyNetworkUrl?: string;
+  industryChainUrl?: string;
+}
+
+interface DeliveryBase {
+  chatId: string;
+  sessionId: string;
+  messageId: string;
+  fileKey: string;
+  statusReceipt?: string;
+}
+
+export type CompletionDeliveryInput = DeliveryBase & ({
+  kind: 'bp';
+  result: QuickCardResult;
+  links: CompletionLinks;
+} | {
+  kind: 'company_research';
+  result: CompanyQuickCardResult;
+  links: CompletionLinks;
+});
+
+export interface FailureDeliveryInput extends DeliveryBase {
+  kind: 'bp' | 'company_research';
+  subject: string;
+}
+
+export interface IntakeDelivery {
+  complete(input: CompletionDeliveryInput): Promise<void>;
+  fail(input: FailureDeliveryInput): Promise<void>;
+}
+
 interface IntakeJobBase {
   key: string;
   chatId: string;
@@ -209,6 +261,7 @@ export interface StatusCardReceipt {
   cardMessageId: string;
   createdAt: string;
   senderId?: string;
+  metadata?: JsonObject;
   terminal?: boolean;
 }
 
