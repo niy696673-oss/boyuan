@@ -1,6 +1,8 @@
 import type { WebSearchResultItem } from '../search/contracts.js';
+import type { FundMatchSummary } from '../../../shared/fund-matching.js';
 import {
   COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
+  COMPANY_QUICK_CARD_COMMON_NUMBER_FIELDS,
   COMPANY_QUICK_CARD_CORE_TEXT_FIELDS,
   type CompanyQuickCardCoreFields,
 } from '../../../shared/company-quick-card.js';
@@ -29,11 +31,23 @@ export const COMPANY_QUICK_CARD_TEXT_FIELDS = [
 export const COMPANY_QUICK_CARD_LIST_FIELDS = [
   ...COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
   { name: 'recentSignals', prompt: '公开来源中的近期业务、产品或融资信号', maximum: 3 },
+  { name: 'competitorNames', prompt: '现有知识、材料或公开来源明确提到的同业或替代产品公司名称', maximum: 20 },
+  { name: 'upstreamNames', prompt: '现有知识、材料或公开来源明确提到的上游公司名称', maximum: 20 },
+  { name: 'downstreamNames', prompt: '现有知识、材料或公开来源明确提到的客户或下游公司名称', maximum: 20 },
+] as const;
+
+export const COMPANY_QUICK_CARD_NUMBER_FIELDS = [
+  ...COMPANY_QUICK_CARD_COMMON_NUMBER_FIELDS,
 ] as const;
 
 export type CompanyQuickCardTextFieldName = typeof COMPANY_QUICK_CARD_TEXT_FIELDS[number]['name'];
 export type CompanyQuickCardListFieldName = typeof COMPANY_QUICK_CARD_LIST_FIELDS[number]['name'];
-export type CompanyQuickCardFields = CompanyQuickCardCoreFields & { recentSignals: string[] };
+export type CompanyQuickCardFields = CompanyQuickCardCoreFields & {
+  recentSignals: string[];
+  competitorNames: string[];
+  upstreamNames: string[];
+  downstreamNames: string[];
+};
 
 export type CompanyQuickCardExtractionResult = CompanyQuickCardFields & {
   providerId: string;
@@ -57,6 +71,7 @@ export type CompanyQuickCardResult = CompanyQuickCardExtractionResult & {
     companyId?: string;
     industryId?: string;
   };
+  fundMatch: FundMatchSummary;
 };
 
 export interface CompanyQuickCardAnalysisPort {

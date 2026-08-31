@@ -17,17 +17,29 @@ import {
 
 const fields = {
   companyIdentity: '博源科技有限公司 · 杭州 · 2021 年成立',
+  productTechnology: 'AI 推理基础设施研究工作台',
   industryTrack: '企业研究智能化',
+  marketView: '机构研究智能化需求增长，规模待核验',
   financing: '暂未检索到',
   keyPeople: 'CEO 田阳',
+  companyRegion: '杭州',
+  financingStage: 'A轮',
+  financingAmountWan: 2_000,
   highlights: ['机构知识沉淀闭环'],
+  riskSignals: ['客户集中度待核验'],
+  diligenceQuestions: ['前五大客户收入占比是多少？'],
+  industryTags: ['AI推理基础设施'],
   recentSignals: ['发布新一代研究工作台'],
+  competitorNames: ['竞品甲'],
+  upstreamNames: ['模型服务商甲'],
+  downstreamNames: ['投资机构甲'],
 };
 
 describe('OpenCode 公司快速卡适配器', () => {
   it('复用 BP Luna 配置和公司通用字段，并禁止模型调用工具', async () => {
     expect(COMPANY_QUICK_CARD_TEXT_FIELDS).toEqual(COMPANY_QUICK_CARD_CORE_TEXT_FIELDS);
-    expect(COMPANY_QUICK_CARD_LIST_FIELDS.slice(0, 1)).toEqual(COMPANY_QUICK_CARD_COMMON_LIST_FIELDS);
+    expect(COMPANY_QUICK_CARD_LIST_FIELDS.slice(0, COMPANY_QUICK_CARD_COMMON_LIST_FIELDS.length))
+      .toEqual(COMPANY_QUICK_CARD_COMMON_LIST_FIELDS);
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ id: 'company-quick-session' }))
       .mockResolvedValueOnce(jsonResponse({
@@ -69,14 +81,15 @@ describe('OpenCode 公司快速卡适配器', () => {
     expect(body.tools).toEqual({ '*': false });
     expect(body.parts[0]?.text).toContain('recentSignals');
     expect(body.parts[0]?.text).toContain('平台正式知识');
-    expect(body.parts[0]?.text).not.toContain('competitorNames');
+    expect(body.parts[0]?.text).toContain('competitorNames');
+    expect(body.parts[0]?.text).toContain('financingAmountWan');
     expect(fetcher.mock.calls.every((call) => call[1]?.signal === undefined)).toBe(true);
   });
 
-  it('拒绝 BP 专属字段、缺失字段与类型错误', () => {
+  it('拒绝未知字段、缺失字段与类型错误', () => {
     expect(() => parseCompanyQuickCardJson(JSON.stringify({
       ...fields,
-      competitorNames: ['竞品甲'],
+      evidence: [],
     }))).toThrow('unknown fields');
     const missing: Record<string, unknown> = { ...fields };
     Reflect.deleteProperty(missing, 'companyIdentity');
@@ -85,6 +98,14 @@ describe('OpenCode 公司快速卡适配器', () => {
       ...fields,
       recentSignals: '发布新产品',
     }))).toThrow('recentSignals');
+    expect(() => parseCompanyQuickCardJson(JSON.stringify({
+      ...fields,
+      financingAmountWan: '2000',
+    }))).toThrow('financingAmountWan');
+    expect(() => parseCompanyQuickCardJson(JSON.stringify({
+      ...fields,
+      industryTags: ['模型随意生成的行业'],
+    }))).toThrow('industryTags');
   });
 
   it('默认跟随已有 BP Luna 配置，也允许公司快速卡单独覆盖模型', () => {

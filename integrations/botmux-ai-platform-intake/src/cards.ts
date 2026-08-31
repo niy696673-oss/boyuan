@@ -106,7 +106,7 @@ export function processingCard(fileName: string): JsonObject {
     markdown(`**${markdownValue(fileName, 120)}**`, 'heading-2'),
     designPanel('处理进度', [
       factCard('资料接收', '文件已接收，正在解析并创建工作台深度分析任务', '已开始'),
-      factCard('快速核验', 'Luna 正在提取公司、融资、团队和产业链信息', '处理中'),
+      factCard('快速核验', 'Luna 正在提取公司、产品、融资、关系与基金匹配输入', '处理中'),
     ]),
     markdown("<font color='grey'>分析完成后本卡片会自动更新为结果，无需重复上传。</font>", 'notation'),
   ]);
@@ -156,22 +156,25 @@ export function completionCard(result: QuickCardResult, links: CompletionCardLin
       highlightsTitle: '公司亮点（自陈）',
       identityStatus,
       factStatus: '自陈',
+      marketStatus: 'BP 自陈 · 未外部核验',
       emptyHighlights: '材料未披露',
     }),
     designPanel('关联提示（本份 BP，可下钻）', [
       relationRow(
         '同业参考',
-        `本份 BP 提到竞品 ${result.competitorNames.length} 家`,
+        relationPreview('本份 BP 提到竞品', result.competitorNames),
         companyMatched ? '完整网络 →' : '进入深度分析 →',
         companyMatched ? links.companyNetworkUrl! : links.deepAnalysisUrl,
       ),
       relationRow(
         '产业链提示',
-        `本份 BP 提到上游 ${result.upstreamNames.length} 家 / 下游 ${result.downstreamNames.length} 家`,
+        `${relationPreview('上游', result.upstreamNames)}；${relationPreview('下游', result.downstreamNames)}`,
         industryMatched ? '完整图谱 →' : '进入深度分析 →',
         industryMatched ? links.industryChainUrl! : links.deepAnalysisUrl,
       ),
     ]),
+    fundMatchPanel(result.fundMatch),
+    ...judgmentPanels(result, 'AI 初步识别'),
     markdown(`<font color='grey'>${footer}</font>`, 'notation'),
   ]);
 }
@@ -214,13 +217,23 @@ export function companyResearchCompletionCard(
       highlightsTitle: '公司亮点',
       identityStatus: existing ? '已有主体' : '待确认主体',
       factStatus: '综合分析',
+      marketStatus: '公开来源 / 已有资料 · 初步分析',
       emptyHighlights: '暂未检索到明确亮点',
     }),
-    designPanel('近期公开信号', [markdown(recentSignals)]),
-    designPanel('本次分析依据', [markdown(
-      `公开来源 **${result.sourceCount}** 条 · 已有材料 **${result.materialCount}** 份 · 正式知识 **${result.formalKnowledgeCount}** 条 · 待确认候选 **${result.pendingCandidateCount}** 条`,
-    )]),
-    designPanel('继续查看', navigationElements),
+    designPanel('关系线索（公开来源 / 已有资料）', [
+      markdown(`**潜在竞对**　${markdownValue(relationPreview('提到', result.competitorNames), 240)}`),
+      markdown(`**上游**　${markdownValue(relationPreview('提到', result.upstreamNames), 240)}`),
+      markdown(`**下游 / 客户**　${markdownValue(relationPreview('提到', result.downstreamNames), 240)}`),
+    ]),
+    fundMatchPanel(result.fundMatch),
+    ...judgmentPanels(result, 'AI 初步识别'),
+    designPanel('分析依据与继续查看', [
+      markdown(`**近期公开信号**\n${recentSignals}`),
+      markdown(
+        `**分析依据**\n公开来源 **${result.sourceCount}** 条 · 已有材料 **${result.materialCount}** 份 · 正式知识 **${result.formalKnowledgeCount}** 条 · 待确认候选 **${result.pendingCandidateCount}** 条`,
+      ),
+      ...navigationElements,
+    ]),
     markdown(`<font color='grey'>${footer}</font>`, 'notation'),
   ]);
 }
@@ -232,6 +245,7 @@ function commonCompanyPanels(
     highlightsTitle: string;
     identityStatus: string;
     factStatus: string;
+    marketStatus: string;
     emptyHighlights: string;
   },
 ): JsonObject[] {
@@ -239,18 +253,79 @@ function commonCompanyPanels(
     markdown(`**${markdownValue(result.companyName, 80)}**`, 'heading-2'),
     designPanel(options.informationTitle, [
       factCard('公司身份', result.companyIdentity, options.identityStatus),
+      factCard('产品 / 技术路线', result.productTechnology, options.factStatus),
       factCard('行业 / 赛道', result.industryTrack, options.factStatus),
       factCard('融资信息', result.financing, options.factStatus),
       factCard('团队关键人', result.keyPeople, options.factStatus),
+      markdown(`**市场维度**\n${markdownValue(result.marketView, 240)} <text_tag color='neutral'>${markdownValue(options.marketStatus, 60)}</text_tag>`),
+      markdown(`**${markdownValue(options.highlightsTitle, 80)}**\n${tagList(result.highlights, options.emptyHighlights)}`),
     ]),
-    designPanel(options.highlightsTitle, [markdown(tagList(result.highlights, options.emptyHighlights))]),
   ];
+}
+
+function judgmentPanels(result: CommonCompanyQuickCardFields, riskStatus: string): JsonObject[] {
+  return [
+    designPanel('风险与尽调', [
+      markdown(`**风险与待验证**\n${bulletList(result.riskSignals, '暂未识别到明确风险线索')}`),
+      markdown(`**建议尽调问题**\n${numberedList(result.diligenceQuestions, '暂未生成尽调问题')}`),
+      markdown(`<font color='grey'>${markdownValue(riskStatus, 80)} · 不构成投资判断</font>`, 'notation'),
+    ]),
+  ];
+}
+
+function fundMatchPanel(result: QuickCardResult['fundMatch']): JsonObject {
+  const source = `${result.source.simulated ? '模拟清单' : '基金清单'} · ${result.source.asOfDate}`;
+  if (result.status !== 'matched' || !result.recommended) {
+    const message = result.status === 'insufficient_input'
+      ? '当前行业、阶段、金额和区域信息不足，暂不生成基金匹配度。'
+      : '当前清单中暂无可参与匹配的基金。';
+    return designPanel('基金匹配', [
+      markdown(message),
+      markdown(`<font color='grey'>来源：${markdownValue(source, 100)}</font>`, 'notation'),
+    ]);
+  }
+  const recommended = result.recommended;
+  const dimensions = recommended.dimensions.map((item) => {
+    const icon = item.score === item.maxScore ? '✓' : item.score > 0 ? '△' : '○';
+    return `${icon} **${markdownValue(item.label, 40)} ${item.score}/${item.maxScore}**　${markdownValue(item.summary, 120)}`;
+  }).join('\n');
+  const alternatives = result.alternatives.length > 0
+    ? `备选基金：${result.alternatives.map((item) => markdownValue(shortFundName(item.fundName), 40)).join(' · ')}`
+    : '';
+  const sourceLine = `来源：${markdownValue(source, 100)} · 可匹配 ${result.eligibleFundCount} 只 · 排除 ${result.excludedFundCount} 只`;
+  return designPanel('基金匹配（确定性规则）', [
+    markdown(`**${markdownValue(recommended.fundName, 120)}**　<text_tag color='blue'>匹配度 ${recommended.score}%</text_tag>`),
+    markdown(dimensions),
+    markdown(`<font color='grey'>${[alternatives, sourceLine].filter(Boolean).join('\n')}</font>`, 'notation'),
+  ]);
 }
 
 function tagList(values: string[], empty: string): string {
   return values.length > 0
     ? values.map((item) => `<text_tag color='blue'>${markdownValue(item, 64)}</text_tag>`).join(' ')
     : empty;
+}
+
+function bulletList(values: string[], empty: string): string {
+  return values.length > 0
+    ? values.map((item) => `• ${markdownValue(item, 120)}`).join('\n')
+    : empty;
+}
+
+function numberedList(values: string[], empty: string): string {
+  return values.length > 0
+    ? values.map((item, index) => `${index + 1}. ${markdownValue(item, 160)}`).join('\n')
+    : empty;
+}
+
+function relationPreview(prefix: string, names: string[]): string {
+  if (names.length === 0) return `${prefix} 0 家`;
+  const preview = names.slice(0, 2).join('、');
+  return `${prefix} ${names.length} 家：${preview}${names.length > 2 ? '等' : ''}`;
+}
+
+function shortFundName(value: string): string {
+  return value.replace(/(?:私募)?(?:股权|创业)?投资合伙企业（有限合伙）$/u, '').trim();
 }
 
 function designTitleRow(title: string, badge: string): JsonObject {

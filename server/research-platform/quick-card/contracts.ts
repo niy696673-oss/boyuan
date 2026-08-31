@@ -1,6 +1,8 @@
 import type { ParsedBlock } from '../parsers/contracts.js';
+import type { FundMatchSummary } from '../../../shared/fund-matching.js';
 import {
   COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
+  COMPANY_QUICK_CARD_COMMON_NUMBER_FIELDS,
   COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS,
   type CompanyQuickCardViewFields,
 } from '../../../shared/company-quick-card.js';
@@ -23,8 +25,13 @@ export const QUICK_CARD_LIST_FIELDS = [
   { name: 'downstreamNames', prompt: '材料明确提到的下游公司名称', maximum: 20 },
 ] as const;
 
+export const QUICK_CARD_NUMBER_FIELDS = [
+  ...COMPANY_QUICK_CARD_COMMON_NUMBER_FIELDS,
+] as const;
+
 export type QuickCardTextFieldName = typeof QUICK_CARD_TEXT_FIELDS[number]['name'];
 export type QuickCardListFieldName = typeof QUICK_CARD_LIST_FIELDS[number]['name'];
+export type QuickCardNumberFieldName = typeof QUICK_CARD_NUMBER_FIELDS[number]['name'];
 export type QuickCardFields = CompanyQuickCardViewFields
   & Record<'competitorNames' | 'upstreamNames' | 'downstreamNames', string[]>;
 
@@ -42,6 +49,7 @@ export type QuickCardAnalysisResult = QuickCardExtractionResult & {
     companyId?: string;
     industryId?: string;
   };
+  fundMatch: FundMatchSummary;
 };
 
 export interface QuickCardAnalysisPort {

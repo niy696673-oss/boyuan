@@ -2,7 +2,8 @@ import {
   createOpenCodeClient,
   type OpenCodeConnectionOptions,
 } from '../opencode/client.js';
-import { QUICK_CARD_LIST_FIELDS, QUICK_CARD_TEXT_FIELDS } from './contracts.js';
+import { FUND_INDUSTRY_TAGS } from '../../../shared/fund-matching.js';
+import { QUICK_CARD_LIST_FIELDS, QUICK_CARD_NUMBER_FIELDS, QUICK_CARD_TEXT_FIELDS } from './contracts.js';
 import type { QuickCardAnalysisPort, QuickCardFields } from './contracts.js';
 import { QuickCardAdapterError } from './contracts.js';
 
@@ -56,8 +57,10 @@ function quickPrompt(fileName: string, blocks: QuickCardAnalysisInputBlocks): st
   return [
     `文件：${fileName}`,
     `快速提取以下事实字段：${QUICK_CARD_TEXT_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。每个字符串最多 80 个汉字。`,
-    `同时提取以下数组：${QUICK_CARD_LIST_FIELDS.map((field) => `${field.name}（${field.prompt}，最多 ${field.maximum} 项）`).join('、')}。数组只放材料明确出现的名称或亮点，未出现时返回空数组。`,
-    '字符串信息未出现时写“材料未披露”，不得推测。只输出上述字段，禁止增加字段、Markdown、置信度或解释。',
+    `同时提取以下数组：${QUICK_CARD_LIST_FIELDS.map((field) => `${field.name}（${field.prompt}，最多 ${field.maximum} 项）`).join('、')}。竞品、上游、下游和风险只依据材料；尽调问题可以针对材料缺口生成；无法提取时返回空数组。`,
+    `industryTags 只能从以下标签中选择：${FUND_INDUSTRY_TAGS.join('、')}。`,
+    `数值字段：${QUICK_CARD_NUMBER_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。`,
+    '字符串信息未出现时写“材料未披露”，不得推测。只输出上述字段，禁止增加字段、Markdown、置信度、基金名称、匹配分数或解释。',
     `材料块：${JSON.stringify(selected)}`,
   ].join('\n\n');
 }
@@ -78,6 +81,7 @@ export function parseQuickCardJson(rawText: string): QuickCardFields {
   const fieldNames = [
     ...QUICK_CARD_TEXT_FIELDS.map((field) => field.name),
     ...QUICK_CARD_LIST_FIELDS.map((field) => field.name),
+    ...QUICK_CARD_NUMBER_FIELDS.map((field) => field.name),
   ];
   if (Object.keys(record).some((key) => !fieldNames.includes(key as typeof fieldNames[number]))) {
     throw new QuickCardAdapterError('quick_card_schema_invalid', 'quick-card response contains unknown fields');
@@ -95,9 +99,19 @@ export function parseQuickCardJson(rawText: string): QuickCardFields {
       throw new QuickCardAdapterError('quick_card_schema_invalid', `quick-card field ${name} must be a string array`);
     }
     const values = [...new Set(fieldValue.map((item) => item.replace(/\s+/gu, ' ').trim().slice(0, 160)))].slice(0, maximum);
+    if (name === 'industryTags' && values.some((item) => !FUND_INDUSTRY_TAGS.includes(item as typeof FUND_INDUSTRY_TAGS[number]))) {
+      throw new QuickCardAdapterError('quick_card_schema_invalid', 'quick-card field industryTags contains unsupported values');
+    }
     return [name, values];
   }));
-  return { ...textFields, ...listFields } as QuickCardFields;
+  const numberFields = Object.fromEntries(QUICK_CARD_NUMBER_FIELDS.map(({ name }) => {
+    const fieldValue = record[name];
+    if (fieldValue !== null && (typeof fieldValue !== 'number' || !Number.isFinite(fieldValue) || fieldValue < 0)) {
+      throw new QuickCardAdapterError('quick_card_schema_invalid', `quick-card field ${name} must be a non-negative number or null`);
+    }
+    return [name, fieldValue === null ? null : Math.round(fieldValue)];
+  }));
+  return { ...textFields, ...listFields, ...numberFields } as QuickCardFields;
 }
 
 function extractJsonObject(rawText: string): string {

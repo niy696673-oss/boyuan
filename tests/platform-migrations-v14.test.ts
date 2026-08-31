@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 18;
+const CURRENT_SCHEMA_VERSION = 19;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -235,7 +235,7 @@ describe("research-platform SQLite schema reconciliation", () => {
     withDatabase(dataRoot, (database) => {
       database.exec(`
         DROP TABLE subject_company_links;
-        DELETE FROM schema_migrations WHERE version = 18;
+        DELETE FROM schema_migrations WHERE version >= 18;
       `);
     });
     expectSchemaHistory(dataRoot, 17);
@@ -455,6 +455,19 @@ function expectCurrentSchema(dataRoot: string): void {
   expect(tableExists(dataRoot, "notification_reads")).toBe(true);
   expect(tableExists(dataRoot, "industry_research_runs")).toBe(true);
   expect(tableExists(dataRoot, "company_quick_card_results")).toBe(true);
+  expect(tableExists(dataRoot, "fund_profiles")).toBe(true);
+  withDatabase(dataRoot, (database) => {
+    const funds = database.prepare(`
+      SELECT fund_id, investment_period_active, capital_available
+      FROM fund_profiles ORDER BY fund_id
+    `).all();
+    expect(funds).toEqual([
+      { fund_id: "F01", investment_period_active: 0, capital_available: 0 },
+      { fund_id: "F02", investment_period_active: 1, capital_available: 1 },
+      { fund_id: "F03", investment_period_active: 1, capital_available: 1 },
+      { fund_id: "F04", investment_period_active: 1, capital_available: 1 },
+    ]);
+  });
   expect(columnNames(dataRoot, "industries")).toEqual(
     expect.arrayContaining(["watched", "version"]),
   );

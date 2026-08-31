@@ -10,10 +10,18 @@ import { createRuntimeQuickCardAdapter } from "../server/research-platform/quick
 const fields = {
   companyName: "博源科技",
   companyIdentity: "博源科技 · 杭州 · 2021 年成立",
+  productTechnology: "AI 推理基础设施研究工作台",
   industryTrack: "企业研究智能化 · 机构知识平台",
+  marketView: "机构研究智能化需求增长，规模待核验",
   financing: "材料未披露",
   keyPeople: "CEO 田阳",
+  companyRegion: "杭州",
+  financingStage: "A轮",
+  financingAmountWan: 2_000,
   highlights: ["知识沉淀闭环"],
+  riskSignals: ["客户集中度待核验"],
+  diligenceQuestions: ["前五大客户收入占比是多少？"],
+  industryTags: ["AI推理基础设施"],
   competitorNames: ["晶泰科技"],
   upstreamNames: [],
   downstreamNames: ["投资机构"],
@@ -78,6 +86,8 @@ describe("OpenCode 快速卡适配器", () => {
     expect(body.tools).toEqual({ "*": false });
     expect(body.parts[0]?.text).toContain("paragraph-1");
     expect(body.parts[0]?.text).toContain("competitorNames");
+    expect(body.parts[0]?.text).toContain("financingAmountWan");
+    expect(body.parts[0]?.text).toContain("AI推理基础设施");
     expect(body.parts[0]?.text).not.toContain("13 个 BP 维度");
     expect(
       fetcher.mock.calls.every((call) => call[1]?.signal === undefined),
@@ -98,6 +108,14 @@ describe("OpenCode 快速卡适配器", () => {
         JSON.stringify({ ...fields, upstreamNames: "供应商" }),
       ),
     ).toThrow("upstreamNames");
+    expect(() => parseQuickCardJson(JSON.stringify({
+      ...fields,
+      financingAmountWan: '2000',
+    }))).toThrow('financingAmountWan');
+    expect(() => parseQuickCardJson(JSON.stringify({
+      ...fields,
+      industryTags: ['模型随意生成的行业'],
+    }))).toThrow('industryTags');
   });
 });
 

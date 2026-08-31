@@ -44,12 +44,19 @@ describe('Feishu completion card', () => {
     expect(text).toContain('BP 导入 · 事实核验');
     expect(text).toContain('置信度高 86%');
     expect(text).toContain('公司身份');
+    expect(text).toContain('产品 / 技术路线');
     expect(text).toContain('行业 / 赛道');
+    expect(text).toContain('市场维度');
     expect(text).toContain('融资信息');
     expect(text).toContain('团队关键人');
     expect(text).toContain('公司亮点');
-    expect(text).toContain('本份 BP 提到竞品 3 家');
-    expect(text).toContain('本份 BP 提到上游 1 家 / 下游 2 家');
+    expect(text).toContain('风险与待验证');
+    expect(text).toContain('建议尽调问题');
+    expect(text).toContain('本份 BP 提到竞品 3 家：竞品甲、竞品乙等');
+    expect(text).toContain('上游 1 家：供应商甲；下游 2 家：客户甲、客户乙');
+    expect(text).toContain('基金匹配（确定性规则）');
+    expect(text).toContain('成都元屿智算创业投资合伙企业');
+    expect(text).toContain('匹配度 100%');
     expect(text).toContain('https://demo.example/companies/company%2F1?tab=relations');
     expect(text).toContain('https://demo.example/industry/industry%2F1?tab=chain');
     expect(text).toContain('"type":"open_url"');
@@ -58,6 +65,10 @@ describe('Feishu completion card', () => {
     expect(text).toContain('"background_style":"blue-50"');
     expect(text).not.toContain('"background_style":"green-50"');
     expect(card.header).toBeUndefined();
+    expect(card).toMatchObject({ body: { direction: 'vertical' } });
+    const elements = (card.body as { elements: Array<{ columns?: Array<{ background_style?: string }> }> }).elements;
+    expect(elements).toHaveLength(7);
+    expect(elements.filter((element) => element.columns?.[0]?.background_style === 'grey-50')).toHaveLength(4);
     expect(text).not.toContain('blockId');
   });
 
@@ -98,7 +109,10 @@ describe('Feishu completion card', () => {
 
     expect(processing).toContain('完成后本卡片会自动更新');
     expect(completed).toContain('公司研究 · 快速分析');
-    for (const commonField of ['公司身份', '行业 / 赛道', '融资信息', '团队关键人', '公司亮点']) {
+    for (const commonField of [
+      '公司身份', '产品 / 技术路线', '行业 / 赛道', '市场维度', '融资信息',
+      '团队关键人', '公司亮点', '风险与待验证', '建议尽调问题', '基金匹配',
+    ]) {
       expect(completed).toContain(commonField);
     }
     expect(completed).toContain('近期公开信号');
@@ -107,7 +121,16 @@ describe('Feishu completion card', () => {
     expect(completed).toContain('公司网络');
     expect(completed).toContain('产业链');
     expect(completed).not.toContain('本份 BP');
-    expect(completed).not.toContain('竞品');
+    expect(completed).toContain('潜在竞对');
+    expect(completed).toContain('竞品甲');
+    const completedCard = companyResearchCompletionCard(companyQuickCard(), {
+      deepAnalysisUrl: 'https://demo.example/workbench/conversations/conversation-one',
+    });
+    const elements = (completedCard.body as {
+      elements: Array<{ columns?: Array<{ background_style?: string }> }>;
+    }).elements;
+    expect(elements.length).toBeLessThanOrEqual(8);
+    expect(elements.filter((element) => element.columns?.[0]?.background_style === 'grey-50').length).toBeLessThanOrEqual(5);
   });
 
   it('routes provisional and ambiguous companies only to the deep research conversation', () => {

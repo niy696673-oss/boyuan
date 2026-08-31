@@ -42,11 +42,22 @@ describe("飞书材料接入新工作台", () => {
     }]);
     const analyze = vi.fn<CompanyQuickCardAnalysisPort['analyze']>(async (input) => ({
       companyIdentity: `${input.companyName}，平台已有正式主体`,
+      productTechnology: "AI 推理基础设施研究工作台",
       industryTrack: "企业研究智能化",
+      marketView: "机构研究智能化需求增长，规模待核验",
       financing: "暂未检索到",
       keyPeople: "暂未检索到",
+      companyRegion: "成都",
+      financingStage: "A轮",
+      financingAmountWan: 8_000,
       highlights: ["机构知识沉淀闭环"],
+      riskSignals: ["客户集中度待核验"],
+      diligenceQuestions: ["前五大客户收入占比是多少？"],
+      industryTags: ["AI推理基础设施"],
       recentSignals: input.webResults.flatMap((item) => item.highlights).slice(0, 3),
+      competitorNames: [],
+      upstreamNames: [],
+      downstreamNames: [],
       providerId: "openai",
       modelId: "gpt-5.6-luna",
       variant: "none",
@@ -116,6 +127,10 @@ describe("飞书材料接入新工作台", () => {
       recentSignals: ["公司发布新一代机构研究工作台。"],
       sourceCount: 1,
       navigation: { companyId: expect.any(String) },
+      fundMatch: {
+        status: "matched",
+        recommended: { fundId: "F03", score: 100 },
+      },
       modelId: "gpt-5.6-luna",
     });
     expect(repeatedQuick.body).toEqual(firstQuick.body);
@@ -191,6 +206,16 @@ describe("飞书材料接入新工作台", () => {
       status: "pending_confirmation",
       identityState: "ambiguous",
       navigation: {},
+      fundMatch: {
+        status: "insufficient_input",
+        eligibleFundCount: 3,
+        excludedFundCount: 1,
+        source: {
+          fileName: "模拟私募基金清单_4只_成都.xlsx",
+          asOfDate: "2026-08-28",
+          simulated: true,
+        },
+      },
     });
     expect(analyze).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
@@ -212,11 +237,22 @@ describe("飞书材料接入新工作台", () => {
       }]);
     const analyze = vi.fn<CompanyQuickCardAnalysisPort['analyze']>(async (input) => ({
       companyIdentity: input.companyName,
+      productTechnology: "暂未检索到",
       industryTrack: "企业服务",
+      marketView: "暂未检索到",
       financing: "暂未检索到",
       keyPeople: "暂未检索到",
+      companyRegion: "暂未检索到",
+      financingStage: "暂未检索到",
+      financingAmountWan: null,
       highlights: [],
+      riskSignals: [],
+      diligenceQuestions: [],
+      industryTags: [],
       recentSignals: input.webResults.flatMap((item) => item.highlights),
+      competitorNames: [],
+      upstreamNames: [],
+      downstreamNames: [],
       providerId: "openai",
       modelId: "gpt-5.6-luna",
       variant: "none",
@@ -317,10 +353,18 @@ describe("飞书材料接入新工作台", () => {
       analyze: async () => ({
         companyName: "白杨智能",
         companyIdentity: "北京白杨智能科技有限公司，总部位于北京，成立于2018年",
+        productTechnology: "特种具身智能与机器人系统",
         industryTrack: "特种具身智能",
+        marketView: "特种场景智能化需求待核验",
         financing: "已完成A轮及A+轮融资",
         keyPeople: "龙HT董事长、总经理",
+        companyRegion: "北京",
+        financingStage: "A轮",
+        financingAmountWan: 5_000,
         highlights: ["国家级专精特新小巨人"],
+        riskSignals: ["商业化规模待核验"],
+        diligenceQuestions: ["核心客户复购率是多少？"],
+        industryTags: ["机器人传感/Physical AI"],
         competitorNames: ["Google DeepMind", "Anduril", "Shield AI"],
         upstreamNames: [],
         downstreamNames: [],
@@ -409,6 +453,10 @@ describe("飞书材料接入新工作台", () => {
       companyName: "白杨智能",
       industryTrack: "特种具身智能",
       competitorNames: ["Google DeepMind", "Anduril", "Shield AI"],
+      fundMatch: {
+        status: "matched",
+        recommended: { fundId: "F04", score: 76 },
+      },
       confidenceLevel: "中",
       navigation: {},
       providerId: "openai",
