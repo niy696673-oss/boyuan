@@ -84,6 +84,9 @@ import type {
   IndustryResearchMaterial,
   IndustryResearchPort,
 } from './industry-research/contracts.js';
+import { MOCK_CHENGDU_FUNDS } from './fund-matching/mock-chengdu-funds.js';
+import { matchFunds } from './fund-matching/fund-matcher.js';
+import type { FundProfile } from './fund-matching/contracts.js';
 import {
   planCompanyPublicQuery,
   researchSearchTrigger,
@@ -457,6 +460,7 @@ class SqlitePlatformModule implements PlatformModule {
         ...(companyId ? { companyId } : {}),
         ...(placement ? { industryId: placement.industry_id } : {}),
       },
+      fundMatch: matchFunds(extraction, this.#fundProfiles()),
     };
   }
 
@@ -577,6 +581,7 @@ class SqlitePlatformModule implements PlatformModule {
         companyId: input.companyId,
         ...(placement ? { industryId: placement.industry_id } : {}),
       } : {},
+      fundMatch: matchFunds(extraction, this.#fundProfiles()),
     };
     this.#db.prepare(`
       INSERT OR IGNORE INTO company_quick_card_results (run_id, result_json, created_at)
@@ -586,6 +591,71 @@ class SqlitePlatformModule implements PlatformModule {
       SELECT result_json FROM company_quick_card_results WHERE run_id = ?
     `).get(input.runId) as { result_json: string };
     return JSON.parse(saved.result_json) as CompanyQuickCardResult;
+  }
+
+  #fundProfiles(): FundProfile[] {
+    const rows = this.#db.prepare(`
+      SELECT fund_id, fund_name, fund_type, established_on, investment_period_end, maturity_on,
+        committed_amount_wan, paid_in_amount_wan, invested_amount_wan, available_amount_wan,
+        total_assets_wan, net_assets_wan, investor_count, investment_period_active,
+        capital_available, ticket_min_wan, concentration_limit, ticket_max_wan,
+        industry_preferences_json, stage_preferences_json, region_preference,
+        source_file_name, source_as_of_date, simulated
+      FROM fund_profiles ORDER BY fund_id
+    `).all() as unknown as Array<{
+      fund_id: string;
+      fund_name: string;
+      fund_type: string;
+      established_on: string;
+      investment_period_end: string;
+      maturity_on: string;
+      committed_amount_wan: number;
+      paid_in_amount_wan: number;
+      invested_amount_wan: number;
+      available_amount_wan: number;
+      total_assets_wan: number;
+      net_assets_wan: number;
+      investor_count: number;
+      investment_period_active: number;
+      capital_available: number;
+      ticket_min_wan: number;
+      concentration_limit: number;
+      ticket_max_wan: number;
+      industry_preferences_json: string;
+      stage_preferences_json: string;
+      region_preference: string;
+      source_file_name: string;
+      source_as_of_date: string;
+      simulated: number;
+    }>;
+    return rows.map((row) => ({
+      fundId: row.fund_id,
+      fundName: row.fund_name,
+      fundType: row.fund_type,
+      establishedOn: row.established_on,
+      investmentPeriodEnd: row.investment_period_end,
+      maturityOn: row.maturity_on,
+      committedAmountWan: row.committed_amount_wan,
+      paidInAmountWan: row.paid_in_amount_wan,
+      investedAmountWan: row.invested_amount_wan,
+      availableAmountWan: row.available_amount_wan,
+      totalAssetsWan: row.total_assets_wan,
+      netAssetsWan: row.net_assets_wan,
+      investorCount: row.investor_count,
+      investmentPeriodActive: row.investment_period_active === 1,
+      capitalAvailable: row.capital_available === 1,
+      ticketMinWan: row.ticket_min_wan,
+      concentrationLimit: row.concentration_limit,
+      ticketMaxWan: row.ticket_max_wan,
+      industryPreferences: JSON.parse(row.industry_preferences_json) as string[],
+      stagePreferences: JSON.parse(row.stage_preferences_json) as string[],
+      regionPreference: row.region_preference,
+      source: {
+        fileName: row.source_file_name,
+        asOfDate: row.source_as_of_date,
+        simulated: row.simulated === 1,
+      },
+    }));
   }
 
   async listConversations(): Promise<ConversationSummary[]> {
@@ -5259,6 +5329,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateCompanyIndustryNormalizationSchema();
     this.#migrateSubjectIdentitySchema();
     this.#migrateCompanyQuickCardSchema();
+    this.#migrateFundProfilesSchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -5960,6 +6031,114 @@ class SqlitePlatformModule implements PlatformModule {
     });
   }
 
+  #migrateFundProfilesSchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 19',
+    ).get();
+    if (applied && this.#databaseTableExists('fund_profiles')) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS fund_profiles (
+          fund_id TEXT PRIMARY KEY,
+          fund_name TEXT NOT NULL,
+          fund_type TEXT NOT NULL,
+          established_on TEXT NOT NULL,
+          investment_period_end TEXT NOT NULL,
+          maturity_on TEXT NOT NULL,
+          committed_amount_wan INTEGER NOT NULL CHECK (committed_amount_wan >= 0),
+          paid_in_amount_wan INTEGER NOT NULL CHECK (paid_in_amount_wan >= 0),
+          invested_amount_wan INTEGER NOT NULL CHECK (invested_amount_wan >= 0),
+          available_amount_wan INTEGER NOT NULL CHECK (available_amount_wan >= 0),
+          total_assets_wan INTEGER NOT NULL CHECK (total_assets_wan >= 0),
+          net_assets_wan INTEGER NOT NULL CHECK (net_assets_wan >= 0),
+          investor_count INTEGER NOT NULL CHECK (investor_count >= 0),
+          investment_period_active INTEGER NOT NULL CHECK (investment_period_active IN (0, 1)),
+          capital_available INTEGER NOT NULL CHECK (capital_available IN (0, 1)),
+          ticket_min_wan INTEGER NOT NULL CHECK (ticket_min_wan >= 0),
+          concentration_limit REAL NOT NULL CHECK (concentration_limit >= 0 AND concentration_limit <= 1),
+          ticket_max_wan INTEGER NOT NULL CHECK (ticket_max_wan >= 0),
+          industry_preferences_json TEXT NOT NULL,
+          stage_preferences_json TEXT NOT NULL,
+          region_preference TEXT NOT NULL,
+          source_file_name TEXT NOT NULL,
+          source_as_of_date TEXT NOT NULL,
+          simulated INTEGER NOT NULL CHECK (simulated IN (0, 1)),
+          updated_at TEXT NOT NULL
+        );
+      `);
+      const upsert = this.#db.prepare(`
+        INSERT INTO fund_profiles (
+          fund_id, fund_name, fund_type, established_on, investment_period_end, maturity_on,
+          committed_amount_wan, paid_in_amount_wan, invested_amount_wan, available_amount_wan,
+          total_assets_wan, net_assets_wan, investor_count, investment_period_active,
+          capital_available, ticket_min_wan, concentration_limit, ticket_max_wan,
+          industry_preferences_json, stage_preferences_json, region_preference,
+          source_file_name, source_as_of_date, simulated, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(fund_id) DO UPDATE SET
+          fund_name = excluded.fund_name,
+          fund_type = excluded.fund_type,
+          established_on = excluded.established_on,
+          investment_period_end = excluded.investment_period_end,
+          maturity_on = excluded.maturity_on,
+          committed_amount_wan = excluded.committed_amount_wan,
+          paid_in_amount_wan = excluded.paid_in_amount_wan,
+          invested_amount_wan = excluded.invested_amount_wan,
+          available_amount_wan = excluded.available_amount_wan,
+          total_assets_wan = excluded.total_assets_wan,
+          net_assets_wan = excluded.net_assets_wan,
+          investor_count = excluded.investor_count,
+          investment_period_active = excluded.investment_period_active,
+          capital_available = excluded.capital_available,
+          ticket_min_wan = excluded.ticket_min_wan,
+          concentration_limit = excluded.concentration_limit,
+          ticket_max_wan = excluded.ticket_max_wan,
+          industry_preferences_json = excluded.industry_preferences_json,
+          stage_preferences_json = excluded.stage_preferences_json,
+          region_preference = excluded.region_preference,
+          source_file_name = excluded.source_file_name,
+          source_as_of_date = excluded.source_as_of_date,
+          simulated = excluded.simulated,
+          updated_at = excluded.updated_at
+      `);
+      const now = this.#now().toISOString();
+      for (const fund of MOCK_CHENGDU_FUNDS) {
+        upsert.run(
+          fund.fundId,
+          fund.fundName,
+          fund.fundType,
+          fund.establishedOn,
+          fund.investmentPeriodEnd,
+          fund.maturityOn,
+          fund.committedAmountWan,
+          fund.paidInAmountWan,
+          fund.investedAmountWan,
+          fund.availableAmountWan,
+          fund.totalAssetsWan,
+          fund.netAssetsWan,
+          fund.investorCount,
+          fund.investmentPeriodActive ? 1 : 0,
+          fund.capitalAvailable ? 1 : 0,
+          fund.ticketMinWan,
+          fund.concentrationLimit,
+          fund.ticketMaxWan,
+          JSON.stringify(fund.industryPreferences),
+          JSON.stringify(fund.stagePreferences),
+          fund.regionPreference,
+          fund.source.fileName,
+          fund.source.asOfDate,
+          fund.source.simulated ? 1 : 0,
+          now,
+        );
+      }
+      // Cached company quick cards use the previous result contract and must be regenerated.
+      this.#db.exec('DELETE FROM company_quick_card_results');
+      this.#db.prepare(
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (19, ?)',
+      ).run(now);
+    });
+  }
+
   #normalizeExistingCompanyNames(now: string): void {
     const companies = this.#db.prepare(`
       SELECT company_id, canonical_name FROM companies
@@ -6617,11 +6796,22 @@ function pendingCompanyIdentityQuickCard(companyName: string): CompanyQuickCardR
     companyName,
     identityState: 'ambiguous',
     companyIdentity: '匹配到多个已有主体，请在深度分析对话中确认',
+    productTechnology: '待主体确认',
     industryTrack: '待主体确认',
+    marketView: '待主体确认',
     financing: '待主体确认',
     keyPeople: '待主体确认',
+    companyRegion: '待主体确认',
+    financingStage: '待主体确认',
+    financingAmountWan: null,
     highlights: [],
+    riskSignals: [],
+    diligenceQuestions: [],
+    industryTags: [],
     recentSignals: [],
+    competitorNames: [],
+    upstreamNames: [],
+    downstreamNames: [],
     confidence: 0,
     confidenceLevel: '低',
     sourceCount: 0,
@@ -6629,6 +6819,12 @@ function pendingCompanyIdentityQuickCard(companyName: string): CompanyQuickCardR
     formalKnowledgeCount: 0,
     pendingCandidateCount: 0,
     navigation: {},
+    fundMatch: matchFunds({
+      industryTags: [],
+      financingStage: '待主体确认',
+      financingAmountWan: null,
+      companyRegion: '待主体确认',
+    }, MOCK_CHENGDU_FUNDS),
     providerId: 'boyuan',
     modelId: 'identity-matcher',
     variant: 'deterministic',
@@ -6647,7 +6843,9 @@ function companyQuickCardConfidence(
 ): number {
   const disclosedText = [
     result.companyIdentity,
+    result.productTechnology,
     result.industryTrack,
+    result.marketView,
     result.financing,
     result.keyPeople,
   ].filter((value) => value !== '暂未检索到').length;
@@ -6660,7 +6858,7 @@ function companyQuickCardConfidence(
       + Math.min(25, context.sourceCount * 5)
       + Math.min(20, context.formalKnowledgeCount * 4)
       + Math.min(8, context.materialCount * 2)
-      + (disclosedGroups / 6) * 12,
+      + (disclosedGroups / 8) * 12,
   ));
 }
 
@@ -6670,7 +6868,9 @@ function quickCardConfidence(
 ): number {
   const disclosedText = [
     result.companyIdentity,
+    result.productTechnology,
     result.industryTrack,
+    result.marketView,
     result.financing,
     result.keyPeople,
   ].filter((value) => value !== '材料未披露').length;
@@ -6681,7 +6881,7 @@ function quickCardConfidence(
     result.downstreamNames,
   ].filter((values) => values.length > 0).length;
   return Math.min(100, Math.round(
-    (disclosedFacts / 5) * 70
+    (disclosedFacts / 7) * 70
       + (companyMatched ? 20 : 0)
       + (mentionedRelationGroups / 3) * 10,
   ));

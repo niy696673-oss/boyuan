@@ -429,10 +429,18 @@ function failedQuickCard(): QuickCardResult {
   return {
     companyName: '快速提取未完成',
     companyIdentity: '快速提取未完成',
+    productTechnology: '快速提取未完成',
     industryTrack: '快速提取未完成',
+    marketView: '快速提取未完成',
     financing: '快速提取未完成',
     keyPeople: '快速提取未完成',
+    companyRegion: '快速提取未完成',
+    financingStage: '快速提取未完成',
+    financingAmountWan: null,
     highlights: [],
+    riskSignals: [],
+    diligenceQuestions: [],
+    industryTags: [],
     competitorNames: [],
     upstreamNames: [],
     downstreamNames: [],
@@ -440,6 +448,7 @@ function failedQuickCard(): QuickCardResult {
     confidence: 0,
     confidenceLevel: '低',
     navigation: {},
+    fundMatch: unavailableFundMatch(),
   };
 }
 
@@ -450,11 +459,22 @@ function failedCompanyQuickCard(companyName: string): CompanyQuickCardResult {
     companyName,
     identityState: 'provisional',
     companyIdentity: '快速分析未完成',
+    productTechnology: '快速分析未完成',
     industryTrack: '快速分析未完成',
+    marketView: '快速分析未完成',
     financing: '快速分析未完成',
     keyPeople: '快速分析未完成',
+    companyRegion: '快速分析未完成',
+    financingStage: '快速分析未完成',
+    financingAmountWan: null,
     highlights: [],
+    riskSignals: [],
+    diligenceQuestions: [],
+    industryTags: [],
     recentSignals: [],
+    competitorNames: [],
+    upstreamNames: [],
+    downstreamNames: [],
     confidence: 0,
     confidenceLevel: '低',
     sourceCount: 0,
@@ -462,6 +482,21 @@ function failedCompanyQuickCard(companyName: string): CompanyQuickCardResult {
     formalKnowledgeCount: 0,
     pendingCandidateCount: 0,
     navigation: {},
+    fundMatch: unavailableFundMatch(),
+  };
+}
+
+function unavailableFundMatch(): QuickCardResult['fundMatch'] {
+  return {
+    status: 'unavailable',
+    alternatives: [],
+    eligibleFundCount: 0,
+    excludedFundCount: 0,
+    source: {
+      fileName: '模拟私募基金清单_4只_成都.xlsx',
+      asOfDate: '2026-08-28',
+      simulated: true,
+    },
   };
 }
 

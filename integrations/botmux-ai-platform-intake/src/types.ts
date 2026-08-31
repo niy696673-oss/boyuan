@@ -1,8 +1,10 @@
 import {
   COMPANY_QUICK_CARD_COMMON_LIST_FIELDS,
+  COMPANY_QUICK_CARD_COMMON_NUMBER_FIELDS,
   COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS,
   type CompanyQuickCardViewFields,
 } from '../../../shared/company-quick-card.js';
+import type { FundMatchSummary } from '../../../shared/fund-matching.js';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -82,6 +84,7 @@ export interface PlatformCompanyResearchResult {
 
 export const COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS = COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS;
 export const COMMON_COMPANY_QUICK_CARD_LIST_FIELDS = COMPANY_QUICK_CARD_COMMON_LIST_FIELDS;
+export const COMMON_COMPANY_QUICK_CARD_NUMBER_FIELDS = COMPANY_QUICK_CARD_COMMON_NUMBER_FIELDS;
 export const QUICK_CARD_TEXT_FIELDS = COMPANY_QUICK_CARD_VIEW_TEXT_FIELDS;
 
 export const QUICK_CARD_LIST_FIELDS = [
@@ -109,6 +112,7 @@ export type QuickCardResult = QuickCardFields & {
     companyId?: string;
     industryId?: string;
   };
+  fundMatch: FundMatchSummary;
   providerId?: string;
   modelId?: string;
   variant?: string;
@@ -120,6 +124,9 @@ export type CompanyQuickCardResult = CommonCompanyQuickCardFields & {
   status: 'completed' | 'pending_confirmation' | 'fallback';
   identityState: 'existing' | 'provisional' | 'ambiguous';
   recentSignals: string[];
+  competitorNames: string[];
+  upstreamNames: string[];
+  downstreamNames: string[];
   confidence: number;
   confidenceLevel: '低' | '中' | '高';
   sourceCount: number;
@@ -130,6 +137,7 @@ export type CompanyQuickCardResult = CommonCompanyQuickCardFields & {
     companyId?: string;
     industryId?: string;
   };
+  fundMatch: FundMatchSummary;
   providerId?: string;
   modelId?: string;
   variant?: string;

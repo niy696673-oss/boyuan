@@ -4,9 +4,11 @@ import {
 } from '../opencode/client.js';
 import {
   COMPANY_QUICK_CARD_LIST_FIELDS,
+  COMPANY_QUICK_CARD_NUMBER_FIELDS,
   COMPANY_QUICK_CARD_TEXT_FIELDS,
   CompanyQuickCardAdapterError,
 } from './contracts.js';
+import { FUND_INDUSTRY_TAGS } from '../../../shared/fund-matching.js';
 import type {
   CompanyQuickCardAnalysisInput,
   CompanyQuickCardAnalysisPort,
@@ -67,7 +69,9 @@ function companyQuickPrompt(input: CompanyQuickCardAnalysisInput): string {
     `主体状态：${input.identityState === 'existing' ? '平台已有正式主体' : '本次研究新建的待确认主体'}`,
     `提取字段：${COMPANY_QUICK_CARD_TEXT_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。每个字符串最多 80 个汉字。`,
     `提取数组：${COMPANY_QUICK_CARD_LIST_FIELDS.map((field) => `${field.name}（${field.prompt}，最多 ${field.maximum} 项）`).join('、')}。未检索到时返回空数组。`,
-    '只输出上述字段。禁止增加公司名、统计、置信度、Markdown 或解释；不得把待确认候选写成平台正式知识。',
+    `industryTags 只能从以下标签中选择：${FUND_INDUSTRY_TAGS.join('、')}。`,
+    `数值字段：${COMPANY_QUICK_CARD_NUMBER_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。`,
+    '只输出上述字段。禁止增加公司名、统计、置信度、基金名称、匹配分数、Markdown 或解释；不得把待确认候选写成平台正式知识。',
     `平台正式知识：${JSON.stringify(input.existingKnowledge.slice(0, 80))}`,
     `已有材料摘要：${JSON.stringify(input.materialSummaries.slice(0, 20))}`,
     `公开检索结果：${JSON.stringify(input.webResults.slice(0, 5))}`,
@@ -95,6 +99,7 @@ export function parseCompanyQuickCardJson(rawText: string): CompanyQuickCardFiel
   const fieldNames = [
     ...COMPANY_QUICK_CARD_TEXT_FIELDS.map((field) => field.name),
     ...COMPANY_QUICK_CARD_LIST_FIELDS.map((field) => field.name),
+    ...COMPANY_QUICK_CARD_NUMBER_FIELDS.map((field) => field.name),
   ];
   if (Object.keys(record).some((key) => !fieldNames.includes(key as typeof fieldNames[number]))) {
     throw new CompanyQuickCardAdapterError(
@@ -120,9 +125,26 @@ export function parseCompanyQuickCardJson(rawText: string): CompanyQuickCardFiel
         `company quick-card field ${name} must be a string array`,
       );
     }
-    return [name, [...new Set(fieldValue.map((item) => normalizeText(item)))].slice(0, maximum)];
+    const values = [...new Set(fieldValue.map((item) => normalizeText(item)))].slice(0, maximum);
+    if (name === 'industryTags' && values.some((item) => !FUND_INDUSTRY_TAGS.includes(item as typeof FUND_INDUSTRY_TAGS[number]))) {
+      throw new CompanyQuickCardAdapterError(
+        'company_quick_card_schema_invalid',
+        'company quick-card field industryTags contains unsupported values',
+      );
+    }
+    return [name, values];
   }));
-  return { ...textFields, ...listFields } as CompanyQuickCardFields;
+  const numberFields = Object.fromEntries(COMPANY_QUICK_CARD_NUMBER_FIELDS.map(({ name }) => {
+    const fieldValue = record[name];
+    if (fieldValue !== null && (typeof fieldValue !== 'number' || !Number.isFinite(fieldValue) || fieldValue < 0)) {
+      throw new CompanyQuickCardAdapterError(
+        'company_quick_card_schema_invalid',
+        `company quick-card field ${name} must be a non-negative number or null`,
+      );
+    }
+    return [name, fieldValue === null ? null : Math.round(fieldValue)];
+  }));
+  return { ...textFields, ...listFields, ...numberFields } as CompanyQuickCardFields;
 }
 
 function normalizeText(value: string): string {

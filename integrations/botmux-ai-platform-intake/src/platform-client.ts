@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
 import {
   COMMON_COMPANY_QUICK_CARD_LIST_FIELDS,
+  COMMON_COMPANY_QUICK_CARD_NUMBER_FIELDS,
   COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS,
   QUICK_CARD_LIST_FIELDS,
 } from './types.js';
@@ -19,6 +20,7 @@ import type {
   QuickCardFields,
   QuickCardResult,
 } from './types.js';
+import type { FundMatchCandidate, FundMatchSummary } from '../../../shared/fund-matching.js';
 
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
 
@@ -166,7 +168,7 @@ function parseQuickCard(value: unknown): QuickCardResult {
   const commonFields = parseCommonCompanyQuickCardFields(source);
   const relationFields = Object.fromEntries(
     QUICK_CARD_LIST_FIELDS
-      .filter(({ name }) => name !== 'highlights')
+      .filter(({ name }) => ['competitorNames', 'upstreamNames', 'downstreamNames'].includes(name))
       .map(({ name }) => [name, stringArray(source[name])]),
   ) as Pick<QuickCardFields, 'competitorNames' | 'upstreamNames' | 'downstreamNames'>;
   const confidence = source.confidence;
@@ -186,6 +188,7 @@ function parseQuickCard(value: unknown): QuickCardResult {
       ...(typeof navigation.companyId === 'string' && navigation.companyId ? { companyId: navigation.companyId } : {}),
       ...(typeof navigation.industryId === 'string' && navigation.industryId ? { industryId: navigation.industryId } : {}),
     },
+    fundMatch: parseFundMatch(source.fundMatch),
     providerId: text(source.providerId),
     modelId: text(source.modelId),
     variant: text(source.variant),
@@ -215,6 +218,9 @@ function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
     status: source.status as CompanyQuickCardResult['status'],
     identityState: source.identityState as CompanyQuickCardResult['identityState'],
     recentSignals: stringArray(source.recentSignals),
+    competitorNames: stringArray(source.competitorNames),
+    upstreamNames: stringArray(source.upstreamNames),
+    downstreamNames: stringArray(source.downstreamNames),
     confidence,
     confidenceLevel: confidenceLevel as CompanyQuickCardResult['confidenceLevel'],
     sourceCount: nonNegativeInteger(source.sourceCount),
@@ -225,6 +231,7 @@ function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
       ...(typeof navigation.companyId === 'string' && navigation.companyId ? { companyId: navigation.companyId } : {}),
       ...(typeof navigation.industryId === 'string' && navigation.industryId ? { industryId: navigation.industryId } : {}),
     },
+    fundMatch: parseFundMatch(source.fundMatch),
     ...(typeof source.providerId === 'string' ? { providerId: source.providerId } : {}),
     ...(typeof source.modelId === 'string' ? { modelId: source.modelId } : {}),
     ...(typeof source.variant === 'string' ? { variant: source.variant } : {}),
@@ -241,7 +248,71 @@ function parseCommonCompanyQuickCardFields(
   const listFields = Object.fromEntries(
     COMMON_COMPANY_QUICK_CARD_LIST_FIELDS.map(({ name }) => [name, stringArray(source[name])]),
   ) as Record<typeof COMMON_COMPANY_QUICK_CARD_LIST_FIELDS[number]['name'], string[]>;
-  return { ...textFields, ...listFields };
+  const numberFields = Object.fromEntries(
+    COMMON_COMPANY_QUICK_CARD_NUMBER_FIELDS.map(({ name }) => [name, nullableNonNegativeNumber(source[name])]),
+  ) as Record<typeof COMMON_COMPANY_QUICK_CARD_NUMBER_FIELDS[number]['name'], number | null>;
+  return { ...textFields, ...listFields, ...numberFields };
+}
+
+function parseFundMatch(value: unknown): FundMatchSummary {
+  const source = record(value);
+  if (!['matched', 'insufficient_input', 'unavailable'].includes(String(source.status))) {
+    throw new Error('platform_invalid_response');
+  }
+  const sourceRecord = record(source.source);
+  if (typeof sourceRecord.simulated !== 'boolean') throw new Error('platform_invalid_response');
+  const alternatives = Array.isArray(source.alternatives)
+    ? source.alternatives.map(parseFundCandidate)
+    : (() => { throw new Error('platform_invalid_response'); })();
+  return {
+    status: source.status as FundMatchSummary['status'],
+    ...(source.recommended === undefined ? {} : { recommended: parseFundCandidate(source.recommended) }),
+    alternatives,
+    eligibleFundCount: nonNegativeInteger(source.eligibleFundCount),
+    excludedFundCount: nonNegativeInteger(source.excludedFundCount),
+    source: {
+      fileName: text(sourceRecord.fileName),
+      asOfDate: text(sourceRecord.asOfDate),
+      simulated: sourceRecord.simulated,
+    },
+  };
+}
+
+function parseFundCandidate(value: unknown): FundMatchCandidate {
+  const source = record(value);
+  if (!Array.isArray(source.dimensions)) throw new Error('platform_invalid_response');
+  return {
+    fundId: text(source.fundId),
+    fundName: text(source.fundName),
+    score: percentage(source.score),
+    dimensions: source.dimensions.map((value) => {
+      const item = record(value);
+      if (!['industry', 'stage', 'ticket', 'region', 'capacity'].includes(String(item.key))) {
+        throw new Error('platform_invalid_response');
+      }
+      return {
+        key: item.key as FundMatchCandidate['dimensions'][number]['key'],
+        label: text(item.label),
+        score: nonNegativeInteger(item.score),
+        maxScore: nonNegativeInteger(item.maxScore),
+        summary: text(item.summary),
+      };
+    }),
+  };
+}
+
+function nullableNonNegativeNumber(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error('platform_invalid_response');
+  }
+  return value;
+}
+
+function percentage(value: unknown): number {
+  const result = nonNegativeInteger(value);
+  if (result > 100) throw new Error('platform_invalid_response');
+  return result;
 }
 
 function nonNegativeInteger(value: unknown): number {

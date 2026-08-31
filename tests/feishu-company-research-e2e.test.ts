@@ -52,11 +52,22 @@ describe('飞书公司名研究本地端到端', () => {
     }]);
     const analyze = vi.fn<CompanyQuickCardAnalysisPort['analyze']>(async (input) => ({
       companyIdentity: input.companyName,
+      productTechnology: 'AI 推理基础设施研究工作台',
       industryTrack: '企业研究智能化',
+      marketView: '机构研究智能化需求增长，规模待核验',
       financing: '暂未检索到',
       keyPeople: '暂未检索到',
+      companyRegion: '成都',
+      financingStage: 'A轮',
+      financingAmountWan: 8_000,
       highlights: ['机构知识沉淀'],
+      riskSignals: ['客户集中度待核验'],
+      diligenceQuestions: ['前五大客户收入占比是多少？'],
+      industryTags: ['AI推理基础设施'],
       recentSignals: input.webResults.flatMap((item) => item.highlights),
+      competitorNames: [],
+      upstreamNames: [],
+      downstreamNames: [],
       providerId: 'openai',
       modelId: 'gpt-5.6-luna',
       variant: 'none',
@@ -148,6 +159,8 @@ describe('飞书公司名研究本地端到端', () => {
     const rendered = JSON.stringify(updates[0]?.card);
     expect(rendered).toContain('公司研究 · 快速分析');
     expect(rendered).toContain('新研科技发布企业研究产品');
+    expect(rendered).toContain('基金匹配（确定性规则）');
+    expect(rendered).toContain('成都元屿智算创业投资合伙企业');
     expect(rendered).toContain('/workbench/conversations/');
     expect(rendered).not.toContain('公司网络 →');
 
