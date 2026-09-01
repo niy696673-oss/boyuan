@@ -539,18 +539,96 @@
   text-align: center;
 }
 
-.by-import-history p {
-  color: #73808a;
+.by-access-history {
+  min-height: 132px;
+}
+
+.by-access-history > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.by-access-history > header p {
+  margin-top: 4px;
+  color: #8a949b;
   font-size: 10px;
-  line-height: 1.55;
 }
 
-.by-import-history {
-  min-height: 94px;
+.by-access-history > header > span {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #edf2f4;
+  color: #7b8790;
+  font-size: 9px;
+  font-weight: 700;
 }
 
-.by-import-history small {
-  margin-top: 5px;
+.by-access-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.by-access-list article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e1e7e8;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.by-access-list article i {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: #dff3ef;
+  color: #087f72;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.by-access-list article div {
+  min-width: 0;
+}
+
+.by-access-list article strong,
+.by-access-list article span,
+.by-access-list article time {
+  display: block;
+}
+
+.by-access-list article strong {
+  color: #283338;
+  font-size: 10px;
+}
+
+.by-access-list article span {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #64727b;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.by-access-list article time {
+  grid-column: 2;
+  color: #a0a9af;
+  font-size: 8px;
+}
+
+.by-access-history > small {
+  margin-top: 8px;
+  color: #8a949b;
 }
 
 .by-entity-reserved {
@@ -717,6 +795,10 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .by-access-list {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .by-question-card {
     grid-column: 1 / -1;
   }
@@ -769,6 +851,7 @@
   .by-relation-columns,
   .by-entity-two-up,
   .by-entity-decision-grid,
+  .by-access-list,
   .by-team-section > div:not(.by-entity-empty),
   .by-external-research > div {
     grid-template-columns: 1fr;

@@ -520,10 +520,15 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
         {teamClaims.length ? <div>{teamClaims.map((item, index) => <article key={item.id}><a href={`#person-${index}`}>{teamRole(item, index)} <ExternalLink /></a><p>{item.text}</p><small>{item.evidenceIds.length} 条证据 · 已确认</small></article>)}</div> : <div className="by-entity-empty">暂无已确认的核心团队与人物信息。</div>}
       </section>
 
-      <section className="by-entity-section by-import-history">
-        <h2>导入历史（跨文档累积 · 每次导入合并到本实体）</h2>
-        {company.materials.length ? company.materials.slice(0, 4).map((item) => <p key={item.documentId}>{new Date(item.updatedAt).toLocaleDateString("zh-CN")} · {item.fileName} · 来源 {item.sourceChannel === "feishu" ? "飞书" : "工作台"} · 状态 {materialStatusLabel(item.status)}</p>) : <p>尚无导入记录。</p>}
-        <small>操作人：{owner} · 知识与证据保留原始来源和处理状态</small>
+      <section className="by-entity-section by-access-history">
+        <header><div><h2>访问记录</h2><p>团队成员围绕本实体的浏览、上传和研究动态。</p></div><span>模拟数据</span></header>
+        <div className="by-access-list">
+          <article><i>张</i><div><strong>张三</strong><span>上传了 BP《{latestMaterial?.fileName || `${company.standardName}商业计划书.pdf`}》</span></div><time>今天 10:32</time></article>
+          <article><i>李</i><div><strong>李四</strong><span>浏览过公司实体页</span></div><time>今天 09:18</time></article>
+          <article><i>王</i><div><strong>王五</strong><span>查看了关联性全景</span></div><time>昨天 16:45</time></article>
+          <article><i>赵</i><div><strong>赵六</strong><span>发起了一次公司研究</span></div><time>08月30日</time></article>
+        </div>
+        <small>当前为演示记录；正式接入后将展示 {owner} 及其他成员的真实访问动态。</small>
       </section>
 
       <section className="by-entity-reserved by-external-research">

@@ -122,6 +122,11 @@ describe("持久公司目录页面", () => {
       screen.getAllByText("材料未披露近三年审计财务数据。").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("暂无研究记录")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "访问记录" })).toBeTruthy();
+    expect(screen.getByText("张三")).toBeTruthy();
+    expect(screen.getByText("李四")).toBeTruthy();
+    expect(screen.getByText("浏览过公司实体页")).toBeTruthy();
+    expect(screen.queryByText(/导入历史/)).toBeNull();
     expect(screen.queryByText("星座组网实际进度与发射成功率如何？")).toBeNull();
     expect(
       (document.querySelector('input[type="file"]') as HTMLInputElement).accept,
