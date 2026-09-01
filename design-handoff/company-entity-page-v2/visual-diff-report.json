@@ -1,0 +1,25 @@
+{
+  "prototype": "/var/folders/ky/95mh034940q9m95d5jxm7jkc0000gn/T/codex-clipboard-c62ca333-dca2-44dc-8f0b-edfb4d3b4e2b.png",
+  "implementation_screenshot": "design-handoff/company-entity-page-v2/verification/implemented-comparison-1192x1612.png",
+  "diff_image": "design-handoff/company-entity-page-v2/verification/diff-1192x1612.png",
+  "viewport": { "width": 1192, "height": 1612 },
+  "thresholds": {
+    "pixel_difference_percent": 1.0,
+    "noise_per_channel": 18,
+    "position_error_px": 4,
+    "font_size_error_px": 1
+  },
+  "result": {
+    "pixel_difference_percent": 19.8014,
+    "changed_pixels": 380484,
+    "total_pixels": 1921504,
+    "passed": false,
+    "structural_review": "passed"
+  },
+  "remaining_differences": [
+    "The implementation renders the real company record and its long material-analysis text instead of the StarRiver sample copy in the prototype.",
+    "The workbench-level navigation is retained in the delivered desktop screenshot; it was hidden only in the same-size comparison capture.",
+    "The live record has no confirmed team or relationship entries, so those areas honestly render empty states instead of prototype sample people and companies.",
+    "Minor height differences remain in the header metadata and future-research sections while the section order, column ratios, colors, borders and card hierarchy match the prototype."
+  ]
+}
