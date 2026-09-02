@@ -417,7 +417,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
     <div className={`by-company-detail-page by-entity-page ${copilotOpen ? "copilot-open" : "copilot-collapsed"}`}>
       <section className="by-company-detail-main">
         <header className="by-entity-header">
-          <div className="by-entity-context">④ 统一公司实体页 · 投资判断视图（关键信息 · 产品/行业/客户/市场 · 基金匹配 · 尽调问题）</div>
+          <div className="by-entity-context">统一公司实体页 · 投资判断视图（关键信息 · 产品/行业/客户/市场 · 基金匹配 · 尽调问题）</div>
           <div className="by-entity-title-row">
             <div>
               <h1>{companyName}</h1>

@@ -112,6 +112,7 @@
 
 .by-company-card-facts > div {
   display: grid;
+  grid-auto-flow: dense;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 8px;
@@ -800,6 +801,7 @@
 
 .by-entity-summary-grid {
   display: grid;
+  grid-auto-flow: dense;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   margin-top: 10px;
@@ -915,6 +917,21 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
+  transition: grid-template-columns 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (min-width: 1021px) {
+  .by-relation-columns:has(> section:nth-child(1):hover) {
+    grid-template-columns: 1.16fr 0.92fr 0.92fr;
+  }
+
+  .by-relation-columns:has(> section:nth-child(2):hover) {
+    grid-template-columns: 0.92fr 1.16fr 0.92fr;
+  }
+
+  .by-relation-columns:has(> section:nth-child(3):hover) {
+    grid-template-columns: 0.92fr 0.92fr 1.16fr;
+  }
 }
 
 .by-relation-columns > section {
