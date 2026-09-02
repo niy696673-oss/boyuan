@@ -804,9 +804,11 @@ function relationPanorama(company: CompanyView): {
   }));
   const pick = (category: RelationPanoramaCategory) => {
     const extracted = insights.filter((item) => item.category === category);
-    return extracted.length > 0
-      ? extracted
-      : confirmedRelations.filter((item) => item.category === category);
+    const confirmed = confirmedRelations.filter((item) => item.category === category);
+    return [...new Map([...extracted, ...confirmed].map((item) => [
+      `${item.targetName.trim().toLocaleLowerCase()}\u0000${item.relationType.trim().toLocaleLowerCase()}`,
+      item,
+    ])).values()];
   };
   return {
     upstream: pick("upstream"),
