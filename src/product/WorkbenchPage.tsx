@@ -31,7 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api, ApiError, type Bootstrap } from "../api";
+import type { Bootstrap } from "../api";
 import {
   createCompanyDirectoryClient,
   type CompanyDirectoryClient,
@@ -50,6 +50,8 @@ import type {
   AnalysisSection,
   ConversationDetail,
   ConversationStatus,
+  KnowledgeCandidate,
+  PlatformDocument,
   PlatformEvidence,
 } from "../capabilities/research/types";
 import {
@@ -82,13 +84,16 @@ type ActiveResearch = {
   platformStatus?: ConversationStatus;
   materialDocumentId?: string;
   materialFileName?: string;
+  archiveStatus?: PlatformDocument["archiveStatus"];
   pendingCandidateCount?: number;
   analysisSections?: AnalysisSection[];
+  candidates?: KnowledgeCandidate[];
   internalMaterialEvidence?: PlatformEvidence[];
   externalResearch?: WorkbenchExternalResearch;
 } | null;
 
 type ConversationRow = NonNullable<ActiveResearch>;
+type DirectoryCompany = ReturnType<typeof companyDirectoryView>;
 
 const defaultResearchClient = createResearchPlatformClient();
 const defaultCompanyClient = createCompanyDirectoryClient();
@@ -102,7 +107,6 @@ const terminalPlatformStatuses = new Set<ConversationStatus>([
 
 export function WorkbenchPage({
   data,
-  reload,
   researchClient = defaultResearchClient,
   companyClient = defaultCompanyClient,
   industryClient = defaultIndustryClient,
@@ -154,9 +158,9 @@ export function WorkbenchPage({
   const [platformConversations, setPlatformConversations] = useState<
     ConversationRow[]
   >([]);
-  const [directoryCompanies, setDirectoryCompanies] = useState<Company[] | null>(
-    null,
-  );
+  const [directoryCompanies, setDirectoryCompanies] = useState<
+    DirectoryCompany[] | null
+  >(null);
   const [directoryIndustries, setDirectoryIndustries] = useState<
     IndustryDirectoryItemV1[] | null
   >(null);
@@ -175,6 +179,26 @@ export function WorkbenchPage({
     }),
     [data, directoryCompanies, directoryIndustries],
   );
+  const companyMaterialCounts = useMemo(
+    () =>
+      new Map(
+        (directoryCompanies || []).map((company) => [
+          company.id,
+          company.materialCount,
+        ]),
+      ),
+    [directoryCompanies],
+  );
+  const industryCompanyCounts = useMemo(
+    () =>
+      new Map(
+        (directoryIndustries || []).map((industry) => [
+          industry.industryId,
+          industry.companyCount,
+        ]),
+      ),
+    [directoryIndustries],
+  );
   const openedInitialConversation = useRef<string | undefined>(undefined);
 
   const pending =
@@ -187,6 +211,31 @@ export function WorkbenchPage({
         ).length,
       0,
     );
+
+  const withDirectoryContext = useCallback(
+    (research: ConversationRow): ConversationRow => {
+      const companyId = research.company?.id || research.task.companyId;
+      const industryId = research.industry?.id || research.task.industryId;
+      return {
+        ...research,
+        ...(research.company
+          ? {}
+          : {
+              company: workbenchData.companies.find(
+                (company) => company.id === companyId,
+              ),
+            }),
+        ...(research.industry
+          ? {}
+          : {
+              industry: workbenchData.industryNodes.find(
+                (industry) => industry.id === industryId,
+              ),
+            }),
+      };
+    },
+    [workbenchData.companies, workbenchData.industryNodes],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -305,7 +354,11 @@ export function WorkbenchPage({
       .then((conversation) => {
         if (controller.signal.aborted) return;
         openedInitialConversation.current = initialConversationId;
-        setActiveResearch(toWorkbenchResearch(conversation));
+        const next = withDirectoryContext(toWorkbenchResearch(conversation));
+        setActiveResearch(next);
+        setContext(next.task.contextType || "材料");
+        setSelectedCompanyId(next.company?.id || next.task.companyId || "");
+        setSelectedIndustryId(next.industry?.id || next.task.industryId || "");
         syncPlatformConversation(conversation);
       })
       .catch((error) => {
@@ -317,7 +370,12 @@ export function WorkbenchPage({
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [initialConversationId, researchClient, syncPlatformConversation]);
+  }, [
+    initialConversationId,
+    researchClient,
+    syncPlatformConversation,
+    withDirectoryContext,
+  ]);
 
   useEffect(() => {
     const conversationId = activeResearch?.platformConversationId;
@@ -332,7 +390,9 @@ export function WorkbenchPage({
       try {
         const detail = await researchClient.getConversation(conversationId);
         if (!cancelled) {
-          setActiveResearch(toWorkbenchResearch(detail));
+          setActiveResearch(
+            withDirectoryContext(toWorkbenchResearch(detail)),
+          );
           syncPlatformConversation(detail);
         }
       } catch (error) {
@@ -353,6 +413,7 @@ export function WorkbenchPage({
     activeResearch?.platformStatus,
     researchClient,
     syncPlatformConversation,
+    withDirectoryContext,
   ]);
 
   const conversationRows = useMemo<ConversationRow[]>(
@@ -431,7 +492,7 @@ export function WorkbenchPage({
         const detail = await researchClient.getConversation(
           research.platformConversationId,
         );
-        next = toWorkbenchResearch(detail);
+        next = withDirectoryContext(toWorkbenchResearch(detail));
         syncPlatformConversation(detail);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "无法打开研究对话");
@@ -445,14 +506,18 @@ export function WorkbenchPage({
     setContext(
       task.contextType || (industry ? "行业" : company ? "公司" : "材料"),
     );
-    setSelectedCompanyId(company?.id || "");
-    setSelectedIndustryId(industry?.id || "");
+    setSelectedCompanyId(company?.id || task.companyId || "");
+    setSelectedIndustryId(industry?.id || task.industryId || "");
     setQuery("");
     setNotice("");
   };
 
   const runResearch = async () => {
     if (!query.trim() || busy) return;
+    if (context === "材料") {
+      setNotice("材料模式请先上传材料；如需直接提问，请切换到公司或行业模式");
+      return;
+    }
     if (context === "公司" && !selectedCompanyId) {
       setNotice("请先选择一家已有公司");
       return;
@@ -534,7 +599,9 @@ export function WorkbenchPage({
               }
             : {}),
         });
-        setActiveResearch({ ...toWorkbenchResearch(conversation), company });
+        setActiveResearch(
+          withDirectoryContext({ ...toWorkbenchResearch(conversation), company }),
+        );
         syncPlatformConversation(conversation);
         setQuery("");
         setWorkflowScopeApproved(false);
@@ -554,22 +621,17 @@ export function WorkbenchPage({
           intent: query.trim(),
           explicitWebSearch: true,
         });
-        setActiveResearch({ ...toWorkbenchResearch(conversation), industry });
+        setActiveResearch(
+          withDirectoryContext({ ...toWorkbenchResearch(conversation), industry }),
+        );
         syncPlatformConversation(conversation);
         setQuery("");
         await loadPlatformConversations();
         return;
       }
-      const result = await api.research({
-        query: query.trim(),
-        contextType: context,
-      });
-      setActiveResearch(result);
-      setQuery("");
-      reload();
     } catch (error) {
       setNotice(
-        error instanceof ApiError || error instanceof Error
+        error instanceof Error
           ? error.message
           : "研究任务创建失败，请稍后重试",
       );
@@ -595,7 +657,9 @@ export function WorkbenchPage({
     );
     const first = results.find((result) => result.status === "fulfilled");
     if (first?.status === "fulfilled") {
-      setActiveResearch(toWorkbenchResearch(first.value.conversation));
+      setActiveResearch(
+        withDirectoryContext(toWorkbenchResearch(first.value.conversation)),
+      );
       setContext("材料");
     }
     if (uploadRef.current) uploadRef.current.value = "";
@@ -660,6 +724,8 @@ export function WorkbenchPage({
               busy={busy}
               notice={notice}
               workflow={workflowComposer}
+              companyMaterialCounts={companyMaterialCounts}
+              industryCompanyCounts={industryCompanyCounts}
               onContext={(next) => {
                 setContext(next);
                 setNotice("");
@@ -684,6 +750,7 @@ export function WorkbenchPage({
             <QuickActions
               companyCount={workbenchData.companies.length}
               onUpload={() => uploadRef.current?.click()}
+              onImportCompanies={() => navigate("/companies/import")}
               onFill={(nextContext, prompt) => {
                 setContext(nextContext);
                 setQuery(prompt);
@@ -691,18 +758,8 @@ export function WorkbenchPage({
               }}
             />
             <RecentTasks
-              data={workbenchData}
-              onOpen={(task) =>
-                void openConversation({
-                  task,
-                  company: workbenchData.companies.find(
-                    (item) => item.id === task.companyId,
-                  ),
-                  industry: workbenchData.industryNodes.find(
-                    (item) => item.id === task.industryId,
-                  ),
-                })
-              }
+              conversations={conversationRows}
+              onOpen={(research) => void openConversation(research)}
             />
             <div className="by-governance-note">
               <ShieldCheck />
@@ -727,6 +784,8 @@ export function WorkbenchPage({
             busy={busy}
             notice={notice}
             workflow={workflowComposer}
+            companyMaterialCounts={companyMaterialCounts}
+            industryCompanyCounts={industryCompanyCounts}
             uploadRef={uploadRef}
             onContext={setContext}
             onCompany={setSelectedCompanyId}
@@ -782,8 +841,9 @@ function ConversationRail({
   onOpen: (research: ConversationRow) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const normalizedSearch = search.trim().toLocaleLowerCase("zh-CN");
-  const visibleTasks = conversations
+  const matchingTasks = conversations
     .filter(({ task }) => {
       const matchesFilter = (() => {
         if (filter === "全部") return true;
@@ -810,8 +870,8 @@ function ConversationRail({
       (left, right) =>
         Number(left.task.status === "已取消") -
         Number(right.task.status === "已取消"),
-    )
-    .slice(0, 30);
+    );
+  const visibleTasks = matchingTasks.slice(0, showAll ? undefined : 30);
   return (
     <aside className="by-conversation-rail" aria-label="研究对话">
       <button className="by-new-conversation" onClick={onNew}>
@@ -861,7 +921,7 @@ function ConversationRail({
               <span>
                 <strong>{task.query}</strong>
                 <small>
-                  <em>工作台</em>
+                  <em>{task.createdBy}</em>
                   {relativeTime(task.createdAt)}
                 </small>
               </span>
@@ -870,11 +930,16 @@ function ConversationRail({
           );
         })}
       </div>
-      <button className="by-view-all">
-        <MessageSquareText />
-        查看全部对话
-        <ChevronRight />
-      </button>
+      {matchingTasks.length > 30 && (
+        <button
+          className="by-view-all"
+          onClick={() => setShowAll((current) => !current)}
+        >
+          <MessageSquareText />
+          {showAll ? "收起对话" : `查看全部对话（${matchingTasks.length}）`}
+          <ChevronRight />
+        </button>
+      )}
     </aside>
   );
 }
@@ -882,10 +947,12 @@ function ConversationRail({
 function QuickActions({
   companyCount,
   onUpload,
+  onImportCompanies,
   onFill,
 }: {
   companyCount: number;
   onUpload: () => void;
+  onImportCompanies: () => void;
   onFill: (context: ContextType, prompt: string) => void;
 }) {
   const actions = [
@@ -906,7 +973,7 @@ function QuickActions({
       icon: ListChecks,
       title: "处理公司名单",
       detail: "批量识别与建立档案",
-      action: () => onFill("材料", "识别并处理这份公司名单"),
+      action: onImportCompanies,
     },
     {
       icon: Globe2,
@@ -932,31 +999,32 @@ function QuickActions({
 }
 
 function RecentTasks({
-  data,
+  conversations,
   onOpen,
 }: {
-  data: Bootstrap;
-  onOpen: (task: ResearchTask) => void;
+  conversations: ConversationRow[];
+  onOpen: (research: ConversationRow) => void;
 }) {
-  const rows = data.tasks.slice(0, 3);
+  const rows = [...conversations]
+    .sort(
+      (left, right) =>
+        Date.parse(right.task.createdAt) - Date.parse(left.task.createdAt),
+    )
+    .slice(0, 3);
   return (
     <section className="by-recent-tasks">
       <header>
         <h2>近期任务</h2>
-        <button>
-          查看全部
-          <ChevronRight />
-        </button>
       </header>
       <div>
-        {rows.map((task) => {
-          const company = data.companies.find(
-            (item) => item.id === task.companyId,
-          );
+        {rows.map((research) => {
+          const { task } = research;
           const pending =
-            company?.claims.filter((claim) =>
+            research.pendingCandidateCount ??
+            research.company?.claims.filter((claim) =>
               ["candidate", "disputed"].includes(claim.status),
-            ).length || 0;
+            ).length ??
+            0;
           const progress = task.steps.length
             ? Math.round(
                 (task.steps.filter((step) => step.status === "done").length /
@@ -965,11 +1033,14 @@ function RecentTasks({
               )
             : 0;
           return (
-            <button key={task.id} onClick={() => onOpen(task)}>
+            <button
+              key={research.platformConversationId || task.id}
+              onClick={() => onOpen(research)}
+            >
               <span className="by-task-kind">
-                {task.industryId ? (
+                {task.contextType === "行业" || task.industryId ? (
                   <Globe2 />
-                ) : task.companyId ? (
+                ) : task.contextType === "公司" || task.companyId ? (
                   <Building2 />
                 ) : (
                   <FileText />
@@ -977,7 +1048,7 @@ function RecentTasks({
               </span>
               <span>
                 <strong>{task.query}</strong>
-                <small>工作台 · {relativeTime(task.createdAt)}</small>
+                <small>{task.createdBy} · {relativeTime(task.createdAt)}</small>
               </span>
               <span className="by-task-progress">
                 <i style={{ width: `${progress}%` }} />
@@ -1008,6 +1079,8 @@ function ActiveConversation({
   busy,
   notice,
   workflow,
+  companyMaterialCounts,
+  industryCompanyCounts,
   uploadRef,
   onContext,
   onCompany,
@@ -1028,6 +1101,8 @@ function ActiveConversation({
   busy: boolean;
   notice: string;
   workflow: WorkflowComposerState;
+  companyMaterialCounts: ReadonlyMap<string, number>;
+  industryCompanyCounts: ReadonlyMap<string, number>;
   uploadRef: React.RefObject<HTMLInputElement | null>;
   onContext: (context: ContextType) => void;
   onCompany: (companyId: string) => void;
@@ -1104,6 +1179,20 @@ function ActiveConversation({
       ["candidate", "disputed"].includes(claim.status),
     ).length ??
     0;
+  const companyCoreClaims = company?.claims.slice(0, 6) || [];
+  const conversationCoreSections = (research.analysisSections || [])
+    .filter(
+      (section) =>
+        Boolean(section.summary.trim()) && section.summary !== "材料未披露",
+    )
+    .slice(0, 6);
+  const companyRiskClaims =
+    company?.claims
+      .filter((claim) => ["candidate", "disputed"].includes(claim.status))
+      .slice(0, 4) || [];
+  const conversationRiskCandidates = (research.candidates || [])
+    .filter((candidate) => ["pending", "conflicted"].includes(candidate.status))
+    .slice(0, 4);
   const platformMaterialStored = Boolean(
     research.platformConversationId && research.materialFileName,
   );
@@ -1150,10 +1239,12 @@ function ActiveConversation({
               )}
             </p>
           </div>
-          <span className="by-archive-state">
-            <Check />
-            已自动归档
-          </span>
+          {research.archiveStatus === "archived" && (
+            <span className="by-archive-state">
+              <Check />
+              已自动归档
+            </span>
+          )}
           {originalDocumentId && (
             <AuthenticatedDocumentDownload
               className="by-context-action"
@@ -1219,10 +1310,7 @@ function ActiveConversation({
               <section>
                 <h3>材料摘要</h3>
                 <p>
-                  {task.answer?.text ||
-                    company?.description ||
-                    industry?.description ||
-                    "当前尚未形成分析摘要。补充材料后，系统将生成带有证据引用的内容。"}
+                  {task.answer?.text || analysisWaitingMessage(task.status)}
                 </p>
               </section>
               {!!research.analysisSections?.length && (
@@ -1258,7 +1346,7 @@ function ActiveConversation({
               <section>
                 <h3>核心信息</h3>
                 <div className="by-analysis-columns">
-                  {company?.claims.slice(0, 6).map((claim) => (
+                  {companyCoreClaims.map((claim) => (
                     <button
                       key={claim.id}
                       onClick={() =>
@@ -1280,9 +1368,21 @@ function ActiveConversation({
                       </small>
                     </button>
                   ))}
-                  {!company?.claims.length && (
+                  {!companyCoreClaims.length &&
+                    conversationCoreSections.map((section) => (
+                      <article key={section.key}>
+                        <span>{section.title}</span>
+                        <p>{section.summary}</p>
+                        <small>
+                          <FileSearch />
+                          {section.evidence.length} 条可展示内部证据
+                        </small>
+                      </article>
+                    ))}
+                  {!companyCoreClaims.length &&
+                    !conversationCoreSections.length && (
                     <p className="by-inline-empty">
-                      暂无结构化结论，当前回答直接基于已关联的 BP 证据生成。
+                      {analysisWaitingMessage(task.status)}
                     </p>
                   )}
                 </div>
@@ -1290,15 +1390,21 @@ function ActiveConversation({
               <section>
                 <h3>风险与待验证</h3>
                 <ul>
-                  {company?.claims
-                    .filter((claim) =>
-                      ["candidate", "disputed"].includes(claim.status),
-                    )
-                    .slice(0, 4)
-                    .map((claim) => (
-                      <li key={claim.id}>{claim.text}</li>
+                  {companyRiskClaims.map((claim) => (
+                    <li key={claim.id}>{claim.text}</li>
+                  ))}
+                  {!companyRiskClaims.length &&
+                    conversationRiskCandidates.map((candidate) => (
+                      <li key={candidate.candidateId}>{candidate.statement}</li>
                     ))}
-                  {!pendingCount && <li>暂无待验证事项</li>}
+                  {!companyRiskClaims.length &&
+                    !conversationRiskCandidates.length && (
+                      <li>
+                        {task.answer
+                          ? "本次分析暂无待验证事项"
+                          : "本次任务尚未生成待验证事项"}
+                      </li>
+                    )}
                 </ul>
               </section>
               <button
@@ -1373,11 +1479,11 @@ function ActiveConversation({
                 </p>
                 )}
               {externalClaims.some((claim) => claim.status === "disputed") && (
-                <button>
+                <button type="button" onClick={onReviewCandidates}>
                   <CircleAlert />
                   发现外部信息与内部材料存在冲突
                   <span>
-                    查看详情
+                    去待确认队列
                     <ChevronRight />
                   </span>
                 </button>
@@ -1388,6 +1494,9 @@ function ActiveConversation({
       </div>
 
       <div className="by-active-composer">
+        <p className="by-active-composer-note">
+          此处会发起新的研究任务，不会继续当前线程；公司连续追问请使用公司页右侧 Company Copilot。
+        </p>
         <ResearchComposer
           data={data}
           context={context}
@@ -1397,6 +1506,8 @@ function ActiveConversation({
           busy={busy}
           notice={notice}
           workflow={workflow}
+          companyMaterialCounts={companyMaterialCounts}
+          industryCompanyCounts={industryCompanyCounts}
           compact
           onContext={onContext}
           onCompany={onCompany}
@@ -1431,6 +1542,15 @@ function platformEvidenceForDrawer(evidence: PlatformEvidence): Evidence {
     sourceDate: evidence.publishedAt || evidence.retrievedAt || "日期未记录",
     visibility: "organization",
   };
+}
+
+function analysisWaitingMessage(status: ResearchTask["status"]): string {
+  if (["识别中", "检索中", "生成中"].includes(status)) {
+    return "AI 正在生成本次分析结果，请稍候。";
+  }
+  if (status === "执行失败") return "本次研究任务执行失败，尚未生成分析结果。";
+  if (status === "已取消") return "本次研究任务已取消，未生成分析结果。";
+  return "本次任务暂无可展示的分析结果。";
 }
 
 function platformEvidenceLocator(evidence: PlatformEvidence): string {
@@ -1558,10 +1678,6 @@ function TaskRail({
           <strong>{pending} 项候选知识等待确认</strong>
           <button onClick={onReview}>处理待确认</button>
         </section>
-        <button className="by-task-detail">
-          <ListChecks />
-          查看执行详情
-        </button>
       </div>
     </aside>
   );
@@ -1576,6 +1692,8 @@ function ResearchComposer({
   busy,
   notice,
   workflow,
+  companyMaterialCounts,
+  industryCompanyCounts,
   compact = false,
   onContext,
   onCompany,
@@ -1593,6 +1711,8 @@ function ResearchComposer({
   busy: boolean;
   notice: string;
   workflow: WorkflowComposerState;
+  companyMaterialCounts: ReadonlyMap<string, number>;
+  industryCompanyCounts: ReadonlyMap<string, number>;
   compact?: boolean;
   onContext: (context: ContextType) => void;
   onCompany: (companyId: string) => void;
@@ -1623,7 +1743,9 @@ function ResearchComposer({
             items={data.companies.map((company) => ({
               id: company.id,
               name: company.aliases[0] || company.standardName,
-              detail: `${company.evidence.length} 份 BP`,
+              detail: companyMaterialCounts.has(company.id)
+                ? `${companyMaterialCounts.get(company.id)} 份 BP`
+                : undefined,
             }))}
             selectedId={selectedCompanyId}
             onSelect={onCompany}
@@ -1640,19 +1762,9 @@ function ResearchComposer({
               .map((industry) => ({
                 id: industry.id,
                 name: industry.name,
-                detail: `${
-                  data.companies.filter((company) =>
-                    company.positions.some((position) => {
-                      const node = data.industryNodes.find(
-                        (item) => item.id === position.nodeId,
-                      );
-                      return (
-                        node?.id === industry.id ||
-                        node?.parentId === industry.id
-                      );
-                    }),
-                  ).length
-                } 家公司`,
+                detail: industryCompanyCounts.has(industry.id)
+                  ? `${industryCompanyCounts.get(industry.id)} 家公司`
+                  : undefined,
               }))}
             selectedId={selectedIndustryId}
             onSelect={onIndustry}
@@ -1661,7 +1773,7 @@ function ResearchComposer({
         {context === "材料" && (
           <span className="by-material-context-note">
             <FileText />
-            上传材料，或直接提出研究问题
+            请先上传材料，或切换到公司/行业后提问
           </span>
         )}
       </div>
@@ -1815,7 +1927,7 @@ function ResearchComposer({
         }}
         placeholder={
           compact
-            ? "基于当前对象与 BP 证据继续提问"
+            ? "输入问题，发起新的研究任务（非当前线程追问）"
             : context === "公司"
               ? selectedCompanyId
                 ? "输入对这家公司的研究问题"
@@ -1824,7 +1936,7 @@ function ResearchComposer({
                 ? selectedIndustryId
                   ? "输入对这个行业或产业链的研究问题"
                   : "请先从上方选择已有行业"
-                : "向博源 AI 提问或上传材料"
+                : "请先上传材料，或切换到公司/行业"
         }
       />
       <div className="by-composer-toolbar">
@@ -1838,7 +1950,7 @@ function ResearchComposer({
         </span>
         <button
           className="by-send"
-          aria-label="发送问题"
+          aria-label={compact ? "发起新的研究任务" : "发送问题"}
           disabled={
             busy ||
             !query.trim() ||
@@ -1861,7 +1973,7 @@ function ResearchTargetPicker({
   onSelect,
 }: {
   kind: "公司" | "行业";
-  items: Array<{ id: string; name: string; detail: string }>;
+  items: Array<{ id: string; name: string; detail?: string }>;
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -1911,7 +2023,7 @@ function ResearchTargetPicker({
                   {kind === "公司" ? item.name.slice(0, 1) : <Network />}
                 </span>
                 <strong>{item.name}</strong>
-                <small>{item.detail}</small>
+                {item.detail && <small>{item.detail}</small>}
                 {item.id === selectedId && <Check />}
               </button>
             ))}
