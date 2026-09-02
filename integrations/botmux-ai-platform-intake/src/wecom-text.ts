@@ -44,21 +44,24 @@ function renderBp(
   }
   const body = [
     '【博源AI｜BP事实核验】',
-    `公司：${result.companyName}`,
-    `主体：${result.companyIdentity}`,
-    `产品/技术：${result.productTechnology}`,
-    `行业/赛道：${result.industryTrack}`,
-    `市场：${result.marketView}`,
-    `融资：${result.financing}`,
-    `团队：${result.keyPeople}`,
+    '',
+    '▍主体概况',
+    fieldLine('公司', result.companyName),
+    fieldLine('主体', result.companyIdentity),
+    fieldLine('产品/技术', result.productTechnology),
+    fieldLine('行业/赛道', result.industryTrack),
+    fieldLine('市场', result.marketView),
+    fieldLine('融资', result.financing),
+    fieldLine('团队', result.keyPeople),
     '',
     ...listSection('亮点', result.highlights, 4),
     ...listSection('风险与待验证', result.riskSignals, 4),
     ...listSection('建议尽调问题', result.diligenceQuestions, 4),
     ...relationSection(result.competitorNames, result.upstreamNames, result.downstreamNames),
     ...fundMatchSection(result.fundMatch),
-    `置信度：${result.confidence}%（${result.confidenceLevel}）`,
-    '说明：快速结果和基金匹配不构成投资判断。',
+    '▍结果依据',
+    fieldLine('置信度', `${result.confidence}%（${result.confidenceLevel}）`),
+    fieldLine('说明', '快速结果和基金匹配不构成投资判断。'),
   ];
   return fitWithFooter(body, linkFooter(links, '查看深度分析'));
 }
@@ -80,13 +83,16 @@ function renderCompanyResearch(
       : '新主体，待确认';
   const body = [
     '【博源AI｜公司快速研究】',
-    `公司：${result.companyName}`,
-    `主体：${identity}｜${result.companyIdentity}`,
-    `产品/技术：${result.productTechnology}`,
-    `行业/赛道：${result.industryTrack}`,
-    `市场：${result.marketView}`,
-    `融资：${result.financing}`,
-    `团队：${result.keyPeople}`,
+    '',
+    '▍主体概况',
+    fieldLine('公司', result.companyName),
+    fieldLine('主体状态', identity),
+    fieldLine('主体识别', result.companyIdentity),
+    fieldLine('产品/技术', result.productTechnology),
+    fieldLine('行业/赛道', result.industryTrack),
+    fieldLine('市场', result.marketView),
+    fieldLine('融资', result.financing),
+    fieldLine('团队', result.keyPeople),
     '',
     ...listSection('亮点', result.highlights, 4),
     ...listSection('风险与待验证', result.riskSignals, 4),
@@ -94,17 +100,24 @@ function renderCompanyResearch(
     ...listSection('近期信号', result.recentSignals, 4),
     ...relationSection(result.competitorNames, result.upstreamNames, result.downstreamNames),
     ...fundMatchSection(result.fundMatch),
-    `依据：公开来源${result.sourceCount}｜已有材料${result.materialCount}｜正式知识${result.formalKnowledgeCount}｜待确认${result.pendingCandidateCount}`,
-    `置信度：${result.confidence}%（${result.confidenceLevel}）`,
-    '说明：快速结果和基金匹配不构成投资判断。',
+    '▍结果依据',
+    fieldLine('公开来源', `${result.sourceCount}个`),
+    fieldLine('已有材料', `${result.materialCount}份`),
+    fieldLine('正式知识', `${result.formalKnowledgeCount}条`),
+    fieldLine('待确认', `${result.pendingCandidateCount}条`),
+    fieldLine('置信度', `${result.confidence}%（${result.confidenceLevel}）`),
+    fieldLine('说明', '快速结果和基金匹配不构成投资判断。'),
   ];
   return fitWithFooter(body, linkFooter(links, '查看完整研究'));
 }
 
 function listSection(title: string, items: string[], limit: number): string[] {
   const selected = items.slice(0, limit);
-  if (selected.length === 0) return [`${title}：暂未披露`];
-  return [`${title}：`, ...selected.map((item, index) => `${index + 1}. ${item}`)];
+  return [
+    `▍${title}`,
+    ...(selected.length === 0 ? ['• 暂未披露'] : selected.map((item) => `• ${item}`)),
+    '',
+  ];
 }
 
 function relationSection(
@@ -113,16 +126,17 @@ function relationSection(
   downstream: string[],
 ): string[] {
   return [
-    '关联线索：',
+    '▍关联线索',
     relationLine('竞品', competitors),
     relationLine('上游', upstream),
     relationLine('下游', downstream),
+    '',
   ];
 }
 
 function relationLine(label: string, items: string[]): string {
   const preview = items.slice(0, 2).join('、');
-  return `${label}${items.length}家${preview ? `：${preview}${items.length > 2 ? '等' : ''}` : ''}`;
+  return fieldLine(label, `${items.length}家${preview ? `：${preview}${items.length > 2 ? '等' : ''}` : ''}`);
 }
 
 function fundMatchSection(result: FundMatchSummary): string[] {
@@ -131,28 +145,37 @@ function fundMatchSection(result: FundMatchSummary): string[] {
     const message = result.status === 'insufficient_input'
       ? '当前行业、阶段、金额和区域信息不足，暂不生成基金匹配度。'
       : '当前清单中暂无可参与匹配的基金。';
-    return ['基金匹配：', message, `来源：${source}`];
+    return ['▍基金匹配', `• ${message}`, fieldLine('清单', source), ''];
   }
   const recommended = result.recommended;
   return [
-    '基金匹配（确定性规则）：',
-    `推荐：${recommended.fundName}｜匹配度${recommended.score}%`,
+    '▍基金匹配（确定性规则）',
+    fieldLine('推荐基金', recommended.fundName),
+    fieldLine('匹配度', `${recommended.score}%`),
     ...recommended.dimensions.map((item) => (
-      `${item.label}${item.score}/${item.maxScore}：${item.summary}`
+      fieldLine(item.label, `${item.score}/${item.maxScore} · ${item.summary}`)
     )),
     ...(result.alternatives.length > 0
-      ? [`备选：${result.alternatives.map((item) => item.fundName).join('、')}`]
+      ? [fieldLine('备选基金', result.alternatives.map((item) => item.fundName).join('、'))]
       : []),
-    `来源：${source}｜可匹配${result.eligibleFundCount}只｜排除${result.excludedFundCount}只`,
+    fieldLine('清单', source),
+    fieldLine('参与匹配', `${result.eligibleFundCount}只`),
+    fieldLine('已排除', `${result.excludedFundCount}只`),
+    '',
   ];
 }
 
 function linkFooter(links: CompletionLinks, deepLabel: string): string[] {
   return [
-    `${deepLabel}：${links.deepAnalysisUrl}`,
-    ...(links.companyNetworkUrl ? [`公司网络：${links.companyNetworkUrl}`] : []),
-    ...(links.industryChainUrl ? [`产业链：${links.industryChainUrl}`] : []),
+    '▍继续查看',
+    fieldLine(deepLabel, links.deepAnalysisUrl),
+    ...(links.companyNetworkUrl ? [fieldLine('公司网络', links.companyNetworkUrl)] : []),
+    ...(links.industryChainUrl ? [fieldLine('产业链', links.industryChainUrl)] : []),
   ];
+}
+
+function fieldLine(label: string, value: string): string {
+  return `${label}｜${value}`;
 }
 
 function fitWithFooter(bodyLines: string[], footerLines: string[]): string {

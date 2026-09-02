@@ -19,14 +19,15 @@ describe('WeCom text rendering', () => {
     });
 
     expect(rendered).toContain('【博源AI｜BP事实核验】');
-    expect(rendered).toContain('公司：博源科技');
-    expect(rendered).toContain('产品/技术：AI 推理基础设施研究工作台');
-    expect(rendered).toContain('风险与待验证');
-    expect(rendered).toContain('竞品2家：Iktos、晶泰科技');
-    expect(rendered).toContain('推荐：成都元屿智算创业投资合伙企业（有限合伙）｜匹配度100%');
-    expect(rendered).toContain('置信度：86%（高）');
-    expect(rendered).toContain('查看深度分析：https://demo.example.com/workbench/conversations/c1');
-    expect(rendered).toContain('公司网络：https://demo.example.com/companies/company-1/network');
+    expect(rendered).toContain('▍主体概况\n公司｜博源科技');
+    expect(rendered).toContain('产品/技术｜AI 推理基础设施研究工作台');
+    expect(rendered).toContain('\n\n▍风险与待验证\n• 客户集中度待核验');
+    expect(rendered).toContain('竞品｜2家：Iktos、晶泰科技');
+    expect(rendered).toContain('推荐基金｜成都元屿智算创业投资合伙企业（有限合伙）\n匹配度｜100%');
+    expect(rendered).toContain('置信度｜86%（高）');
+    expect(rendered).toContain('查看深度分析｜https://demo.example.com/workbench/conversations/c1');
+    expect(rendered).toContain('公司网络｜https://demo.example.com/companies/company-1/network');
+    expect(rendered).not.toMatch(/^\d+\.\s/mu);
     expect(rendered).not.toContain('Sol');
   });
 
@@ -42,11 +43,13 @@ describe('WeCom text rendering', () => {
     });
 
     expect(rendered).toContain('【博源AI｜公司快速研究】');
-    expect(rendered).toContain('主体：已有正式主体');
-    expect(rendered).toContain('近期信号');
-    expect(rendered).toContain('基金匹配（确定性规则）');
-    expect(rendered).toContain('公开来源5｜已有材料2｜正式知识3｜待确认1');
-    expect(rendered).toContain('查看完整研究：https://demo.example.com/workbench/conversations/c2');
+    expect(rendered).toContain('主体状态｜已有正式主体');
+    expect(rendered).toContain('\n\n▍近期信号\n• 发布新一代研究工作台');
+    expect(rendered).toContain('▍基金匹配（确定性规则）');
+    expect(rendered).toContain('公开来源｜5个\n已有材料｜2份\n正式知识｜3条\n待确认｜1条');
+    expect(rendered).toContain('查看完整研究｜https://demo.example.com/workbench/conversations/c2');
+    expect(rendered).not.toMatch(/^[ \t]+▍/mu);
+    expect(rendered).not.toMatch(/^\d+\.\s/mu);
   });
 
   it('truncates a long result without losing the deep-analysis link', () => {
