@@ -40,7 +40,9 @@ export function createDeterministicAnalysisAdapter(options: DeterministicAnalysi
         toolUsage: [],
         sections,
         candidates,
-        rawText: JSON.stringify({ sections, candidates }),
+        people: [],
+        relations: [],
+        rawText: JSON.stringify({ sections, candidates, people: [], relations: [] }),
       };
     },
   };

@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Clock3,
   Download,
-  ExternalLink,
   FileSearch,
   FileText,
   Filter,
@@ -32,6 +31,7 @@ import {
   Star,
   Upload,
   UserRound,
+  X,
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Bootstrap } from "../api";
@@ -40,6 +40,11 @@ import {
   createCompanyListClient,
   type CompanyListClient,
 } from "../capabilities/company-lists/client";
+import { createCompanyCopilotClient } from "../capabilities/copilot/client";
+import type {
+  CompanyCopilotMessage,
+  CompanyCopilotThread,
+} from "../capabilities/copilot/types";
 import { createCompanyDirectoryClient, type CompanyDirectoryClient } from "../capabilities/companies/client";
 import { companyDetailView, companyDirectoryView, type CompanyView } from "../capabilities/companies/view-model";
 import { ResearchPlatformApiError } from "../capabilities/platform-http";
@@ -53,6 +58,7 @@ import type {
 
 const defaultCompanyClient = createCompanyDirectoryClient();
 const defaultCompanyListClient = createCompanyListClient();
+const defaultCompanyCopilotClient = createCompanyCopilotClient();
 type CompanyFilter = "全部" | "已关注" | "有 BP" | "待确认" | "有冲突";
 
 export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { data: Bootstrap; companyClient?: CompanyDirectoryClient }) {
@@ -473,14 +479,81 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
 
 function CompanyCopilot({ company, open, onToggle, onOpenWorkbench }: { company: CompanyView; open: boolean; onToggle: () => void; onOpenWorkbench: () => void }) {
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
-    { role: "assistant", text: `我已连接 ${company.standardName} 的材料、知识与关联实体。你可以直接问我投资判断相关问题。` },
-  ]);
-  const submit = () => {
-    const nextQuestion = question.trim();
-    if (!nextQuestion) return;
-    setMessages((current) => [...current, { role: "user", text: nextQuestion }, { role: "assistant", text: "问题已记录。当前侧栏为 Copilot 预览，点击下方按钮可在研究工作台中调用完整研究流程。" }]);
+  const [thread, setThread] = useState<CompanyCopilotThread | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const messageList = useRef<HTMLDivElement>(null);
+  const sendController = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    sendController.current?.abort();
     setQuestion("");
+    setThread(null);
+    setLoading(true);
+    setSending(false);
+    setError("");
+    void defaultCompanyCopilotClient.getThread(company.id, controller.signal)
+      .then((response) => setThread(response))
+      .catch((loadError: unknown) => {
+        if ((loadError as Error).name !== "AbortError") {
+          setError(loadError instanceof Error ? loadError.message : "Copilot 对话加载失败，请重试");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [company.id, reloadVersion]);
+
+  useEffect(() => () => sendController.current?.abort(), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const list = messageList.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [open, sending, thread?.messages]);
+
+  const submit = async () => {
+    const nextQuestion = question.trim();
+    if (!nextQuestion || loading || sending) return;
+
+    const previousThread = thread;
+    const optimisticMessage: CompanyCopilotMessage = {
+      messageId: `optimistic-${Date.now()}`,
+      role: "user",
+      content: nextQuestion,
+      createdAt: new Date().toISOString(),
+    };
+    setThread((current) => ({
+      threadId: current?.threadId || "",
+      status: "running",
+      messages: [...(current?.messages || []), optimisticMessage],
+    }));
+    setQuestion("");
+    setError("");
+    setSending(true);
+    const controller = new AbortController();
+    sendController.current?.abort();
+    sendController.current = controller;
+    try {
+      const response = await defaultCompanyCopilotClient.sendMessage(
+        company.id,
+        nextQuestion,
+        controller.signal,
+      );
+      setThread(response);
+    } catch (sendError) {
+      if ((sendError as Error).name !== "AbortError") {
+        setThread(previousThread);
+        setQuestion(nextQuestion);
+        setError(sendError instanceof Error ? sendError.message : "消息发送失败，请重试");
+      }
+    } finally {
+      if (!controller.signal.aborted) setSending(false);
+    }
   };
   const suggestions = ["总结核心亮点", "列出主要风险", "生成尽调问题"];
   if (!open) {
@@ -490,23 +563,41 @@ function CompanyCopilot({ company, open, onToggle, onOpenWorkbench }: { company:
       </aside>
     );
   }
+  const messages = thread?.messages || [];
   return (
-    <aside className="by-company-copilot" aria-label="公司 Copilot">
-      <header><div><Bot /><span><strong>Company Copilot</strong><small>已连接当前公司</small></span></div><div className="by-copilot-header-actions"><em>预览</em><button aria-label="收起公司 Copilot" aria-expanded="true" title="收起 Company Copilot" onClick={onToggle}><PanelRightClose /></button></div></header>
+    <aside className="by-company-copilot" aria-label="公司 Copilot" aria-busy={loading || sending}>
+      <header><div><Bot /><span><strong>Company Copilot</strong><small>{loading ? "正在连接当前公司…" : thread?.threadId ? "已连接当前公司 · 对话自动保存" : "已连接当前公司"}</small></span></div><div className="by-copilot-header-actions"><em>{sending ? "思考中" : "连续对话"}</em><button aria-label="收起公司 Copilot" aria-expanded="true" title="收起 Company Copilot" onClick={onToggle}><PanelRightClose /></button></div></header>
       <section className="by-copilot-context"><span>当前实体</span><strong>{company.standardName}</strong><p>{company.materialCount} 份材料 · {company.knowledgeCount} 条已确认知识 · {company.pendingCandidateCount} 条待确认</p></section>
-      <div className="by-copilot-messages">{messages.map((message, index) => <article className={message.role} key={`${message.role}-${index}`}><span>{message.role === "assistant" ? "AI" : "你"}</span><p>{message.text}</p></article>)}</div>
-      <div className="by-copilot-suggestions">{suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}</div>
-      <div className="by-copilot-composer"><textarea aria-label="向公司 Copilot 提问" value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }} placeholder="围绕当前公司提问…" /><button aria-label="发送给公司 Copilot" disabled={!question.trim()} onClick={submit}><SendHorizontal /></button></div>
+      <div className="by-copilot-messages" ref={messageList} role="log" aria-live="polite" aria-relevant="additions text">
+        {!messages.length && <article className="assistant"><span>AI</span><p>我已连接 {company.standardName} 的页面上下文、材料与知识。你可以直接问我投资判断相关问题。</p></article>}
+        {loading && <p className="by-copilot-state" role="status">正在恢复历史对话…</p>}
+        {messages.map((message) => <article className={message.role} key={message.messageId}><span>{message.role === "assistant" ? "AI" : "你"}</span><p>{message.content}</p></article>)}
+        {sending && <article className="assistant pending"><span>AI</span><p role="status">问题已记录，正在结合当前公司的上下文思考…</p></article>}
+        {error && <div className="by-copilot-error" role="alert"><p>{error}</p>{!messages.length && <button type="button" onClick={() => setReloadVersion((current) => current + 1)}>重新连接</button>}</div>}
+      </div>
+      <div className="by-copilot-suggestions">{suggestions.map((item) => <button type="button" disabled={loading || sending} key={item} onClick={() => setQuestion(item)}>{item}</button>)}</div>
+      <div className="by-copilot-composer"><textarea aria-label="向公司 Copilot 提问" value={question} disabled={loading || sending} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} placeholder={loading ? "正在连接…" : sending ? "等待回答后继续提问…" : "围绕当前公司提问…"} /><button type="button" aria-label={sending ? "Copilot 正在生成回答" : "发送给公司 Copilot"} disabled={!question.trim() || loading || sending} onClick={() => void submit()}><SendHorizontal /></button></div>
       <button className="by-copilot-workbench" onClick={onOpenWorkbench}>在研究工作台继续<ArrowRight /></button>
-      <small className="by-copilot-note">回答将遵循来源权限，并区分事实、判断与待确认信息。</small>
     </aside>
   );
 }
 
+interface PersonCardView {
+  id: string;
+  name: string;
+  role: string;
+  summary: string;
+  sourceLabel: string;
+  evidence: Array<{ id: string; quote: string; source: string }>;
+  status: "extracted" | "confirmed";
+}
+
 function EntityPortraitDashboard({ company, confirmed, pending, owner }: { company: CompanyView; confirmed: Claim[]; pending: Claim[]; owner: string }) {
-  const competitors = company.relations.filter((item) => /(?:竞争|竞品|替代|同层)/u.test(item.relationType));
-  const upstream = company.relations.filter((item) => item.direction === "incoming" && !competitors.includes(item));
-  const downstream = company.relations.filter((item) => item.direction === "outgoing" && !competitors.includes(item));
+  const [selectedPerson, setSelectedPerson] = useState<PersonCardView | null>(null);
+  const personDialogClose = useRef<HTMLButtonElement>(null);
+  const personTrigger = useRef<HTMLButtonElement | null>(null);
+  const panorama = relationPanorama(company);
+  const downstreamAndCustomers = [...panorama.customers, ...panorama.downstream];
   const gaps = materialInformationGaps(company);
   const questions = uniqueStrings([
     ...gaps.map((item) => item.title),
@@ -515,24 +606,71 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
   ]).slice(0, 8);
   const highlights = confirmed.slice(0, 4);
   const teamClaims = confirmed.filter((item) => /(?:团队|创始|高管|人物|董事|管理)/u.test(item.category + item.text)).slice(0, 3);
+  const extractedPeople: PersonCardView[] = company.people.slice(0, 6).map((person) => ({
+    id: person.personId,
+    name: person.name,
+    role: person.role,
+    summary: person.summary,
+    sourceLabel: unverifiedSourceLabel(person.sourceLabel),
+    evidence: person.evidence.map((evidence) => ({
+      id: evidence.evidenceId,
+      quote: evidence.quote,
+      source: [evidence.fileName || evidence.title || evidence.site || "材料证据", evidence.page ? `第 ${evidence.page} 页` : ""].filter(Boolean).join(" · "),
+    })),
+    status: "extracted",
+  }));
+  const fallbackPeople: PersonCardView[] = teamClaims.map((item, index) => {
+    const [name, role = "核心人物"] = teamRole(item, index).split(" · ");
+    return {
+      id: item.id,
+      name,
+      role,
+      summary: item.text,
+      sourceLabel: "已确认知识",
+      evidence: item.evidenceIds.map((evidenceId) => {
+        const evidence = company.evidence.find((candidate) => candidate.id === evidenceId);
+        return {
+          id: evidenceId,
+          quote: evidence?.excerpt || item.text,
+          source: evidence?.fileName || "已确认知识证据",
+        };
+      }),
+      status: "confirmed",
+    };
+  });
+  const people = extractedPeople.length > 0 ? extractedPeople : fallbackPeople;
   const marketSummary = company.latestMaterialAnalysis?.sections?.find((item) => /(?:市场|行业|竞争)/u.test(item.title))?.summary;
   const financingSummary = company.latestMaterialAnalysis?.sections?.find((item) => /(?:融资|财务|股权|估值)/u.test(item.title))?.summary;
   const latestMaterial = company.materials[0];
+
+  useEffect(() => {
+    if (!selectedPerson) return;
+    const focusFrame = window.requestAnimationFrame(() => personDialogClose.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedPerson(null);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", closeOnEscape);
+      if (personTrigger.current?.isConnected) personTrigger.current.focus();
+    };
+  }, [selectedPerson]);
 
   return (
     <div className="by-entity-portrait">
       <section className="by-relation-panorama">
         <header>
           <h2>关联性全景</h2>
-          <div><span>上游 {upstream.length}</span><ArrowRight /><strong>{company.standardName} · 本实体</strong><ArrowRight /><span>下游 {downstream.length}</span></div>
-          <em>同层竞对 {competitors.length} · 非流向</em>
+          <div><span>上游 {panorama.upstream.length}</span><ArrowRight /><strong>{company.standardName} · 本实体</strong><ArrowRight /><span>下游 / 客户 {downstreamAndCustomers.length}</span></div>
+          <em>同层竞对 {panorama.competitors.length} · 非流向</em>
         </header>
         <div className="by-relation-columns">
-          <RelationGroup title="上游" subtitle="输入 · 供给" items={upstream} empty="暂无已确认上游关系" />
-          <RelationGroup title="下游及客户" subtitle="输出 · 交付" items={downstream} empty="暂无已确认客户关系" />
-          <RelationGroup title="潜在竞对" subtitle="同层 · 替代" items={competitors} empty="暂无已确认竞对" />
+          <RelationGroup title="上游" subtitle="输入 · 供给" items={panorama.upstream} empty="材料暂未披露上游关系" />
+          <RelationGroup title="下游及客户" subtitle="客户 · 渠道 · 交付" items={downstreamAndCustomers} empty="材料暂未披露客户或下游关系" />
+          <RelationGroup title="潜在竞对" subtitle="同层 · 替代" items={panorama.competitors} empty="材料暂未披露潜在竞对" />
         </div>
-        <footer>交付相关的上下文注释 / 灰=材料内部信息　青=已确认企业关系　蓝=外部来源　虚线=待确认</footer>
+        <footer>来源说明 / 蓝色虚线=材料自陈、AI 提取未核验　青色=已确认企业关系　关系事实仅代表材料披露内容</footer>
       </section>
 
       <div className="by-entity-two-up">
@@ -567,8 +705,12 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
       </div>
 
       <section className="by-entity-section by-team-section">
-        <h2>核心团队与人物关联</h2>
-        {teamClaims.length ? <div>{teamClaims.map((item, index) => <article key={item.id}><a href={`#person-${index}`}>{teamRole(item, index)} <ExternalLink /></a><p>{item.text}</p><small>{item.evidenceIds.length} 条证据 · 已确认</small></article>)}</div> : <div className="by-entity-empty">暂无已确认的核心团队与人物信息。</div>}
+        <header className="by-team-heading"><div><h2>核心团队与人物关联</h2><p>从最新材料中提取人物、角色与履历线索；点击人物卡查看履历与原文证据。</p></div>{people.length > 0 && <span>{people.length} 位人物</span>}</header>
+        {people.length > 0 ? <div className="by-team-grid">{people.map((person) => <button type="button" className={`by-person-card ${person.status}`} key={person.id} aria-haspopup="dialog" aria-label={`查看${person.name}的履历详情`} onClick={(event) => { personTrigger.current = event.currentTarget; setSelectedPerson(person); }}>
+          <span className="by-person-card-heading"><i><UserRound /></i><span><strong>{person.name}</strong><em>{person.role}</em></span></span>
+          <span className="by-person-card-summary">{person.summary}</span>
+          <span className="by-person-card-footer" title={person.evidence[0]?.quote}><span>{person.sourceLabel}</span><small>{person.evidence.length} 条证据 · 查看履历</small></span>
+        </button>)}</div> : <div className="by-entity-empty">暂无从材料中提取的核心团队与人物信息。</div>}
       </section>
 
       <section className="by-entity-section by-access-history">
@@ -597,12 +739,114 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
         <MaterialAnalysisOverview company={company} />
       </details>
 
+      {selectedPerson && <div className="by-person-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPerson(null); }}>
+        <section className="by-person-dialog" role="dialog" aria-modal="true" aria-labelledby="by-person-dialog-title" aria-describedby="by-person-dialog-summary">
+          <header><h2 id="by-person-dialog-title">{selectedPerson.name} · 履历详情</h2><button type="button" ref={personDialogClose} aria-label="关闭人物履历详情" onClick={() => setSelectedPerson(null)}><X /></button></header>
+          <div className="by-person-dialog-profile"><i><UserRound /></i><div><strong>{selectedPerson.name} · {selectedPerson.role}</strong><p id="by-person-dialog-summary">{selectedPerson.summary}</p></div></div>
+          <div className="by-person-dialog-grid">
+            <article><strong>院所 / 公司关联</strong><p>与 {company.standardName} 关联：{selectedPerson.role}。其他院所或公司关联当前材料未提供。</p></article>
+            <article><strong>拜访记录</strong><p>暂无拜访记录。</p></article>
+            <article><strong>浅层核验</strong><p>材料自陈，需进一步核验。</p></article>
+            <article><strong>内部资料库关联</strong><p>暂无可展示的跨项目人物关联。</p></article>
+          </div>
+          <section className="by-person-dialog-evidence" aria-label="人物来源与证据"><header><h3>来源与证据</h3><span>{selectedPerson.sourceLabel}</span></header>{selectedPerson.evidence.length > 0 ? selectedPerson.evidence.map((evidence) => <article key={evidence.id}><strong>{evidence.source}</strong><p>{evidence.quote}</p></article>) : <p>当前材料未提供可展开的原文证据。</p>}</section>
+          <footer><button type="button" onClick={() => setSelectedPerson(null)}>关闭</button></footer>
+        </section>
+      </div>}
+
     </div>
   );
 }
 
-function RelationGroup({ title, subtitle, items, empty }: { title: string; subtitle: string; items: CompanyView["relations"]; empty: string }) {
-  return <section><header><h3>{title}</h3><span>{subtitle}</span></header>{items.length ? items.slice(0, 4).map((item) => <Link to={`/companies/${item.company.companyId}`} key={item.relationId}><span>{item.company.canonicalName}</span><em className={item.status}>{item.relationType}</em></Link>) : <p>{empty}</p>}</section>;
+type RelationPanoramaCategory = CompanyView["relationInsights"][number]["category"];
+
+interface RelationPanoramaItem {
+  id: string;
+  targetName: string;
+  category: RelationPanoramaCategory;
+  relationType: string;
+  description: string;
+  sourceLabel: string;
+  evidenceCount: number;
+  evidencePreview?: string;
+  companyId?: string;
+  status: CompanyView["relations"][number]["status"] | "extracted";
+}
+
+function relationPanorama(company: CompanyView): {
+  upstream: RelationPanoramaItem[];
+  downstream: RelationPanoramaItem[];
+  customers: RelationPanoramaItem[];
+  competitors: RelationPanoramaItem[];
+} {
+  const insights: RelationPanoramaItem[] = company.relationInsights.map((item) => ({
+    id: item.insightId,
+    targetName: item.targetName,
+    category: item.category,
+    relationType: item.relationType,
+    description: item.description,
+    sourceLabel: item.sourceLabel || "材料自陈",
+    evidenceCount: item.evidence.length,
+    ...(item.evidence[0]?.quote ? { evidencePreview: item.evidence[0].quote } : {}),
+    status: "extracted",
+  }));
+  const confirmedRelations: RelationPanoramaItem[] = company.relations.map((item) => ({
+    id: item.relationId,
+    targetName: item.company.canonicalName,
+    category: relationCategory(item),
+    relationType: item.relationType,
+    description: item.evidence?.quote || `${company.standardName}与${item.company.canonicalName}存在${item.relationType}关系。`,
+    sourceLabel: item.evidence?.sourceType === "web" ? "外部来源" : item.evidence ? "材料证据" : "企业关系库",
+    evidenceCount: item.evidence ? 1 : 0,
+    ...(item.evidence?.quote ? { evidencePreview: item.evidence.quote } : {}),
+    companyId: item.company.companyId,
+    status: item.status,
+  }));
+  const pick = (category: RelationPanoramaCategory) => {
+    const extracted = insights.filter((item) => item.category === category);
+    return extracted.length > 0
+      ? extracted
+      : confirmedRelations.filter((item) => item.category === category);
+  };
+  return {
+    upstream: pick("upstream"),
+    downstream: pick("downstream"),
+    customers: pick("customer"),
+    competitors: pick("competitor"),
+  };
+}
+
+function relationCategory(relation: CompanyView["relations"][number]): RelationPanoramaCategory {
+  if (/(?:竞争|竞品|替代|同层)/u.test(relation.relationType)) return "competitor";
+  if (/(?:客户|采购|订单)/u.test(relation.relationType)) return "customer";
+  if (/(?:供应|上游|原料|设备|技术提供)/u.test(relation.relationType)) return "upstream";
+  if (/(?:下游|渠道|经销|交付|合作伙伴)/u.test(relation.relationType)) return "downstream";
+  return relation.direction === "incoming" ? "upstream" : "downstream";
+}
+
+function relationCategoryLabel(category: RelationPanoramaCategory): string {
+  if (category === "upstream") return "上游";
+  if (category === "customer") return "客户";
+  if (category === "downstream") return "下游";
+  return "竞对";
+}
+
+function unverifiedSourceLabel(sourceLabel: string): string {
+  const normalized = sourceLabel.trim();
+  const labels: string[] = [];
+  if (!/(?:材料|BP)/iu.test(normalized)) labels.push("材料自陈");
+  if (normalized) labels.push(normalized);
+  if (!/AI\s*提取/iu.test(normalized)) labels.push("AI 提取");
+  if (!/未核验/u.test(normalized)) labels.push("未核验");
+  return labels.join(" · ");
+}
+
+function RelationGroup({ title, subtitle, items, empty }: { title: string; subtitle: string; items: RelationPanoramaItem[]; empty: string }) {
+  return <section><header><h3>{title}</h3><span>{subtitle}</span></header><div className="by-relation-list">{items.length ? items.slice(0, 6).map((item) => <article className={`by-relation-item ${item.status}`} key={item.id} title={item.evidencePreview}>
+    <div>{item.companyId ? <Link to={`/companies/${item.companyId}`}>{item.targetName}</Link> : <strong>{item.targetName}</strong>}<em>{item.relationType}</em></div>
+    <p>{item.description}</p>
+    <small><span>{relationCategoryLabel(item.category)}</span>{item.status === "extracted" ? unverifiedSourceLabel(item.sourceLabel) : `${item.sourceLabel}${item.status === "confirmed" ? " · 已确认" : " · 待确认"}`}{item.evidenceCount > 0 ? ` · ${item.evidenceCount} 条证据` : ""}</small>
+  </article>) : <p className="by-relation-empty">{empty}</p>}</div></section>;
 }
 
 function EntityDiligencePanel({ company, embedded = false }: { company: CompanyView; embedded?: boolean }) {

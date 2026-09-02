@@ -91,6 +91,8 @@ pnpm dev:server
 
 这里的 `4173/opencode-api/` 是本机已有工作台提供的 OpenCode 代理，不需要把服务密码复制到本项目。若改为直连受保护的 OpenCode Server，再同时配置 `BOYUAN_OPENCODE_USERNAME` 和 `BOYUAN_OPENCODE_PASSWORD`。深度任务通过 OpenCode `prompt_async` 提交，并轮询会话状态和消息，因此不会让一次长 HTTP 连接决定分析成败。`BOYUAN_OPENCODE_TIMEOUT_MS` 默认 10 分钟；真正超时才会主动终止仍在运行的 OpenCode 会话。项目级 `boyuan-bp-deep-analysis` skill 位于 `.agents/skills`，Sequential Thinking MCP 位于 `opencode.json`；发起分析前会检查二者可用，单次 BP 会话默认禁用全部工具并只放行这两项。真实分析缺少任一调用都会失败，不会回退为演示结果。
 
+同一 `BOYUAN_OPENCODE_BASE_URL` 也用于公司详情页右侧的 Company Copilot。平台为每家公司持久化一个独立 OpenCode Session 和消息历史，页面刷新或服务重启后可继续对话；如需单独覆盖模型，可同时设置 `BOYUAN_COPILOT_PROVIDER_ID`、`BOYUAN_COPILOT_MODEL_ID`，以及可选的 `BOYUAN_COPILOT_VARIANT`。Copilot 只读取当前公司的正式知识、材料分析和待确认信息，并在回答中保持三类信息的事实边界。
+
 ## 飞书 BP 入口
 
 `integrations/botmux-ai-platform-intake` 是本仓库的新工作台飞书入口。它在收到 PDF 后先发送一张处理中状态卡，再把同一条消息原位更新为 Luna 快速完成卡；上传同时创建的新工作台深度分析对话由 Sol 在后台独立运行。

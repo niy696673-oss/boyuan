@@ -281,6 +281,25 @@ export interface CompanyRelationV1 {
   evidence?: ReviewEvidence;
 }
 
+export interface CompanyPersonV1 {
+  personId: string;
+  name: string;
+  role: string;
+  summary: string;
+  sourceLabel: string;
+  evidence: ReviewEvidence[];
+}
+
+export interface CompanyRelationInsightV1 {
+  insightId: string;
+  targetName: string;
+  category: "upstream" | "downstream" | "customer" | "competitor";
+  relationType: string;
+  description: string;
+  sourceLabel: string;
+  evidence: ReviewEvidence[];
+}
+
 export interface CompanyIndustryPlacementV1 {
   industryId: string;
   industryName: string;
@@ -298,6 +317,8 @@ export interface CompanyDetailResponse
   pendingCandidates: ReviewCandidate[];
   researchRecords: CompanyResearchRecordV1[];
   relations: CompanyRelationV1[];
+  people?: CompanyPersonV1[];
+  relationInsights?: CompanyRelationInsightV1[];
   industryPlacements: CompanyIndustryPlacementV1[];
   latestMaterialAnalysis?: LatestMaterialAnalysisV1 & {
     sections: Array<{

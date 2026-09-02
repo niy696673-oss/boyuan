@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
+import { parseAnalysisJson } from "../server/research-platform/analysis/analysis-schema.js";
 import { BP_SECTION_KEYS } from "../server/research-platform/analysis/contracts.js";
 import { createOpenCodeAnalysisAdapter } from "../server/research-platform/analysis/opencode-analysis.js";
 import { createRuntimeAnalysisAdapter } from "../server/research-platform/analysis/runtime-analysis.js";
@@ -193,11 +194,16 @@ describe("OpenCode BP 分析接缝", () => {
       ({ url, init }) =>
         url.pathname.endsWith("/prompt_async") && init.method === "POST",
     );
-    expect(JSON.parse(String(promptRequest?.init.body)).tools).toEqual({
+    const promptBody = JSON.parse(String(promptRequest?.init.body));
+    expect(promptBody.tools).toEqual({
       "*": false,
       skill: true,
       "sequential-thinking_sequentialthinking": true,
     });
+    expect(promptBody.parts[0].text).toContain("核心团队人物到 people");
+    expect(promptBody.parts[0].text).toContain("关联性全景到 relations");
+    expect(promptBody.parts[0].text).toContain("禁止凭常识补全");
+    expect(promptBody.parts[0].text).toContain("不得把没有材料依据的行业常识或推测对象写入关系");
   });
 
   it("在创建会话前拒绝缺失的 BP skill", async () => {
@@ -327,6 +333,49 @@ describe("OpenCode BP 分析接缝", () => {
   });
 });
 
+describe("BP 分析结构化人物与关系", () => {
+  it("解析有材料证据的人物与关联关系", () => {
+    const parsed = parseAnalysisJson(structuredAnalysisJson());
+
+    expect(parsed.people).toEqual([
+      {
+        name: "张航",
+        role: "创始人兼 CEO",
+        summary: "负责公司战略与商业化。",
+        blockIds: ["block-person"],
+      },
+    ]);
+    expect(parsed.relations).toEqual([
+      {
+        targetName: "北斗云",
+        category: "upstream",
+        relationType: "云基础设施供应商",
+        description: "为公司训练平台提供云算力。",
+        blockIds: ["block-relation"],
+      },
+    ]);
+  });
+
+  it("兼容旧分析结果缺少 people 和 relations", () => {
+    const parsed = parseAnalysisJson(validAnalysisJson());
+
+    expect(parsed.people).toEqual([]);
+    expect(parsed.relations).toEqual([]);
+  });
+
+  it.each([
+    ["非法关系分类", { category: "partner" }, "analysis_relation_invalid"],
+    ["关系缺少证据", { blockIds: [] }, "analysis_evidence_invalid"],
+  ])("拒绝%s", (_label, relationPatch, code) => {
+    const payload = JSON.parse(structuredAnalysisJson());
+    payload.relations[0] = { ...payload.relations[0], ...relationPatch };
+
+    expect(() => parseAnalysisJson(JSON.stringify(payload))).toThrow(
+      expect.objectContaining({ code }),
+    );
+  });
+});
+
 describe("BP 分析运行时选择", () => {
   it("显式选择 OpenCode 时要求完整的服务地址", () => {
     expect(() =>
@@ -380,6 +429,29 @@ function validAnalysisJson(): string {
         blockIds: ["block-1"],
         highImpact: false,
         sensitive: false,
+      },
+    ],
+  });
+}
+
+function structuredAnalysisJson(): string {
+  return JSON.stringify({
+    ...JSON.parse(validAnalysisJson()),
+    people: [
+      {
+        name: " 张航 ",
+        role: "创始人兼 CEO",
+        summary: "负责公司战略与商业化。",
+        blockIds: ["block-person", "block-person"],
+      },
+    ],
+    relations: [
+      {
+        targetName: "北斗云",
+        category: "upstream",
+        relationType: "云基础设施供应商",
+        description: "为公司训练平台提供云算力。",
+        blockIds: ["block-relation"],
       },
     ],
   });

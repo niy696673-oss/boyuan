@@ -104,6 +104,8 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
         toolUsage,
         sections: parsed.sections,
         candidates: parsed.candidates,
+        people: parsed.people,
+        relations: parsed.relations,
         rawText,
       };
     },
@@ -208,6 +210,19 @@ function analysisPrompt(
   required?: OpenCodeRequiredCapabilities,
 ): string {
   const sections = BP_SECTION_KEYS.map((key) => ({ key, title: BP_SECTION_TITLES[key], summary: '', blockIds: [] }));
+  const people = [{
+    name: '材料中的人物姓名',
+    role: '材料明确披露的当前或历史角色',
+    summary: '只概括材料明确披露的履历、分工或能力',
+    blockIds: ['block-id'],
+  }];
+  const relations = [{
+    targetName: '材料中的关联公司或机构名称',
+    category: 'upstream',
+    relationType: '供应商或技术提供方等具体关系',
+    description: '材料明确披露的合作、供给、客户或竞争事实',
+    blockIds: ['block-id'],
+  }];
   const blocks = input.blocks.map((block) => ({
     blockId: block.blockId,
     locator: { page: block.page, paragraph: block.paragraph, headingPath: block.headingPath },
@@ -219,8 +234,10 @@ function analysisPrompt(
     ...(required ? [`在生成最终 JSON 前调用“${required.mcpTool}”工具检查主体识别、13 维覆盖、证据引用和冲突。`] : []),
     '请按固定顺序完成全部 13 个 BP 维度，并生成粒度为“一个目标、一个事实或观点、一个时间口径”的候选。没有材料依据的维度 summary 必须写“材料未披露”或“证据不足”，不得补造。',
     '公司主体必须区分集团、母公司、子公司、具备独立法律主体的项目公司，以及非独立品牌/项目。关系候选使用 parent_company、subsidiary 或 project_company；别名候选使用 brand、short_name、english_name 或 project_name，并在 value 中只写主体或别名名称。关系不明确时保留为待确认候选，不强行合并。',
-    '候选必须至少引用一个有效 blockId。请结合材料内容自行判断 highImpact 和 sensitive；这是 AI 标记，不能仅按字段名称套用固定规则。',
-    `输出 schema 示例：${JSON.stringify({ sections, candidates: [{ sectionKey: 'core_technology_and_ip', knowledgeType: 'core_product', statement: '完整陈述', value: '可选结构值', effectiveAt: '可选时间口径', blockIds: ['block-id'], highImpact: true, sensitive: false }] })}`,
+    '从材料中结构化提取核心团队人物到 people。只有材料明确出现姓名且能引用原文时才提取；role 和 summary 只能概括同一批材料块披露的角色、履历、分工或能力，禁止凭常识补全。没有可靠人物信息时返回空数组。',
+    '从材料中结构化提取关联性全景到 relations。category 只能是 upstream、downstream、customer、competitor：供应商、原材料、设备或技术提供方归 upstream；渠道、交付或其他下游伙伴归 downstream；明确客户归 customer；直接竞品、替代方案或潜在竞对归 competitor。relationType 写材料披露的具体角色，description 概括关系事实。不得把没有材料依据的行业常识或推测对象写入关系；没有可靠关系时返回空数组。',
+    '每个候选、人物和关系都必须至少引用一个当前材料中的有效 blockId。请结合材料内容自行判断 highImpact 和 sensitive；这是 AI 标记，不能仅按字段名称套用固定规则。',
+    `输出 schema 示例（示例值仅说明格式，不是可用事实）：${JSON.stringify({ sections, candidates: [{ sectionKey: 'core_technology_and_ip', knowledgeType: 'core_product', statement: '完整陈述', value: '可选结构值', effectiveAt: '可选时间口径', blockIds: ['block-id'], highImpact: true, sensitive: false }], people, relations })}`,
     `已确认知识（只用于发现增量或冲突）：${JSON.stringify(input.existingKnowledge)}`,
     `材料块：${JSON.stringify(blocks)}`,
   ].join('\n\n');

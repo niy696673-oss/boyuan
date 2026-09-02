@@ -203,6 +203,33 @@ export function createResearchPlatformV1Router(
     }
   });
 
+  router.get("/companies/:companyId/copilot", async (req, res, next) => {
+    try {
+      res.json(
+        await platform.getCompanyCopilot(String(req.params.companyId)),
+      );
+    } catch (error) {
+      handlePlatformError(error, res, next);
+    }
+  });
+
+  router.post(
+    "/companies/:companyId/copilot/messages",
+    async (req, res, next) => {
+      try {
+        const content = companyCopilotMessageContent(req.body);
+        res.json(
+          await platform.sendCompanyCopilotMessage(
+            String(req.params.companyId),
+            content,
+          ),
+        );
+      } catch (error) {
+        handlePlatformError(error, res, next);
+      }
+    },
+  );
+
   router.get(
     "/companies/:companyId/workflow-sources",
     async (req, res, next) => {
@@ -657,6 +684,20 @@ function companyResearchInput(body: unknown): StartCompanyResearchInput {
       ? { workflow: companyResearchWorkflowInput(input.workflow) }
       : {}),
   };
+}
+
+function companyCopilotMessageContent(body: unknown): string {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PlatformInputError("invalid_json", "请求内容必须是 JSON 对象");
+  }
+  const content = (body as Record<string, unknown>).content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new PlatformInputError(
+      "invalid_copilot_message",
+      "请输入要发送给 Company Copilot 的问题",
+    );
+  }
+  return content.trim();
 }
 
 function industryConfirmationInput(body: unknown): { expectedVersion: number } {

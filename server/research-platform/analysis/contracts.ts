@@ -51,6 +51,23 @@ export interface KnowledgeCandidateDraft {
   sensitive: boolean;
 }
 
+export interface AnalysisPersonDraft {
+  name: string;
+  role: string;
+  summary: string;
+  blockIds: string[];
+}
+
+export type AnalysisRelationCategory = 'upstream' | 'downstream' | 'customer' | 'competitor';
+
+export interface AnalysisRelationDraft {
+  targetName: string;
+  category: AnalysisRelationCategory;
+  relationType: string;
+  description: string;
+  blockIds: string[];
+}
+
 export interface MaterialAnalysisInput {
   taskId: string;
   conversationId: string;
@@ -71,6 +88,8 @@ export interface MaterialAnalysisResult {
   toolUsage: string[];
   sections: AnalysisSectionDraft[];
   candidates: KnowledgeCandidateDraft[];
+  people: AnalysisPersonDraft[];
+  relations: AnalysisRelationDraft[];
   rawText: string;
 }
 

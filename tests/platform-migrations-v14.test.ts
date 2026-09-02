@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 19;
+const CURRENT_SCHEMA_VERSION = 21;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -456,6 +456,11 @@ function expectCurrentSchema(dataRoot: string): void {
   expect(tableExists(dataRoot, "industry_research_runs")).toBe(true);
   expect(tableExists(dataRoot, "company_quick_card_results")).toBe(true);
   expect(tableExists(dataRoot, "fund_profiles")).toBe(true);
+  expect(tableExists(dataRoot, "people")).toBe(true);
+  expect(tableExists(dataRoot, "company_person_relations")).toBe(true);
+  expect(tableExists(dataRoot, "company_relation_insights")).toBe(true);
+  expect(tableExists(dataRoot, "company_copilot_threads")).toBe(true);
+  expect(tableExists(dataRoot, "company_copilot_messages")).toBe(true);
   withDatabase(dataRoot, (database) => {
     const funds = database.prepare(`
       SELECT fund_id, investment_period_active, capital_available

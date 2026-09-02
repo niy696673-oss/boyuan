@@ -12,6 +12,7 @@ import { createPlatformWorker } from "./research-platform/platform-worker.js";
 import { createRuntimeQuickCardAdapter } from "./research-platform/quick-card/runtime-quick-card.js";
 import { createRuntimeCompanyQuickCardAdapter } from "./research-platform/company-quick-card/runtime-company-quick-card.js";
 import { createRuntimeResearchAdapters } from "./research-platform/research/runtime-research.js";
+import { createRuntimeCompanyCopilotAdapter } from "./research-platform/copilot/runtime-copilot.js";
 import { mountSpa } from "./spa-static.js";
 
 const config = loadConfig();
@@ -22,6 +23,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const researchAdapters = createRuntimeResearchAdapters(process.env, {
   directory: root,
 });
+const companyCopilot = process.env.BOYUAN_OPENCODE_BASE_URL?.trim()
+  ? createRuntimeCompanyCopilotAdapter(process.env, { directory: root })
+  : undefined;
 const researchPlatform = createPlatformModule({
   dataRoot:
     process.env.BOYUAN_RESEARCH_DATA_ROOT ??
@@ -34,6 +38,7 @@ const researchPlatform = createPlatformModule({
     directory: root,
   }),
   ...researchAdapters,
+  ...(companyCopilot ? { companyCopilot } : {}),
 });
 const researchWorker = createPlatformWorker(
   researchPlatform,
