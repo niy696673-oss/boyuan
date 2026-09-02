@@ -29,7 +29,17 @@ describe("公司 Copilot OpenCode 适配器", () => {
       fetcher,
     });
 
-    await expect(adapter.chat(input())).resolves.toEqual({
+    const initialInput = input();
+    await expect(adapter.chat({
+      ...initialInput,
+      context: {
+        ...initialInput.context,
+        conversationHistory: [
+          { role: "user", content: "合并前的问题" },
+          { role: "assistant", content: "合并前的回答" },
+        ],
+      },
+    })).resolves.toEqual({
       sessionId: "copilot-session-1",
       providerId: "openai",
       modelId: "gpt-5.6-sol",
@@ -51,6 +61,8 @@ describe("公司 Copilot OpenCode 适配器", () => {
     expect(messageBody.parts[0].text).toContain("正式知识（已确认）");
     expect(messageBody.parts[0].text).toContain("材料摘要（材料自陈，未核实）");
     expect(messageBody.parts[0].text).toContain("创始人履历待交叉验证");
+    expect(messageBody.parts[0].text).toContain("已保存对话历史");
+    expect(messageBody.parts[0].text).toContain("用户：合并前的问题");
   });
 
   it("后续提问复用传入的 Session，不再创建 Session", async () => {

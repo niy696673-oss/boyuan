@@ -302,6 +302,7 @@ class SqlitePlatformModule implements PlatformModule {
   readonly #companyCopilot?: CompanyCopilotPort;
   readonly #companySearches = new Map<string, Promise<void>>();
   readonly #companyQuickAnalyses = new Map<string, Promise<CompanyQuickCardResult>>();
+  readonly #companyCopilotChats = new Map<string, Promise<CompanyCopilotThreadRecord>>();
   #finalizeQueue: Promise<void> = Promise.resolve();
   #closed = false;
 
@@ -1226,6 +1227,21 @@ class SqlitePlatformModule implements PlatformModule {
 
   async sendCompanyCopilotMessage(companyId: string, content: string): Promise<CompanyCopilotThreadRecord> {
     this.#assertOpen();
+    const previous = this.#companyCopilotChats.get(companyId);
+    const pending = (previous ? previous.catch(() => undefined) : Promise.resolve())
+      .then(() => this.#sendCompanyCopilotMessage(companyId, content));
+    this.#companyCopilotChats.set(companyId, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.#companyCopilotChats.get(companyId) === pending) {
+        this.#companyCopilotChats.delete(companyId);
+      }
+    }
+  }
+
+  async #sendCompanyCopilotMessage(companyId: string, content: string): Promise<CompanyCopilotThreadRecord> {
+    this.#assertOpen();
     const company = this.#companyRecord(companyId);
     if (!this.#companyCopilot) {
       throw new PlatformInputError('company_copilot_unavailable', '公司 Copilot 当前不可用');
@@ -1240,7 +1256,7 @@ class SqlitePlatformModule implements PlatformModule {
       companyId,
       companyName: company.canonicalName,
       question,
-      context: this.#companyCopilotContext(companyId),
+      context: this.#companyCopilotContext(companyId, !thread.session_id),
       ...(thread.session_id ? { sessionId: thread.session_id } : {}),
     });
     const now = this.#now().toISOString();
@@ -4233,7 +4249,10 @@ class SqlitePlatformModule implements PlatformModule {
     };
   }
 
-  #companyCopilotContext(companyId: string): CompanyCopilotContext {
+  #companyCopilotContext(
+    companyId: string,
+    includeConversationHistory = false,
+  ): CompanyCopilotContext {
     const confirmedKnowledge = this.#knowledgeRecords(companyId)
       .filter((item) => item.status === 'current')
       .slice(0, 40)
@@ -4275,11 +4294,32 @@ class SqlitePlatformModule implements PlatformModule {
       text: compactCopilotText(`${item.status === 'conflicted' ? '冲突' : '待确认'}：${item.statement}${item.value ? `；${item.value}` : ''}`),
       ...(copilotEvidenceLabel(item.evidence) ? { source: copilotEvidenceLabel(item.evidence) } : {}),
     }));
+    const conversationHistory = includeConversationHistory
+      ? this.#companyCopilotHistory(companyId)
+      : [];
     return {
       confirmedKnowledge: compactCopilotContextItems(confirmedKnowledge, 40),
       materialSummaries,
       pendingInformation: compactCopilotContextItems(pendingInformation, 32),
+      ...(conversationHistory.length > 0 ? { conversationHistory } : {}),
     };
+  }
+
+  #companyCopilotHistory(
+    companyId: string,
+  ): NonNullable<CompanyCopilotContext['conversationHistory']> {
+    const rows = this.#db.prepare(`
+      SELECT message.role, message.content
+      FROM company_copilot_messages message
+      JOIN company_copilot_threads thread ON thread.thread_id = message.thread_id
+      WHERE thread.company_id = ?
+      ORDER BY message.position DESC
+      LIMIT 40
+    `).all(companyId) as unknown as Array<{ role: string; content: string }>;
+    return rows.reverse().map((row) => ({
+      role: row.role as 'user' | 'assistant',
+      content: compactCopilotText(row.content, 1_000),
+    }));
   }
 
   #companyMaterials(companyId: string): CompanyDetail['materials'] {
@@ -6923,6 +6963,15 @@ class SqlitePlatformModule implements PlatformModule {
       UPDATE company_research_runs SET company_id = ?, updated_at = ?
       WHERE company_id = ?
     `).run(targetCompanyId, now, sourceCompanyId);
+    this.#db.prepare(`
+      UPDATE company_person_relations SET company_id = ?, updated_at = ?
+      WHERE company_id = ?
+    `).run(targetCompanyId, now, sourceCompanyId);
+    this.#db.prepare(`
+      UPDATE company_relation_insights SET company_id = ?, updated_at = ?
+      WHERE company_id = ?
+    `).run(targetCompanyId, now, sourceCompanyId);
+    this.#mergeCompanyCopilotThreads(sourceCompanyId, targetCompanyId, now);
     this.#replaceCompanyIdInOptions(
       'company_match_cases',
       'case_id',
@@ -6958,6 +7007,67 @@ class SqlitePlatformModule implements PlatformModule {
     );
     this.#db.prepare('DELETE FROM companies WHERE company_id = ?')
       .run(sourceCompanyId);
+  }
+
+  #mergeCompanyCopilotThreads(
+    sourceCompanyId: string,
+    targetCompanyId: string,
+    now: string,
+  ): void {
+    const threads = this.#db.prepare(`
+      SELECT thread.thread_id, thread.company_id,
+        COUNT(message.message_id) AS message_count
+      FROM company_copilot_threads thread
+      LEFT JOIN company_copilot_messages message
+        ON message.thread_id = thread.thread_id
+      WHERE thread.company_id IN (?, ?)
+      GROUP BY thread.thread_id
+    `).all(sourceCompanyId, targetCompanyId) as unknown as Array<{
+      thread_id: string;
+      company_id: string;
+      message_count: number;
+    }>;
+    const source = threads.find((thread) => thread.company_id === sourceCompanyId);
+    if (!source) return;
+    const target = threads.find((thread) => thread.company_id === targetCompanyId);
+    if (!target) {
+      this.#db.prepare(`
+        UPDATE company_copilot_threads SET company_id = ?, updated_at = ?
+        WHERE thread_id = ?
+      `).run(targetCompanyId, now, source.thread_id);
+      return;
+    }
+    if (target.message_count === 0 && source.message_count > 0) {
+      this.#db.prepare('DELETE FROM company_copilot_threads WHERE thread_id = ?')
+        .run(target.thread_id);
+      this.#db.prepare(`
+        UPDATE company_copilot_threads SET company_id = ?, updated_at = ?
+        WHERE thread_id = ?
+      `).run(targetCompanyId, now, source.thread_id);
+      return;
+    }
+    if (source.message_count === 0) {
+      this.#db.prepare('DELETE FROM company_copilot_threads WHERE thread_id = ?')
+        .run(source.thread_id);
+      return;
+    }
+    const targetPosition = this.#db.prepare(`
+      SELECT COALESCE(MAX(position), 0) AS position
+      FROM company_copilot_messages WHERE thread_id = ?
+    `).get(target.thread_id) as { position: number };
+    this.#db.prepare(`
+      UPDATE company_copilot_messages
+      SET position = position + ?, thread_id = ?
+      WHERE thread_id = ?
+    `).run(targetPosition.position, target.thread_id, source.thread_id);
+    this.#db.prepare('DELETE FROM company_copilot_threads WHERE thread_id = ?')
+      .run(source.thread_id);
+    this.#db.prepare(`
+      UPDATE company_copilot_threads
+      SET session_id = NULL, provider_id = NULL, model_id = NULL,
+        status = 'idle', updated_at = ?
+      WHERE thread_id = ?
+    `).run(now, target.thread_id);
   }
 
   #reconcileMergedKnowledge(companyId: string): void {

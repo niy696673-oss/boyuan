@@ -10,6 +10,11 @@ export interface CompanyCopilotContext {
   materialSummaries: CompanyCopilotContextItem[];
   /** Candidate facts, gaps, or conflicts that still require confirmation. */
   pendingInformation: CompanyCopilotContextItem[];
+  /** Persisted turns used only when a merged company must start a replacement OpenCode session. */
+  conversationHistory?: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
 }
 
 export interface CompanyCopilotInput {
