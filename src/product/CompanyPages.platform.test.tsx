@@ -37,8 +37,8 @@ describe("持久公司目录页面", () => {
     expect(
       screen.getByText("最近 BP 显示公司已进入量产验证阶段。"),
     ).toBeTruthy();
-    expect(screen.getByText("2", { selector: "dd" })).toBeTruthy();
-    expect(screen.getByText("3", { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText("材料 2")).toBeTruthy();
+    expect(screen.getByText("已确认知识 3")).toBeTruthy();
     expect(screen.getByText("待确认 1")).toBeTruthy();
     expect(screen.queryByText("错误回退公司")).toBeNull();
     expect(client.list).toHaveBeenCalledOnce();
@@ -122,6 +122,13 @@ describe("持久公司目录页面", () => {
       screen.getAllByText("材料未披露近三年审计财务数据。").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("暂无研究记录")).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "公司 Copilot" })).toBeTruthy();
+    expect(screen.getByText("Company Copilot")).toBeTruthy();
+    expect(screen.getByText(/我已连接/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "列出主要风险" }));
+    expect((screen.getByLabelText("向公司 Copilot 提问") as HTMLTextAreaElement).value).toBe("列出主要风险");
+    fireEvent.click(screen.getByRole("button", { name: "发送给公司 Copilot" }));
+    expect(screen.getByText(/问题已记录/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "访问记录" })).toBeTruthy();
     expect(screen.getByText("张三")).toBeTruthy();
     expect(screen.getByText("李四")).toBeTruthy();

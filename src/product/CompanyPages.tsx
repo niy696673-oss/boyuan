@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Bot,
   BookOpen,
   Building2,
   Check,
@@ -23,6 +24,7 @@ import {
   Network,
   Plus,
   Search,
+  SendHorizontal,
   ShieldCheck,
   Sparkles,
   Star,
@@ -174,7 +176,7 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
           </div>
         </div>
         <div className={`by-company-grid ${view}`}>
-          {companies.map((company) => <CompanyCard company={company} data={data} key={company.id} watching={watchingCompanyId === company.id} onWatch={() => void toggleWatched(company)} onOpen={() => navigate(`/companies/${company.id}`)} />)}
+          {companies.map((company) => <CompanyCard company={company} key={company.id} watching={watchingCompanyId === company.id} onWatch={() => void toggleWatched(company)} onOpen={() => navigate(`/companies/${company.id}`)} />)}
           {!companies.length && <section className="by-catalog-empty"><Building2 /><h2>还没有研究主体</h2><p>上传材料、导入公司名单，或从工作台发起研究后，主体会在这里持续沉淀。</p><button className="primary" onClick={() => navigate("/companies/import")}><ListChecks />导入公司名单</button></section>}
         </div>
       </section>
@@ -182,15 +184,28 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
   );
 }
 
-function CompanyCard({ company, data: _data, watching, onWatch, onOpen }: { company: CompanyView; data: Bootstrap; watching: boolean; onWatch: () => void; onOpen: () => void }) {
-  const positions = company.industryTags.slice(0, 2);
+function CompanyCard({ company, watching, onWatch, onOpen }: { company: CompanyView; watching: boolean; onWatch: () => void; onOpen: () => void }) {
+  const identity = [company.standardName, company.location, company.foundedAt].filter(Boolean).join(" · ");
+  const industry = company.industryTags.join(" / ") || "行业与产业位置待确认";
+  const funding = company.latestFunding || "融资轮次、金额与估值待确认";
+  const productSummary = company.latestMaterialAnalysis?.summary || company.description || "产品与技术路径待材料分析";
+  const teamSlots = [
+    ["负", "负责人待确认", "核心负责人", "待材料核验"],
+    ["技", "技术负责人待确认", "技术负责人", "待材料核验"],
+    ["业", "业务负责人待确认", "业务负责人", "待材料核验"],
+  ];
   return (
     <article className="by-company-card" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}>
-      <header><CompanyMark company={company} /><div><h2>{company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></header>
-      <p className="by-company-description">{company.description}</p>
-      <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
-      <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
-      <footer><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><span>{subjectKindLabel(company.subjectKindStatus === "confirmed" ? company.subjectKind : company.suggestedSubjectKind || "unknown")}</span><button>打开主体<ArrowRight /></button></footer>
+      <header className="by-company-card-heading"><div><h2>{company.standardName}</h2><p>仅反映经核验本份 BP 自陈事实；跨文档完整画像见公司实体页</p></div><div><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></div></header>
+      <section className="by-company-card-facts"><h3>关键信息（来自 BP 事实核验）</h3><div>
+        <article><strong>公司身份</strong><p>{identity || company.standardName} · {subjectKindLabel(company.subjectKindStatus === "confirmed" ? company.subjectKind : company.suggestedSubjectKind || "unknown")}</p></article>
+        <article><strong>行业 / 赛道</strong><p>{industry}</p></article>
+        <article><strong>融资信息</strong><p>{funding}</p></article>
+        <article><strong>团队关键人</strong><p>核心团队信息待材料核验</p></article>
+      </div></section>
+      <section className="by-company-card-product"><h3>产品与技术路径</h3><p>{productSummary}</p></section>
+      <section className="by-company-card-team"><h3>核心团队</h3><div>{teamSlots.map(([mark, name, role, status]) => <article key={role}><i>{mark}</i><strong>{name}</strong><em>{role}</em><p>{status}；进入公司实体页可查看跨材料人物关联。</p><span>{status}</span></article>)}</div></section>
+      <footer className="by-company-card-footer"><div><span>材料 {company.materialCount}</span><span>已确认知识 {company.knowledgeCount}</span><span>更新 {new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</span></div><button>打开公司实体页<ArrowRight /></button></footer>
     </article>
   );
 }
@@ -448,7 +463,33 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
         {tab === "待确认" && <CompanyClaims claims={pending} title="待确认候选知识" />}
         {tab === "产业关系" && <IndustryLane company={company} expanded />}
       </section>
+      <CompanyCopilot company={company} onOpenWorkbench={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)} />
     </div>
+  );
+}
+
+function CompanyCopilot({ company, onOpenWorkbench }: { company: CompanyView; onOpenWorkbench: () => void }) {
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
+    { role: "assistant", text: `我已连接 ${company.standardName} 的材料、知识与关联实体。你可以直接问我投资判断相关问题。` },
+  ]);
+  const submit = () => {
+    const nextQuestion = question.trim();
+    if (!nextQuestion) return;
+    setMessages((current) => [...current, { role: "user", text: nextQuestion }, { role: "assistant", text: "问题已记录。当前侧栏为 Copilot 预览，点击下方按钮可在研究工作台中调用完整研究流程。" }]);
+    setQuestion("");
+  };
+  const suggestions = ["总结核心亮点", "列出主要风险", "生成尽调问题"];
+  return (
+    <aside className="by-company-copilot" aria-label="公司 Copilot">
+      <header><div><Bot /><span><strong>Company Copilot</strong><small>已连接当前公司</small></span></div><em>预览</em></header>
+      <section className="by-copilot-context"><span>当前实体</span><strong>{company.standardName}</strong><p>{company.materialCount} 份材料 · {company.knowledgeCount} 条已确认知识 · {company.pendingCandidateCount} 条待确认</p></section>
+      <div className="by-copilot-messages">{messages.map((message, index) => <article className={message.role} key={`${message.role}-${index}`}><span>{message.role === "assistant" ? "AI" : "你"}</span><p>{message.text}</p></article>)}</div>
+      <div className="by-copilot-suggestions">{suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}</div>
+      <div className="by-copilot-composer"><textarea aria-label="向公司 Copilot 提问" value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }} placeholder="围绕当前公司提问…" /><button aria-label="发送给公司 Copilot" disabled={!question.trim()} onClick={submit}><SendHorizontal /></button></div>
+      <button className="by-copilot-workbench" onClick={onOpenWorkbench}>在研究工作台继续<ArrowRight /></button>
+      <small className="by-copilot-note">回答将遵循来源权限，并区分事实、判断与待确认信息。</small>
+    </aside>
   );
 }
 

@@ -1,20 +1,504 @@
 .by-entity-page {
-  display: block;
+  display: grid;
   min-height: calc(100dvh - 64px);
+  grid-template-columns: minmax(0, 1136px) 304px;
+  align-items: start;
+  justify-content: center;
+  gap: 14px;
   padding: 7px 28px 36px;
   color: #24292e;
   background: #f3f4f5;
 }
 
 .by-entity-page .by-company-detail-main {
-  width: min(1136px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   padding: 18px 22px 26px;
   overflow: visible;
   border: 1px solid #dde1e3;
   border-radius: 18px;
   background: #fff;
   box-shadow: 0 18px 50px rgba(29, 40, 52, 0.08);
+}
+
+/* Directory cards follow the BP-summary hierarchy from the approved reference. */
+.by-company-grid.cards {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  gap: 18px;
+}
+
+.by-company-card {
+  min-height: 0;
+  padding: 20px;
+  border-color: #e1e5e7;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(24, 35, 44, 0.04);
+}
+
+.by-company-card > .by-company-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.by-company-card-heading > div:first-child {
+  min-width: 0;
+}
+
+.by-company-card-heading h2 {
+  overflow: visible;
+  color: #20272b;
+  font-size: 20px;
+  font-weight: 720;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.by-company-card-heading > div:first-child > p {
+  margin-top: 8px;
+  color: #8d979f;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.by-company-card-heading > div:last-child {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+}
+
+.by-company-card-heading > div:last-child > span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #77838c;
+  background: #edf0f2;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.by-company-card-heading > div:last-child > span.success {
+  color: #087f72;
+  background: #e0f3ef;
+}
+
+.by-company-card-heading > div:last-child > span.warning {
+  color: #9c6812;
+  background: #fff1cf;
+}
+
+.by-company-card > section {
+  margin-top: 14px;
+}
+
+.by-company-card > section h3 {
+  margin: 0;
+  color: #283237;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.by-company-card-facts,
+.by-company-card-product {
+  padding: 13px;
+  border-radius: 11px;
+  background: #f3f4f5;
+}
+
+.by-company-card-facts > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.by-company-card-facts article {
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid #dcdfe2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.by-company-card-facts strong {
+  display: block;
+  color: #333b40;
+  font-size: 9px;
+}
+
+.by-company-card-facts p,
+.by-company-card-product p {
+  display: -webkit-box;
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #323a3f;
+  font-size: 9px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.by-company-card-product {
+  min-height: 80px;
+}
+
+.by-company-card-product p {
+  margin-top: 7px;
+  -webkit-line-clamp: 3;
+}
+
+.by-company-card-team > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 9px;
+}
+
+.by-company-card-team article {
+  position: relative;
+  min-width: 0;
+  padding-left: 30px;
+}
+
+.by-company-card-team article i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  color: #087f72;
+  background: #e2f3ef;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.by-company-card-team article strong,
+.by-company-card-team article em,
+.by-company-card-team article span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.by-company-card-team article strong {
+  color: #087ec9;
+  font-size: 9px;
+}
+
+.by-company-card-team article em {
+  margin-top: 2px;
+  color: #6f7a82;
+  font-size: 7px;
+  font-style: normal;
+}
+
+.by-company-card-team article p {
+  display: -webkit-box;
+  min-height: 31px;
+  margin: 7px 0 8px;
+  overflow: hidden;
+  color: #4f5b63;
+  font-size: 8px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.by-company-card-team article span {
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #7f8991;
+  background: #eceff1;
+  font-size: 7px;
+}
+
+.by-company-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e6e9ea;
+}
+
+.by-company-card-footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #8a949b;
+  font-size: 8px;
+}
+
+.by-company-card-footer > button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  color: #087ec9;
+  background: transparent;
+  font-size: 8px;
+}
+
+.by-company-card-footer > button svg {
+  width: 10px;
+}
+
+.by-company-grid.rows .by-company-card {
+  display: flex;
+}
+
+/* Company-scoped Copilot */
+.by-company-copilot {
+  position: sticky;
+  top: 71px;
+  display: flex;
+  height: calc(100dvh - 82px);
+  min-height: 620px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dbe2e5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(29, 40, 52, 0.08);
+}
+
+.by-company-copilot > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 15px;
+  border-bottom: 1px solid #e8ebed;
+}
+
+.by-company-copilot > header > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.by-company-copilot > header svg {
+  width: 21px;
+  height: 21px;
+  padding: 4px;
+  border-radius: 7px;
+  color: #fff;
+  background: #079587;
+}
+
+.by-company-copilot > header span strong,
+.by-company-copilot > header span small {
+  display: block;
+}
+
+.by-company-copilot > header strong {
+  color: #273136;
+  font-size: 11px;
+}
+
+.by-company-copilot > header small {
+  margin-top: 2px;
+  color: #8a959d;
+  font-size: 8px;
+}
+
+.by-company-copilot > header em {
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #087f72;
+  background: #e1f3ef;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.by-copilot-context {
+  margin: 12px;
+  padding: 11px;
+  border-radius: 10px;
+  background: #f3f7f6;
+}
+
+.by-copilot-context > span,
+.by-copilot-context > strong,
+.by-copilot-context > p {
+  display: block;
+}
+
+.by-copilot-context > span {
+  color: #859199;
+  font-size: 8px;
+}
+
+.by-copilot-context > strong {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #263237;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.by-copilot-context > p {
+  margin: 5px 0 0;
+  color: #6d7b82;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.by-copilot-messages {
+  display: flex;
+  min-height: 140px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 4px 12px 12px;
+}
+
+.by-copilot-messages article {
+  display: grid;
+  max-width: 92%;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+}
+
+.by-copilot-messages article.user {
+  align-self: flex-end;
+  grid-template-columns: minmax(0, 1fr) 22px;
+}
+
+.by-copilot-messages article.user span {
+  grid-column: 2;
+}
+
+.by-copilot-messages article.user p {
+  grid-column: 1;
+  grid-row: 1;
+  color: #fff;
+  background: #0a9184;
+}
+
+.by-copilot-messages article > span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 7px;
+  color: #087f72;
+  background: #dff2ee;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.by-copilot-messages article > p {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 3px 10px 10px;
+  color: #4f5d64;
+  background: #f2f4f5;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.by-copilot-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 12px 10px;
+}
+
+.by-copilot-suggestions button {
+  padding: 5px 7px;
+  border: 1px solid #dbe3e5;
+  border-radius: 999px;
+  color: #5d6b72;
+  background: #fff;
+  font-size: 8px;
+}
+
+.by-copilot-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: end;
+  gap: 7px;
+  margin: 0 12px;
+  padding: 8px;
+  border: 1px solid #cfdadd;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.by-copilot-composer textarea {
+  min-height: 48px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  color: #303a3f;
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.by-copilot-composer button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: #079587;
+}
+
+.by-copilot-composer button:disabled {
+  opacity: 0.35;
+}
+
+.by-copilot-composer button svg {
+  width: 13px;
+}
+
+.by-copilot-workbench {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 9px 12px 0;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  color: #087f72;
+  background: #e2f3ef;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.by-copilot-workbench svg {
+  width: 10px;
+}
+
+.by-copilot-note {
+  padding: 8px 14px 13px;
+  color: #9aa3a8;
+  font-size: 7px;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .by-entity-header {
@@ -756,11 +1240,18 @@
 
 @media (max-width: 1020px) {
   .by-entity-page {
+    grid-template-columns: 1fr;
     padding-inline: 18px;
   }
 
   .by-entity-page .by-company-detail-main {
     width: 100%;
+  }
+
+  .by-company-copilot {
+    position: static;
+    height: auto;
+    min-height: 520px;
   }
 
   .by-entity-summary-grid {
@@ -815,6 +1306,34 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
+  }
+
+  .by-company-card {
+    padding: 14px;
+  }
+
+  .by-company-card-heading h2 {
+    font-size: 17px;
+  }
+
+  .by-company-card-facts > div,
+  .by-company-card-team > div {
+    grid-template-columns: 1fr;
+  }
+
+  .by-company-card-team article {
+    min-height: 70px;
+  }
+
+  .by-company-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .by-company-copilot {
+    min-height: 480px;
+    margin: 0 14px 20px;
+    border-radius: 13px;
   }
 
   .by-entity-context {
