@@ -1,6 +1,14 @@
 import type { QuickCardAnalysisResult } from './quick-card/contracts.js';
 import type { CompanyQuickCardResult } from './company-quick-card/contracts.js';
 import type { CompanyResearchWorkflowSkill } from './research/contracts.js';
+import type { CompanyRelationshipPanoramaRecord } from './relationships/contracts.js';
+
+export type {
+  CompanyRelationshipCategory,
+  CompanyRelationshipPanoramaRecord,
+  CompanyRelationshipSourceKind,
+  CompanyRelationshipVerificationStatus,
+} from './relationships/contracts.js';
 
 export type SourceChannel = 'web' | 'feishu' | 'wecom';
 export type BotSourceChannel = Exclude<SourceChannel, 'web'>;
@@ -299,6 +307,7 @@ export interface CompanyDetail extends CompanyRecord {
   relations: CompanyRelationRecord[];
   people: CompanyPersonRecord[];
   relationInsights: CompanyRelationInsightRecord[];
+  relationshipPanorama: CompanyRelationshipPanoramaRecord[];
   industryPlacements: CompanyIndustryPlacementRecord[];
   latestMaterialAnalysis?: LatestMaterialAnalysisSummary & {
     sections: AnalysisSectionRecord[];

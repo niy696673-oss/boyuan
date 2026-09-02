@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 21;
+const CURRENT_SCHEMA_VERSION = 22;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -479,6 +479,20 @@ function expectCurrentSchema(dataRoot: string): void {
   expect(columnNames(dataRoot, "company_research_runs")).toEqual(
     expect.arrayContaining(["workflow_skill", "workflow_context_json"]),
   );
+  expect(columnNames(dataRoot, "company_relation_insights")).toContain(
+    "source_kind",
+  );
+  expect(columnNames(dataRoot, "company_relations")).toEqual(
+    expect.arrayContaining(["from_category", "to_category"]),
+  );
+  withDatabase(dataRoot, (database) => {
+    const sourceKind = database.prepare(`
+      SELECT dflt_value, "notnull" AS not_null
+      FROM pragma_table_info('company_relation_insights')
+      WHERE name = 'source_kind'
+    `).get();
+    expect(sourceKind).toEqual({ dflt_value: "'bp_self_report'", not_null: 1 });
+  });
   expect(columnNames(dataRoot, "companies")).toEqual(
     expect.arrayContaining([
       "subject_kind",

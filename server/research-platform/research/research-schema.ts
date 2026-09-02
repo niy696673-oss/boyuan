@@ -1,7 +1,11 @@
 import { AnalysisAdapterError } from '../analysis/contracts.js';
-import type { CompanyResearchCandidateDraft } from './contracts.js';
+import type {
+  CompanyResearchCandidateDraft,
+  CompanyResearchRelationCategory,
+  CompanyResearchRelationDraft,
+} from './contracts.js';
 
-const RESEARCH_FIELDS = new Set(['summary', 'candidates']);
+const RESEARCH_FIELDS = new Set(['summary', 'candidates', 'relations']);
 const WORKFLOW_RESEARCH_FIELDS = new Set(['summary', 'decision', 'candidates']);
 const SOURCE_EXCERPT_FIELDS = new Set(['state', 'category', 'sourceId', 'quote']);
 const CONTROLLED_ITEM_FIELDS = new Set(['state', 'category']);
@@ -59,6 +63,19 @@ const RESEARCH_CANDIDATE_FIELDS = new Set([
   'highImpact',
   'sensitive',
 ]);
+const RESEARCH_RELATION_FIELDS = new Set([
+  'targetName',
+  'category',
+  'relationType',
+  'description',
+  'evidenceUrls',
+]);
+const RESEARCH_RELATION_CATEGORIES = new Set<CompanyResearchRelationCategory>([
+  'upstream',
+  'downstream',
+  'customer',
+  'competitor',
+]);
 
 export function parseResearchJson(
   rawText: string,
@@ -67,7 +84,11 @@ export function parseResearchJson(
     workflowMaterials?: readonly { sourceId: string; excerpt: string }[];
     workflowMethodApproved?: boolean;
   } = {},
-): { summary: string; candidates: CompanyResearchCandidateDraft[] } {
+): {
+  summary: string;
+  candidates: CompanyResearchCandidateDraft[];
+  relations: CompanyResearchRelationDraft[];
+} {
   let value: unknown;
   try {
     value = JSON.parse(extractJson(rawText));
@@ -98,7 +119,18 @@ export function parseResearchJson(
     : typeof value.summary === 'string'
       ? value.summary.trim()
       : invalidResearchSummary();
-  return { summary, candidates: value.candidates.map(parseCandidate) };
+  const relationValues = options.requireBlankDecision ? [] : value.relations ?? [];
+  if (!Array.isArray(relationValues)) {
+    throw new AnalysisAdapterError(
+      'research_schema_invalid',
+      'company research relations must be an array when present',
+    );
+  }
+  return {
+    summary,
+    candidates: value.candidates.map(parseCandidate),
+    relations: relationValues.map(parseRelation),
+  };
 }
 
 function parseWorkflowSummary(
@@ -256,7 +288,11 @@ function parseCandidate(value: unknown, index: number): CompanyResearchCandidate
   );
   const knowledgeType = value.knowledgeType.trim();
   const statement = value.statement.trim();
-  const evidenceUrls = [...new Set(value.evidenceUrls.map((url) => url.trim()).filter(Boolean))];
+  const evidenceUrls = parseEvidenceUrls(
+    value.evidenceUrls,
+    'research_candidate_invalid',
+    `research candidate at index ${index}`,
+  );
   if (!knowledgeType || !statement || evidenceUrls.length === 0) {
     throw new AnalysisAdapterError('research_candidate_invalid', `empty research candidate at index ${index}`);
   }
@@ -269,6 +305,68 @@ function parseCandidate(value: unknown, index: number): CompanyResearchCandidate
     highImpact: value.highImpact,
     sensitive: value.sensitive,
   };
+}
+
+function parseRelation(value: unknown, index: number): CompanyResearchRelationDraft {
+  if (!isRecord(value)
+    || typeof value.targetName !== 'string'
+    || !isResearchRelationCategory(value.category)
+    || typeof value.relationType !== 'string'
+    || typeof value.description !== 'string') {
+    throw new AnalysisAdapterError(
+      'research_relation_invalid',
+      `invalid research relation at index ${index}`,
+    );
+  }
+  assertKnownFields(
+    value,
+    RESEARCH_RELATION_FIELDS,
+    'research_relation_invalid',
+    `research relation at index ${index}`,
+  );
+  const targetName = value.targetName.trim();
+  const relationType = value.relationType.trim();
+  const description = value.description.trim();
+  const evidenceUrls = parseEvidenceUrls(
+    value.evidenceUrls,
+    'research_relation_invalid',
+    `research relation at index ${index}`,
+  );
+  if (!targetName || !relationType || !description) {
+    throw new AnalysisAdapterError(
+      'research_relation_invalid',
+      `empty research relation at index ${index}`,
+    );
+  }
+  return {
+    targetName,
+    category: value.category,
+    relationType,
+    description,
+    evidenceUrls,
+  };
+}
+
+function parseEvidenceUrls(
+  value: unknown,
+  code: string,
+  label: string,
+): string[] {
+  if (!Array.isArray(value) || value.some((url) => typeof url !== 'string')) {
+    throw new AnalysisAdapterError(code, `${label} has invalid evidenceUrls`);
+  }
+  const urls = [...new Set(value.map((url) => url.trim()).filter(Boolean))];
+  if (urls.length === 0) {
+    throw new AnalysisAdapterError(code, `${label} must cite at least one evidence URL`);
+  }
+  return urls;
+}
+
+function isResearchRelationCategory(
+  value: unknown,
+): value is CompanyResearchRelationCategory {
+  return typeof value === 'string'
+    && RESEARCH_RELATION_CATEGORIES.has(value as CompanyResearchRelationCategory);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

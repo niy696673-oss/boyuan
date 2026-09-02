@@ -300,6 +300,37 @@ export interface CompanyRelationInsightV1 {
   evidence: ReviewEvidence[];
 }
 
+export type CompanyRelationshipCategoryV1 =
+  | "upstream"
+  | "downstream"
+  | "customer"
+  | "competitor";
+
+export type CompanyRelationshipSourceKindV1 =
+  | "bp_self_report"
+  | "project_library"
+  | "external";
+
+export type CompanyRelationshipVerificationStatusV1 =
+  | "unverified"
+  | "candidate"
+  | "confirmed"
+  | "conflicted";
+
+export interface CompanyRelationshipPanoramaItemV1 {
+  relationshipId: string;
+  targetName: string;
+  targetCompanyId?: string;
+  category: CompanyRelationshipCategoryV1;
+  relationType: string;
+  description: string;
+  sourceKind: CompanyRelationshipSourceKindV1;
+  sourceLabel: string;
+  verificationStatus: CompanyRelationshipVerificationStatusV1;
+  evidence: ReviewEvidence[];
+  updatedAt: string;
+}
+
 export interface CompanyIndustryPlacementV1 {
   industryId: string;
   industryName: string;
@@ -319,6 +350,7 @@ export interface CompanyDetailResponse
   relations: CompanyRelationV1[];
   people?: CompanyPersonV1[];
   relationInsights?: CompanyRelationInsightV1[];
+  relationshipPanorama?: CompanyRelationshipPanoramaItemV1[];
   industryPlacements: CompanyIndustryPlacementV1[];
   latestMaterialAnalysis?: LatestMaterialAnalysisV1 & {
     sections: Array<{

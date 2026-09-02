@@ -99,6 +99,12 @@ import {
   researchSearchTrigger,
 } from './research/search-policy.js';
 import { validateWorkflowResearchOutput } from './research/workflow-policy.js';
+import {
+  listCompanyRelationshipPanorama,
+  replaceRelationshipInsights,
+  upsertProjectLibraryRelationship,
+} from './relationships/sqlite-store.js';
+import type { CompanyRelationshipCategory } from './relationships/contracts.js';
 import { SearchAdapterError, type SearchTriggerReason, type WebSearchPort, type WebSearchResultItem } from './search/contracts.js';
 import { createDeterministicSemanticSearchAdapter } from './semantic-search/deterministic-semantic-search.js';
 import type { SemanticCorpusItem, SemanticSearchPort } from './semantic-search/contracts.js';
@@ -1214,6 +1220,11 @@ class SqlitePlatformModule implements PlatformModule {
       }),
       people: this.#companyPeople(companyId),
       relationInsights: this.#companyRelationInsights(companyId),
+      relationshipPanorama: listCompanyRelationshipPanorama(
+        this.#db,
+        companyId,
+        (evidenceId) => this.#evidenceById(evidenceId),
+      ),
       industryPlacements: this.#companyIndustryPlacements(companyId),
       ...(latestMaterialAnalysis ? { latestMaterialAnalysis } : {}),
     };
@@ -2931,7 +2942,6 @@ class SqlitePlatformModule implements PlatformModule {
           tool_usage_json = excluded.tool_usage_json, created_at = excluded.created_at
       `).run(this.#nextId(), step.taskId, result.rawText, JSON.stringify(result.candidates), JSON.stringify(result.toolUsage), now);
       this.#db.prepare('DELETE FROM company_person_relations WHERE source_task_id = ?').run(step.taskId);
-      this.#db.prepare('DELETE FROM company_relation_insights WHERE source_task_id = ?').run(step.taskId);
       for (const person of people) {
         const normalizedName = normalizeEntityLabel(person.name);
         const existingPersonId = existingPersonIds.get(normalizedName);
@@ -2976,36 +2986,25 @@ class SqlitePlatformModule implements PlatformModule {
           `).run(personRelationId, evidenceId);
         }
       }
-      for (const relation of relationInsights) {
-        const insightId = this.#nextId();
-        this.#db.prepare(`
-          INSERT INTO company_relation_insights (
-            insight_id, company_id, target_name, category, relation_type, description,
-            source_task_id, source_document_id, source_label, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          insightId,
-          company.company_id,
-          relation.targetName,
-          relation.category,
-          relation.relationType,
-          relation.description,
-          step.taskId,
-          target.documentId,
-          target.fileName,
-          now,
-          now,
-        );
-        for (const blockId of relation.blockIds) {
-          const block = blocks.find((candidate) => candidate.blockId === blockId);
-          if (!block) throw new Error('relation_evidence_block_missing');
-          const evidenceId = this.#evidenceForBlock(target.documentId, block, now);
-          this.#db.prepare(`
-            INSERT INTO company_relation_insight_evidence (insight_id, evidence_id)
-            VALUES (?, ?)
-          `).run(insightId, evidenceId);
-        }
-      }
+      replaceRelationshipInsights(this.#db, this.#nextId, {
+        companyId: company.company_id,
+        sourceKind: 'bp_self_report',
+        sourceTaskId: step.taskId,
+        sourceDocumentId: target.documentId,
+        sourceLabel: target.fileName,
+        relations: relationInsights.map((relation) => ({
+          targetName: relation.targetName,
+          category: relation.category,
+          relationType: relation.relationType,
+          description: relation.description,
+          evidenceIds: relation.blockIds.map((blockId) => {
+            const block = blocks.find((candidate) => candidate.blockId === blockId);
+            if (!block) throw new Error('relation_evidence_block_missing');
+            return this.#evidenceForBlock(target.documentId, block, now);
+          }),
+        })),
+        now,
+      });
       this.#db.prepare(`
         DELETE FROM people
         WHERE NOT EXISTS (
@@ -3359,6 +3358,31 @@ class SqlitePlatformModule implements PlatformModule {
         throw new AnalysisAdapterError('research_evidence_unknown', `research candidate ${index} references an unknown URL`);
       }
     }
+    const externalRelations = workflowContext ? [] : (result.relations ?? []);
+    for (const [index, relation] of externalRelations.entries()) {
+      if (
+        relation.evidenceUrls.length === 0
+        || relation.evidenceUrls.some((url) => !knownUrls.has(url) || !isHttpUrl(url))
+      ) {
+        throw new AnalysisAdapterError(
+          'research_relation_evidence_unknown',
+          `research relation ${index} references an unknown URL`,
+        );
+      }
+      if (normalizeEntityLabel(relation.targetName) === normalizeEntityLabel(run.canonical_name)) {
+        throw new AnalysisAdapterError(
+          'research_relation_self_target',
+          `research relation ${index} targets the researched company itself`,
+        );
+      }
+    }
+    const sourceDocument = this.#db.prepare(`
+      SELECT primary_document_id FROM conversations WHERE conversation_id = ?
+    `).get(run.conversation_id) as { primary_document_id: string } | undefined;
+    if (!sourceDocument) throw new Error('research_source_document_missing');
+    const relationshipEvidenceByUrl = new Map(
+      this.#researchSourceRows(run.run_id).map((source) => [source.url, source.evidence_id]),
+    );
     const now = this.#now().toISOString();
     this.#transaction(() => {
       this.#db.prepare(`
@@ -3385,6 +3409,25 @@ class SqlitePlatformModule implements PlatformModule {
       for (const evidenceId of sectionEvidenceIds) {
         this.#db.prepare('INSERT INTO analysis_section_evidence (section_id, evidence_id) VALUES (?, ?)').run(sectionId, evidenceId);
       }
+      replaceRelationshipInsights(this.#db, this.#nextId, {
+        companyId: run.company_id,
+        sourceKind: 'external',
+        sourceTaskId: step.taskId,
+        sourceDocumentId: sourceDocument.primary_document_id,
+        sourceLabel: `外部研究 · ${run.intent}`,
+        relations: externalRelations.map((relation) => ({
+          targetName: relation.targetName,
+          category: relation.category,
+          relationType: relation.relationType,
+          description: relation.description,
+          evidenceIds: relation.evidenceUrls.map((url) => {
+            const evidenceId = relationshipEvidenceByUrl.get(url);
+            if (!evidenceId) throw new Error('research_relation_evidence_missing');
+            return evidenceId;
+          }),
+        })),
+        now,
+      });
     });
     return 'completed';
   }
@@ -3878,7 +3921,8 @@ class SqlitePlatformModule implements PlatformModule {
     const parent = /parent_company|group_company|holding_company|母公司|集团主体|控股主体/u.test(type);
     const child = /subsidiary|controlled_company|project_company|子公司|项目公司/u.test(type);
     const alias = /brand|alias|short_name|english_name|project_name|品牌|简称|英文名|项目名/u.test(type);
-    if (!parent && !child && !alias) return;
+    const panoramaCategory = confirmedCandidateRelationshipCategory(type);
+    if (!parent && !child && !alias && !panoramaCategory) return;
     const name = organizationCandidateName(value, statement);
     if (!name) return;
     if (alias && !(child && hasLegalEntitySuffix(name))) {
@@ -3889,26 +3933,29 @@ class SqlitePlatformModule implements PlatformModule {
       `).run(this.#nextId(), candidate.companyId, name, aliasType, now);
       return;
     }
-    if (!parent && !child) return;
+    if (!parent && !child && !panoramaCategory) return;
     const relatedId = this.#matchCompanies(name)[0] ?? this.#insertCompany(name, now);
     if (relatedId === candidate.companyId) return;
-    const fromCompanyId = parent ? relatedId : candidate.companyId;
-    const toCompanyId = parent ? candidate.companyId : relatedId;
     const evidence = this.#db.prepare(`
       SELECT evidence_id FROM candidate_evidence WHERE candidate_id = ? AND status = 'supporting' ORDER BY rowid LIMIT 1
     `).get(candidate.candidateId) as { evidence_id: string } | undefined;
-    this.#db.prepare(`
-      INSERT INTO company_relations (
-        relation_id, from_company_id, to_company_id, relation_type, status, created_at,
-        source_candidate_id, evidence_id, updated_at
-      ) VALUES (?, ?, ?, 'parent_company', 'confirmed', ?, ?, ?, ?)
-      ON CONFLICT(from_company_id, to_company_id, relation_type) DO UPDATE SET
-        status = 'confirmed', source_candidate_id = excluded.source_candidate_id,
-        evidence_id = excluded.evidence_id, updated_at = excluded.updated_at
-    `).run(
-      this.#nextId(), fromCompanyId, toCompanyId, now, candidate.candidateId,
-      evidence?.evidence_id ?? null, now,
-    );
+    const fromCompanyId = parent ? relatedId : candidate.companyId;
+    const toCompanyId = parent ? candidate.companyId : relatedId;
+    const fromCategory = parent || child ? 'downstream' : panoramaCategory;
+    if (!fromCategory) return;
+    upsertProjectLibraryRelationship(this.#db, this.#nextId, {
+      fromCompanyId,
+      toCompanyId,
+      relationType: parent || child
+        ? 'parent_company'
+        : confirmedCandidateRelationshipLabel(type, fromCategory),
+      fromCategory,
+      toCategory: inverseCompanyRelationshipCategory(fromCategory),
+      status: 'confirmed',
+      sourceCandidateId: candidate.candidateId,
+      ...(evidence ? { evidenceId: evidence.evidence_id } : {}),
+      now,
+    });
   }
 
   #attachCompany(conversationId: string, companyId: string): void {
@@ -5724,6 +5771,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateFundProfilesSchema();
     this.#migrateAnalysisEntitySchema();
     this.#migrateCompanyCopilotSchema();
+    this.#migrateRelationshipPanoramaSchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -6650,6 +6698,59 @@ class SqlitePlatformModule implements PlatformModule {
     });
   }
 
+  #migrateRelationshipPanoramaSchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 22',
+    ).get();
+    const insightColumns = new Set(
+      (this.#db.prepare('PRAGMA table_info(company_relation_insights)').all() as unknown as Array<{ name: string }>)
+        .map((column) => column.name),
+    );
+    const relationColumns = new Set(
+      (this.#db.prepare('PRAGMA table_info(company_relations)').all() as unknown as Array<{ name: string }>)
+        .map((column) => column.name),
+    );
+    const complete = insightColumns.has('source_kind')
+      && relationColumns.has('from_category')
+      && relationColumns.has('to_category');
+    if (applied && complete) return;
+    this.#transaction(() => {
+      if (!insightColumns.has('source_kind')) {
+        this.#db.exec(`
+          ALTER TABLE company_relation_insights
+          ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'bp_self_report'
+          CHECK (source_kind IN ('bp_self_report', 'external'));
+        `);
+      }
+      if (!relationColumns.has('from_category')) {
+        this.#db.exec(`
+          ALTER TABLE company_relations ADD COLUMN from_category TEXT
+          CHECK (from_category IS NULL OR from_category IN ('upstream', 'downstream', 'customer', 'competitor'));
+        `);
+      }
+      if (!relationColumns.has('to_category')) {
+        this.#db.exec(`
+          ALTER TABLE company_relations ADD COLUMN to_category TEXT
+          CHECK (to_category IS NULL OR to_category IN ('upstream', 'downstream', 'customer', 'competitor'));
+        `);
+      }
+      this.#db.exec(`
+        UPDATE company_relation_insights
+        SET source_kind = 'bp_self_report'
+        WHERE source_kind IS NULL OR source_kind NOT IN ('bp_self_report', 'external');
+        UPDATE company_relations
+        SET from_category = COALESCE(from_category, 'downstream'),
+            to_category = COALESCE(to_category, 'upstream')
+        WHERE relation_type = 'parent_company';
+        CREATE INDEX IF NOT EXISTS company_relation_insights_source_idx
+          ON company_relation_insights(company_id, source_kind, category, updated_at DESC);
+      `);
+      this.#db.prepare(
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (22, ?)',
+      ).run(this.#now().toISOString());
+    });
+  }
+
   #normalizeExistingCompanyNames(now: string): void {
     const companies = this.#db.prepare(`
       SELECT company_id, canonical_name FROM companies
@@ -6821,7 +6922,8 @@ class SqlitePlatformModule implements PlatformModule {
 
     const relations = this.#db.prepare(`
       SELECT relation_id, from_company_id, to_company_id,
-        relation_type, status, created_at
+        relation_type, status, from_category, to_category,
+        source_candidate_id, evidence_id, created_at, updated_at
       FROM company_relations
       WHERE from_company_id = ? OR to_company_id = ?
       ORDER BY relation_id
@@ -6831,7 +6933,12 @@ class SqlitePlatformModule implements PlatformModule {
       to_company_id: string;
       relation_type: string;
       status: string;
+      from_category: string | null;
+      to_category: string | null;
+      source_candidate_id: string | null;
+      evidence_id: string | null;
       created_at: string;
+      updated_at: string | null;
     }>;
     for (const relation of relations) {
       const fromCompanyId = relation.from_company_id === sourceCompanyId
@@ -6844,32 +6951,57 @@ class SqlitePlatformModule implements PlatformModule {
         .run(relation.relation_id);
       if (fromCompanyId === toCompanyId) continue;
       const existing = this.#db.prepare(`
-        SELECT relation_id, status FROM company_relations
+        SELECT relation_id, status, from_category, to_category,
+          source_candidate_id, evidence_id, updated_at
+        FROM company_relations
         WHERE from_company_id = ? AND to_company_id = ? AND relation_type = ?
       `).get(fromCompanyId, toCompanyId, relation.relation_type) as {
         relation_id: string;
         status: string;
+        from_category: string | null;
+        to_category: string | null;
+        source_candidate_id: string | null;
+        evidence_id: string | null;
+        updated_at: string | null;
       } | undefined;
       if (existing) {
         this.#db.prepare(`
-          UPDATE company_relations SET status = ? WHERE relation_id = ?
+          UPDATE company_relations SET
+            status = ?,
+            from_category = COALESCE(from_category, ?),
+            to_category = COALESCE(to_category, ?),
+            source_candidate_id = COALESCE(source_candidate_id, ?),
+            evidence_id = COALESCE(evidence_id, ?),
+            updated_at = ?
+          WHERE relation_id = ?
         `).run(
           mergedPlacementStatus(existing.status, relation.status),
+          relation.from_category,
+          relation.to_category,
+          relation.source_candidate_id,
+          relation.evidence_id,
+          now,
           existing.relation_id,
         );
       } else {
         this.#db.prepare(`
           INSERT INTO company_relations (
             relation_id, from_company_id, to_company_id,
-            relation_type, status, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?)
+            relation_type, status, from_category, to_category,
+            source_candidate_id, evidence_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           relation.relation_id,
           fromCompanyId,
           toCompanyId,
           relation.relation_type,
           relation.status,
+          relation.from_category,
+          relation.to_category,
+          relation.source_candidate_id,
+          relation.evidence_id,
           relation.created_at,
+          relation.updated_at ?? now,
         );
       }
     }
@@ -7234,6 +7366,54 @@ function relationStatus(value: string): 'candidate' | 'confirmed' | 'conflicted'
   return 'candidate';
 }
 
+function confirmedCandidateRelationshipCategory(
+  knowledgeType: string,
+): CompanyRelationshipCategory | undefined {
+  const type = knowledgeType.replace(/[\s-]+/gu, '_');
+  if (/^(?:upstream|upstream_company|supplier|supplier_company|vendor|vendor_company|technology_provider|raw_material_supplier|equipment_supplier|上游|供应商|技术提供方)$/u.test(type)) {
+    return 'upstream';
+  }
+  if (/^(?:downstream|downstream_company|downstream_partner|channel_partner|distributor|下游|渠道商|经销商)$/u.test(type)) {
+    return 'downstream';
+  }
+  if (/^(?:customer|customer_company|customer_case|benchmark_customer|target_customer|客户|标杆客户)$/u.test(type)) {
+    return 'customer';
+  }
+  if (/^(?:competitor|competitor_company|competitive_benchmark|benchmark_company|竞品|竞争对手)$/u.test(type)) {
+    return 'competitor';
+  }
+  return undefined;
+}
+
+function confirmedCandidateRelationshipLabel(
+  knowledgeType: string,
+  category: CompanyRelationshipCategory,
+): string {
+  if (/(?:technology_provider|技术提供方)/u.test(knowledgeType)) return '技术提供方';
+  if (/(?:raw_material_supplier)/u.test(knowledgeType)) return '原材料供应商';
+  if (/(?:equipment_supplier)/u.test(knowledgeType)) return '设备供应商';
+  if (/(?:supplier|vendor|供应商)/u.test(knowledgeType)) return '供应商';
+  if (/(?:channel_partner|渠道商)/u.test(knowledgeType)) return '渠道伙伴';
+  if (/(?:distributor|经销商)/u.test(knowledgeType)) return '经销商';
+  if (/(?:benchmark_customer|标杆客户)/u.test(knowledgeType)) return '标杆客户';
+  if (/(?:customer_case)/u.test(knowledgeType)) return '客户案例';
+  if (/(?:competitive_benchmark|benchmark_company)/u.test(knowledgeType)) return '对标竞品';
+  return {
+    upstream: '上游关系',
+    downstream: '下游关系',
+    customer: '客户',
+    competitor: '竞争对手',
+  }[category];
+}
+
+function inverseCompanyRelationshipCategory(
+  category: CompanyRelationshipCategory,
+): CompanyRelationshipCategory {
+  if (category === 'competitor') return 'competitor';
+  if (category === 'upstream') return 'downstream';
+  return 'upstream';
+}
+
 function mergedPlacementStatus(existing: string, incoming: string): string {
   if (existing === 'confirmed' || incoming === 'confirmed') return 'confirmed';
   if (existing === 'conflicted' || incoming === 'conflicted') return 'conflicted';
@@ -7545,6 +7725,15 @@ function semanticText(values: string[], maxLength = 30_000): string {
 
 function normalizeEntityLabel(value: string): string {
   return value.normalize('NFKC').replace(/[\s\u3000]+/gu, '').toLocaleLowerCase('zh-CN');
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function compactCopilotText(value: string, maxLength = 1_800): string {
