@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "start:wecom": "node ./dist/service/wecom-server.js",
+    "start:wechat-kf": "node ./dist/service/wechat-kf-server.js",
     "validate": "node ./scripts/validate.mjs",
     "check": "npm run typecheck && npm run test && npm run build && npm run validate"
   },

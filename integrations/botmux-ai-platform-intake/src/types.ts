@@ -34,6 +34,10 @@ export interface WeComIntakeConfig extends IntakeServiceConfig {
   wsUrl?: string;
 }
 
+export interface WechatKfIntakeConfig extends IntakeServiceConfig {
+  cursorStatePath: string;
+}
+
 export interface WeComBotPort {
   replyStream(
     reqId: string,

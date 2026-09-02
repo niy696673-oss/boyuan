@@ -97,6 +97,10 @@ export class IntakeService {
     this.#store.putStatusCard({ ...receipt, terminal: true });
   }
 
+  isStatusCardTerminal(messageId: string, fileKey: string): boolean {
+    return this.#store.getStatusCard(jobKey(messageId, fileKey))?.terminal === true;
+  }
+
   async ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]> {
     const outcomes: IntakeOutcome[] = [];
     const { statusCardMessageId: sharedStatusCardMessageId, ...turnWithoutStatusCard } = turn;

@@ -57,6 +57,36 @@ pnpm exec vitest run tests/wecom-intake-e2e.test.ts
 
 This test replays the official WebSocket event shape with a real generated PDF, a fake SDK download/decryption port, the HTTP intake API, SQLite, quick analysis, and the background worker. It does not claim real-tenant authentication or delivery.
 
+## WeChat Customer Service configuration
+
+微信用户可以把聊天中收到的 PDF 直接转发给微信客服账号。该入口使用企业微信“微信客服”API，不依赖企业微信智能机器人，也不要求用户安装企业微信。
+
+Copy `wechat-kf.config.example.json` to a local, untracked runtime path. Keep the Corp ID, application secret, callback token, and EncodingAESKey outside JSON configuration and provide them only through the runtime environment:
+
+```bash
+export BOYUAN_WECHAT_KF_INTAKE_CONFIG_PATH=/absolute/path/to/wechat-kf.config.json
+export BOYUAN_WECOM_INTAKE_KEY=replace-with-the-platform-intake-secret
+export WECOM_CORP_ID=replace-with-the-enterprise-corp-id
+export WECHAT_KF_APP_SECRET=replace-with-the-authorized-application-secret
+export WECHAT_KF_CALLBACK_TOKEN=replace-with-1-to-32-alphanumeric-characters
+export WECHAT_KF_ENCODING_AES_KEY=replace-with-exactly-43-alphanumeric-characters
+
+npm run build
+npm run start:wechat-kf
+```
+
+The service binds to loopback on port `9481` by default. Publish only its `/callback` path behind HTTPS, then enter that URL, the same callback token, and the same EncodingAESKey under the self-built application's “接收消息服务器” setting. Enterprise WeChat verifies the URL immediately with an encrypted GET request, so the service and HTTPS endpoint must already be running. After the callback is saved, add the server's stable public egress IP under “企业可信 IP”. The application must also be selected under 微信客服 → API → 可调用接口的应用.
+
+When a callback arrives, the service verifies its SHA-1 signature and AES-256-CBC envelope, responds `success` before analysis starts, and uses `kf/sync_msg` with a durable per-account cursor. Only customer-originated PDF files enter phase one. The media file is capped at the official 20 MB limit, checked by PDF magic bytes, written with mode `0600`, uploaded to the existing `wecom` platform intake API, and then removed. The customer gets one processing message followed by the same BP quick-result fields used by the intelligent-bot channel. Long results are split on line boundaries below the official 2,048-byte text limit, while the workbench deep-analysis conversation starts independently in the background.
+
+The complete local integration can be verified without a real tenant:
+
+```bash
+pnpm exec vitest run tests/wechat-kf-intake-e2e.test.ts
+```
+
+This verifies the callback-independent message pump, official message shape, PDF materialization, HTTP platform intake, SQLite-backed conversation, quick result, background deep task, ordinary-text delivery, and duplicate-notification behavior. Real-tenant callback verification, media download, and reply delivery remain separate deployment checks.
+
 ## Runtime behavior
 
 - Private-chat commands `分析 <公司名>` and `研究 <公司名>` start company research. Group-chat commands are accepted only when the bot is explicitly mentioned; ordinary chat text never enters the research path.
