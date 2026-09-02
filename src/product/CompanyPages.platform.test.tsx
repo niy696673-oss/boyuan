@@ -125,6 +125,10 @@ describe("持久公司目录页面", () => {
     expect(screen.getByRole("complementary", { name: "公司 Copilot" })).toBeTruthy();
     expect(screen.getByText("Company Copilot")).toBeTruthy();
     expect(screen.getByText(/我已连接/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "收起公司 Copilot" }));
+    expect(screen.getByRole("button", { name: "展开公司 Copilot" })).toBeTruthy();
+    expect(screen.queryByText(/我已连接/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "展开公司 Copilot" }));
     fireEvent.click(screen.getByRole("button", { name: "列出主要风险" }));
     expect((screen.getByLabelText("向公司 Copilot 提问") as HTMLTextAreaElement).value).toBe("列出主要风险");
     fireEvent.click(screen.getByRole("button", { name: "发送给公司 Copilot" }));

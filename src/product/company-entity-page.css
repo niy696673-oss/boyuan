@@ -1,18 +1,19 @@
 .by-entity-page {
-  display: grid;
+  display: block;
   min-height: calc(100dvh - 64px);
-  grid-template-columns: minmax(0, 1136px) 304px;
-  align-items: start;
-  justify-content: center;
-  gap: 14px;
-  padding: 7px 28px 36px;
+  padding: 7px 346px 36px 28px;
   color: #24292e;
   background: #f3f4f5;
+  transition: padding-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.by-entity-page.copilot-collapsed {
+  padding-right: 88px;
 }
 
 .by-entity-page .by-company-detail-main {
-  width: 100%;
-  margin: 0;
+  width: min(1136px, 100%);
+  margin: 0 auto;
   padding: 18px 22px 26px;
   overflow: visible;
   border: 1px solid #dde1e3;
@@ -262,17 +263,32 @@
 
 /* Company-scoped Copilot */
 .by-company-copilot {
-  position: sticky;
-  top: 71px;
+  position: fixed;
+  z-index: 40;
+  top: 72px;
+  right: 16px;
+  bottom: 12px;
   display: flex;
-  height: calc(100dvh - 82px);
-  min-height: 620px;
+  width: 314px;
+  min-height: 0;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid #dbe2e5;
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 18px 45px rgba(29, 40, 52, 0.08);
+  transition:
+    width 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 220ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.by-company-copilot.collapsed {
+  top: 82px;
+  bottom: auto;
+  width: 50px;
+  min-height: 210px;
+  border-radius: 14px;
 }
 
 .by-company-copilot > header {
@@ -323,6 +339,87 @@
   font-size: 7px;
   font-style: normal;
   font-weight: 700;
+}
+
+.by-copilot-header-actions {
+  flex: none;
+}
+
+.by-copilot-header-actions > button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: #64737b;
+  background: transparent;
+  transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.by-copilot-header-actions > button:hover,
+.by-copilot-header-actions > button:focus-visible {
+  color: #087f72;
+  background: #e8f3f1;
+  outline: 2px solid rgba(7, 149, 135, 0.2);
+  outline-offset: 1px;
+}
+
+.by-copilot-header-actions > button:active {
+  transform: scale(0.96);
+}
+
+.by-copilot-header-actions > button svg {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  color: currentColor;
+  background: transparent;
+}
+
+.by-copilot-rail {
+  display: flex;
+  width: 100%;
+  min-height: 210px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 11px 0;
+  border: 0;
+  color: #087f72;
+  background: #fff;
+  flex-direction: column;
+}
+
+.by-copilot-rail > svg:first-child {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 9px;
+  color: #fff;
+  background: #079587;
+}
+
+.by-copilot-rail > span {
+  color: #53636a;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  writing-mode: vertical-rl;
+}
+
+.by-copilot-rail > svg:last-child {
+  width: 15px;
+  height: 15px;
+  margin-top: auto;
+}
+
+.by-copilot-rail:hover,
+.by-copilot-rail:focus-visible {
+  background: #f2f8f7;
+  outline: 2px solid rgba(7, 149, 135, 0.2);
+  outline-offset: -2px;
 }
 
 .by-copilot-context {
@@ -1240,8 +1337,11 @@
 
 @media (max-width: 1020px) {
   .by-entity-page {
-    grid-template-columns: 1fr;
-    padding-inline: 18px;
+    padding: 7px 18px 36px;
+  }
+
+  .by-entity-page.copilot-collapsed {
+    padding-right: 18px;
   }
 
   .by-entity-page .by-company-detail-main {
@@ -1249,9 +1349,12 @@
   }
 
   .by-company-copilot {
-    position: static;
-    height: auto;
-    min-height: 520px;
+    right: 12px;
+    width: min(360px, calc(100vw - 24px));
+  }
+
+  .by-company-copilot.collapsed {
+    width: 50px;
   }
 
   .by-entity-summary-grid {
@@ -1331,9 +1434,18 @@
   }
 
   .by-company-copilot {
-    min-height: 480px;
-    margin: 0 14px 20px;
+    top: 68px;
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
     border-radius: 13px;
+  }
+
+  .by-company-copilot.collapsed {
+    top: 70px;
+    right: 8px;
+    bottom: auto;
+    width: 48px;
   }
 
   .by-entity-context {

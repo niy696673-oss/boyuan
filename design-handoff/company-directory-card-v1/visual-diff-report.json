@@ -23,6 +23,13 @@
     "screenshot": "verification/implemented-entity-copilot.png",
     "viewport": { "width": 1440, "height": 900 },
     "visible": true,
-    "interaction": "suggestion fill and send flow passed"
+    "interaction": "suggestion fill, send, collapse, and expand flows passed",
+    "positioning": "fixed sidecar",
+    "scroll_check": {
+      "before": { "top": 72, "right": 12 },
+      "after_page_scroll": { "top": 72, "right": 12 },
+      "passed": true
+    },
+    "collapsed_width": 50
   }
 }

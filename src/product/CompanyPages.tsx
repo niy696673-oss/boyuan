@@ -22,6 +22,8 @@ import {
   ListChecks,
   MapPin,
   Network,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Search,
   SendHorizontal,
@@ -323,6 +325,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
   );
   const [targetCompanyId, setTargetCompanyId] = useState("");
   const [resolvingSubject, setResolvingSubject] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const confirmed = company.claims.filter((claim) => claim.status === "confirmed");
   const pending = company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status));
@@ -411,7 +414,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
   const sourceChannels = [...new Set(company.materials.map((item) => item.sourceChannel === "feishu" ? "飞书" : "工作台"))];
 
   return (
-    <div className="by-company-detail-page by-entity-page">
+    <div className={`by-company-detail-page by-entity-page ${copilotOpen ? "copilot-open" : "copilot-collapsed"}`}>
       <section className="by-company-detail-main">
         <header className="by-entity-header">
           <div className="by-entity-context">④ 统一公司实体页 · 投资判断视图（关键信息 · 产品/行业/客户/市场 · 基金匹配 · 尽调问题）</div>
@@ -463,12 +466,12 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
         {tab === "待确认" && <CompanyClaims claims={pending} title="待确认候选知识" />}
         {tab === "产业关系" && <IndustryLane company={company} expanded />}
       </section>
-      <CompanyCopilot company={company} onOpenWorkbench={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)} />
+      <CompanyCopilot company={company} open={copilotOpen} onToggle={() => setCopilotOpen((current) => !current)} onOpenWorkbench={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)} />
     </div>
   );
 }
 
-function CompanyCopilot({ company, onOpenWorkbench }: { company: CompanyView; onOpenWorkbench: () => void }) {
+function CompanyCopilot({ company, open, onToggle, onOpenWorkbench }: { company: CompanyView; open: boolean; onToggle: () => void; onOpenWorkbench: () => void }) {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
     { role: "assistant", text: `我已连接 ${company.standardName} 的材料、知识与关联实体。你可以直接问我投资判断相关问题。` },
@@ -480,9 +483,16 @@ function CompanyCopilot({ company, onOpenWorkbench }: { company: CompanyView; on
     setQuestion("");
   };
   const suggestions = ["总结核心亮点", "列出主要风险", "生成尽调问题"];
+  if (!open) {
+    return (
+      <aside className="by-company-copilot collapsed" aria-label="公司 Copilot">
+        <button className="by-copilot-rail" aria-label="展开公司 Copilot" aria-expanded="false" title="展开 Company Copilot" onClick={onToggle}><Bot /><span>Copilot</span><PanelRightOpen /></button>
+      </aside>
+    );
+  }
   return (
     <aside className="by-company-copilot" aria-label="公司 Copilot">
-      <header><div><Bot /><span><strong>Company Copilot</strong><small>已连接当前公司</small></span></div><em>预览</em></header>
+      <header><div><Bot /><span><strong>Company Copilot</strong><small>已连接当前公司</small></span></div><div className="by-copilot-header-actions"><em>预览</em><button aria-label="收起公司 Copilot" aria-expanded="true" title="收起 Company Copilot" onClick={onToggle}><PanelRightClose /></button></div></header>
       <section className="by-copilot-context"><span>当前实体</span><strong>{company.standardName}</strong><p>{company.materialCount} 份材料 · {company.knowledgeCount} 条已确认知识 · {company.pendingCandidateCount} 条待确认</p></section>
       <div className="by-copilot-messages">{messages.map((message, index) => <article className={message.role} key={`${message.role}-${index}`}><span>{message.role === "assistant" ? "AI" : "你"}</span><p>{message.text}</p></article>)}</div>
       <div className="by-copilot-suggestions">{suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}</div>
