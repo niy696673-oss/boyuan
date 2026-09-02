@@ -1,7 +1,12 @@
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import type { IntakeConfig, IntakeServiceConfig, WeComIntakeConfig } from './types.js';
+import type {
+  IntakeConfig,
+  IntakeServiceConfig,
+  WechatKfIntakeConfig,
+  WeComIntakeConfig,
+} from './types.js';
 
 export function parseIntakeConfig(value: Record<string, unknown>, configDirectory: string): IntakeConfig {
   const common = parseCommonConfig(value, configDirectory, 9470);
@@ -26,6 +31,21 @@ export function parseWeComIntakeConfig(
   return {
     ...parseCommonConfig(value, configDirectory, 9480),
     ...(wsUrl ? { wsUrl: new URL(wsUrl).toString().replace(/\/$/u, '') } : {}),
+  };
+}
+
+export function parseWechatKfIntakeConfig(
+  value: Record<string, unknown>,
+  configDirectory: string,
+): WechatKfIntakeConfig {
+  return {
+    ...parseCommonConfig(value, configDirectory, 9481),
+    cursorStatePath: configPath(
+      value,
+      configDirectory,
+      'cursorStatePath',
+      './state/wechat-kf-cursors.json',
+    ),
   };
 }
 

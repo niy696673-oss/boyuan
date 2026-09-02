@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "platformBaseUrl": "http://127.0.0.1:4174",
+  "publicWorkbenchUrl": "https://demo.example.com/workbench",
+  "publicProductUrl": "https://demo.example.com",
+  "servicePort": 9481,
+  "attachmentRoot": "./wechat-kf-attachments",
+  "statePath": "./state/wechat-kf-jobs.json",
+  "cursorStatePath": "./state/wechat-kf-cursors.json",
+  "retryDelayMs": 1500,
+  "timeoutMs": 600000
+}
