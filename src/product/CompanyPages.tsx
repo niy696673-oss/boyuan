@@ -340,7 +340,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
 
   const tabs = [
     ["画像", ""],
-    ["尽调与决策（需授权）", ""],
+    ["尽调与决策", ""],
     ["日志", company.researchRecords.length],
     ["材料", company.materialCount],
     ["已确认知识", confirmed.length],
@@ -459,7 +459,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
         {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning by-entity-warning" onClick={() => selectTab("待确认")}><AlertTriangle />{pending.length} 条待确认候选需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
 
         {tab === "画像" && <EntityPortraitDashboard company={company} confirmed={confirmed} pending={pending} owner={data.user.name} />}
-        {tab === "尽调与决策（需授权）" && <EntityDiligencePanel company={company} />}
+        {tab === "尽调与决策" && <EntityDiligencePanel company={company} />}
         {tab === "日志" && <EntityLogPanel company={company} />}
         {tab === "材料" && <CompanyMaterials company={company} uploading={uploading} onUpload={() => fileInput.current?.click()} />}
         {tab === "已确认知识" && <CompanyClaims claims={confirmed} title="已确认知识" />}
@@ -583,7 +583,7 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
       </section>
 
       <section className="by-entity-reserved by-external-research">
-        <header><div><h2>外部情报与行研（需联网 · 未来生长，后期实现）</h2><p>工商 / 新闻 / 舆情 + 行业研究将在此汇总，并注入市场 / 风险 / 关联维度。</p></div><span>预留</span></header>
+        <header><div><h2>外部情报与行研</h2><p>工商 / 新闻 / 舆情 + 行业研究将在此汇总，并注入市场 / 风险 / 关联维度。</p></div></header>
         <div>
           <article><strong>[外部网] 新闻 / 舆情</strong>{company.evidence.slice(0, 2).map((item) => <p key={item.id}>{item.excerpt}<small>{item.fileName}{item.page ? ` · 第 ${item.page} 页` : ""}</small></p>)}{!company.evidence.length && <p>暂无外部证据</p>}</article>
           <article><strong>[行业研究] 行研对照</strong>{company.researchRecords.slice(0, 2).map((item) => <p key={item.runId}>{item.intent}<small>{platformTaskStatus(item.status)} · {relativeDate(item.updatedAt)}</small></p>)}{!company.researchRecords.length && <p>暂无研究记录</p>}</article>
@@ -597,8 +597,6 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
         <MaterialAnalysisOverview company={company} />
       </details>
 
-      <section className="by-entity-phase-two"><strong>二期规划（本期未实现）：</strong><span>⑤ 已看过的相关项目（深层关联 · 相关性定义/实现/构建，沿产品迭代）</span><span>⑥ 围绕实体的深度信息沉淀</span></section>
-      <p className="by-entity-capture-note">[预留 · 本期未做] 对话确认的信息点「+ 沉淀」即可回写实体页（来源：对话 · 会议），与 BP / 行研平级汇入。</p>
     </div>
   );
 }
@@ -612,7 +610,7 @@ function EntityDiligencePanel({ company, embedded = false }: { company: CompanyV
   const latest = company.materials[0];
   return (
     <section className={`by-entity-reserved by-diligence-panel ${embedded ? "embedded" : ""}`}>
-      <header><div><h2>尽调与决策（需授权 · 项目推进后生长，后期实现）</h2><p>工商核验、尽调材料、访谈记录、立项意见、风控意见、IC 纪要将在此汇总。</p></div><span>预留</span></header>
+      <header><div><h2>尽调与决策</h2><p>工商核验、尽调材料、访谈记录、立项意见、风控意见、IC 纪要将在此汇总。</p></div></header>
       <article><strong>[尽调材料]</strong><p>{latest ? latest.fileName : "尚无尽调材料"}</p><small>{gaps[0]?.title || "项目推进后，可在此记录核验结论与原文。"}</small></article>
     </section>
   );

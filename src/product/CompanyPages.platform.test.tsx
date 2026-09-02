@@ -138,6 +138,16 @@ describe("持久公司目录页面", () => {
     expect(screen.getByText("李四")).toBeTruthy();
     expect(screen.getByText("浏览过公司实体页")).toBeTruthy();
     expect(screen.queryByText(/导入历史/)).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "外部情报与行研" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(/需联网|未来生长|后期实现|需授权|预留|二期规划|本期未做/),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "尽调与决策" }));
+    expect(
+      screen.getByRole("heading", { name: "尽调与决策" }),
+    ).toBeTruthy();
     expect(screen.queryByText("星座组网实际进度与发射成功率如何？")).toBeNull();
     expect(
       (document.querySelector('input[type="file"]') as HTMLInputElement).accept,
