@@ -7,4 +7,5 @@ data/runtime-store.json
 data/research-platform/
 node_modules/
 dist/
+.worktrees/
 *.tsbuildinfo
