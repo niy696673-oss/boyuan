@@ -6879,29 +6879,53 @@ function companyQuickCardConfidence(
   ));
 }
 
+const BP_QUICK_CONFIDENCE = {
+  ceiling: 79,
+  base: 10,
+  disclosedField: 8,
+  uncertainField: 4,
+  highlights: 8,
+  matchedCompany: 7,
+  relationGroup: 2,
+} as const;
+
+const BP_QUICK_MISSING_FIELD = /^(?:材料未披露|未披露|暂未.*|待确认.*|暂无.*|未知.*)$/u;
+const BP_QUICK_UNCERTAINTY_SIGNAL = /(?:未披露|暂未|待确认|待核验|不确定|无法确认|暂无|未知)/u;
+
+function quickCardFieldConfidence(value: string): number {
+  const normalized = value.trim();
+  if (!normalized || BP_QUICK_MISSING_FIELD.test(normalized)) return 0;
+  return BP_QUICK_UNCERTAINTY_SIGNAL.test(normalized)
+    ? BP_QUICK_CONFIDENCE.uncertainField
+    : BP_QUICK_CONFIDENCE.disclosedField;
+}
+
 function quickCardConfidence(
   result: QuickCardExtractionResult,
   companyMatched: boolean,
 ): number {
-  const disclosedText = [
+  const fieldPoints = [
     result.companyIdentity,
     result.productTechnology,
     result.industryTrack,
     result.marketView,
     result.financing,
     result.keyPeople,
-  ].filter((value) => value !== '材料未披露').length;
-  const disclosedFacts = disclosedText + (result.highlights.length > 0 ? 1 : 0);
+  ].reduce((total, value) => total + quickCardFieldConfidence(value), 0);
   const mentionedRelationGroups = [
     result.competitorNames,
     result.upstreamNames,
     result.downstreamNames,
   ].filter((values) => values.length > 0).length;
-  return Math.min(100, Math.round(
-    (disclosedFacts / 7) * 70
-      + (companyMatched ? 20 : 0)
-      + (mentionedRelationGroups / 3) * 10,
-  ));
+  // A single self-reported BP quick preview stays below the "high" band until deeper verification.
+  return Math.min(
+    BP_QUICK_CONFIDENCE.ceiling,
+    BP_QUICK_CONFIDENCE.base
+      + fieldPoints
+      + (result.highlights.length > 0 ? BP_QUICK_CONFIDENCE.highlights : 0)
+      + (companyMatched ? BP_QUICK_CONFIDENCE.matchedCompany : 0)
+      + mentionedRelationGroups * BP_QUICK_CONFIDENCE.relationGroup,
+  );
 }
 
 function industryNameFrom(summary: string, companyName: string): string {

@@ -366,8 +366,8 @@ describe("飞书材料接入新工作台", () => {
         diligenceQuestions: ["核心客户复购率是多少？"],
         industryTags: ["机器人传感/Physical AI"],
         competitorNames: ["Google DeepMind", "Anduril", "Shield AI"],
-        upstreamNames: [],
-        downstreamNames: [],
+        upstreamNames: ["上游企业"],
+        downstreamNames: ["下游客户"],
         providerId: "openai",
         modelId: "gpt-5.6-luna",
         variant: "none",
@@ -457,6 +457,7 @@ describe("飞书材料接入新工作台", () => {
         status: "matched",
         recommended: { fundId: "F04", score: 76 },
       },
+      confidence: 68,
       confidenceLevel: "中",
       navigation: {},
       providerId: "openai",
@@ -488,6 +489,10 @@ describe("飞书材料接入新工作台", () => {
     expect(linkedQuick.body.navigation).toEqual({
       companyId: company.companyId,
       industryId: industry.industryId,
+    });
+    expect(linkedQuick.body).toMatchObject({
+      confidence: 75,
+      confidenceLevel: "中",
     });
   });
 
