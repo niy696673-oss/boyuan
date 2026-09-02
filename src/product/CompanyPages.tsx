@@ -55,6 +55,7 @@ import type {
   SubjectKindV1,
   SubjectResolutionInputV1,
 } from "../../shared/research-platform-v1";
+import { CompanyRelationshipPanorama } from "./CompanyRelationshipPanorama";
 
 const defaultCompanyClient = createCompanyDirectoryClient();
 const defaultCompanyListClient = createCompanyListClient();
@@ -596,8 +597,6 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
   const [selectedPerson, setSelectedPerson] = useState<PersonCardView | null>(null);
   const personDialogClose = useRef<HTMLButtonElement>(null);
   const personTrigger = useRef<HTMLButtonElement | null>(null);
-  const panorama = relationPanorama(company);
-  const downstreamAndCustomers = [...panorama.customers, ...panorama.downstream];
   const gaps = materialInformationGaps(company);
   const questions = uniqueStrings([
     ...gaps.map((item) => item.title),
@@ -659,19 +658,11 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
 
   return (
     <div className="by-entity-portrait">
-      <section className="by-relation-panorama">
-        <header>
-          <h2>关联性全景</h2>
-          <div><span>上游 {panorama.upstream.length}</span><ArrowRight /><strong>{company.standardName} · 本实体</strong><ArrowRight /><span>下游 / 客户 {downstreamAndCustomers.length}</span></div>
-          <em>同层竞对 {panorama.competitors.length} · 非流向</em>
-        </header>
-        <div className="by-relation-columns">
-          <RelationGroup title="上游" subtitle="输入 · 供给" items={panorama.upstream} empty="材料暂未披露上游关系" />
-          <RelationGroup title="下游及客户" subtitle="客户 · 渠道 · 交付" items={downstreamAndCustomers} empty="材料暂未披露客户或下游关系" />
-          <RelationGroup title="潜在竞对" subtitle="同层 · 替代" items={panorama.competitors} empty="材料暂未披露潜在竞对" />
-        </div>
-        <footer>来源说明 / 蓝色虚线=材料自陈、AI 提取未核验　青色=已确认企业关系　关系事实仅代表材料披露内容</footer>
-      </section>
+      <CompanyRelationshipPanorama
+        companyId={company.id}
+        companyName={company.standardName}
+        items={company.relationshipPanorama}
+      />
 
       <div className="by-entity-two-up">
         <section className="by-entity-card by-market-card">
@@ -758,81 +749,6 @@ function EntityPortraitDashboard({ company, confirmed, pending, owner }: { compa
   );
 }
 
-type RelationPanoramaCategory = CompanyView["relationInsights"][number]["category"];
-
-interface RelationPanoramaItem {
-  id: string;
-  targetName: string;
-  category: RelationPanoramaCategory;
-  relationType: string;
-  description: string;
-  sourceLabel: string;
-  evidenceCount: number;
-  evidencePreview?: string;
-  companyId?: string;
-  status: CompanyView["relations"][number]["status"] | "extracted";
-}
-
-function relationPanorama(company: CompanyView): {
-  upstream: RelationPanoramaItem[];
-  downstream: RelationPanoramaItem[];
-  customers: RelationPanoramaItem[];
-  competitors: RelationPanoramaItem[];
-} {
-  const insights: RelationPanoramaItem[] = company.relationInsights.map((item) => ({
-    id: item.insightId,
-    targetName: item.targetName,
-    category: item.category,
-    relationType: item.relationType,
-    description: item.description,
-    sourceLabel: item.sourceLabel || "材料自陈",
-    evidenceCount: item.evidence.length,
-    ...(item.evidence[0]?.quote ? { evidencePreview: item.evidence[0].quote } : {}),
-    status: "extracted",
-  }));
-  const confirmedRelations: RelationPanoramaItem[] = company.relations.map((item) => ({
-    id: item.relationId,
-    targetName: item.company.canonicalName,
-    category: relationCategory(item),
-    relationType: item.relationType,
-    description: item.evidence?.quote || `${company.standardName}与${item.company.canonicalName}存在${item.relationType}关系。`,
-    sourceLabel: item.evidence?.sourceType === "web" ? "外部来源" : item.evidence ? "材料证据" : "企业关系库",
-    evidenceCount: item.evidence ? 1 : 0,
-    ...(item.evidence?.quote ? { evidencePreview: item.evidence.quote } : {}),
-    companyId: item.company.companyId,
-    status: item.status,
-  }));
-  const pick = (category: RelationPanoramaCategory) => {
-    const extracted = insights.filter((item) => item.category === category);
-    const confirmed = confirmedRelations.filter((item) => item.category === category);
-    return [...new Map([...extracted, ...confirmed].map((item) => [
-      `${item.targetName.trim().toLocaleLowerCase()}\u0000${item.relationType.trim().toLocaleLowerCase()}`,
-      item,
-    ])).values()];
-  };
-  return {
-    upstream: pick("upstream"),
-    downstream: pick("downstream"),
-    customers: pick("customer"),
-    competitors: pick("competitor"),
-  };
-}
-
-function relationCategory(relation: CompanyView["relations"][number]): RelationPanoramaCategory {
-  if (/(?:竞争|竞品|替代|同层)/u.test(relation.relationType)) return "competitor";
-  if (/(?:客户|采购|订单)/u.test(relation.relationType)) return "customer";
-  if (/(?:供应|上游|原料|设备|技术提供)/u.test(relation.relationType)) return "upstream";
-  if (/(?:下游|渠道|经销|交付|合作伙伴)/u.test(relation.relationType)) return "downstream";
-  return relation.direction === "incoming" ? "upstream" : "downstream";
-}
-
-function relationCategoryLabel(category: RelationPanoramaCategory): string {
-  if (category === "upstream") return "上游";
-  if (category === "customer") return "客户";
-  if (category === "downstream") return "下游";
-  return "竞对";
-}
-
 function unverifiedSourceLabel(sourceLabel: string): string {
   const normalized = sourceLabel.trim();
   const labels: string[] = [];
@@ -841,14 +757,6 @@ function unverifiedSourceLabel(sourceLabel: string): string {
   if (!/AI\s*提取/iu.test(normalized)) labels.push("AI 提取");
   if (!/未核验/u.test(normalized)) labels.push("未核验");
   return labels.join(" · ");
-}
-
-function RelationGroup({ title, subtitle, items, empty }: { title: string; subtitle: string; items: RelationPanoramaItem[]; empty: string }) {
-  return <section><header><h3>{title}</h3><span>{subtitle}</span></header><div className="by-relation-list">{items.length ? items.slice(0, 6).map((item) => <article className={`by-relation-item ${item.status}`} key={item.id} title={item.evidencePreview}>
-    <div>{item.companyId ? <Link to={`/companies/${item.companyId}`}>{item.targetName}</Link> : <strong>{item.targetName}</strong>}<em>{item.relationType}</em></div>
-    <p>{item.description}</p>
-    <small><span>{relationCategoryLabel(item.category)}</span>{item.status === "extracted" ? unverifiedSourceLabel(item.sourceLabel) : `${item.sourceLabel}${item.status === "confirmed" ? " · 已确认" : " · 待确认"}`}{item.evidenceCount > 0 ? ` · ${item.evidenceCount} 条证据` : ""}</small>
-  </article>) : <p className="by-relation-empty">{empty}</p>}</div></section>;
 }
 
 function EntityDiligencePanel({ company, embedded = false }: { company: CompanyView; embedded?: boolean }) {

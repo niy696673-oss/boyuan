@@ -10,6 +10,20 @@ export interface CompanyResearchCandidateDraft {
   sensitive: boolean;
 }
 
+export type CompanyResearchRelationCategory =
+  | 'upstream'
+  | 'downstream'
+  | 'customer'
+  | 'competitor';
+
+export interface CompanyResearchRelationDraft {
+  targetName: string;
+  category: CompanyResearchRelationCategory;
+  relationType: string;
+  description: string;
+  evidenceUrls: string[];
+}
+
 export type CompanyResearchWorkflowSkill =
   | 'diagnose-bp'
   | 'screen-deal'
@@ -83,6 +97,8 @@ export interface CompanyResearchResult {
   sessionId: string;
   summary: string;
   candidates: CompanyResearchCandidateDraft[];
+  /** Optional for legacy and deterministic adapters; runtime adapters normalize this to an array. */
+  relations?: CompanyResearchRelationDraft[];
   rawText: string;
 }
 

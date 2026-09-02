@@ -36,6 +36,15 @@ describe("公司外部调研运行时", () => {
                     sensitive: false,
                   },
                 ],
+                relations: [
+                  {
+                    targetName: "青松科技有限公司",
+                    category: "upstream",
+                    relationType: "技术提供方",
+                    description: "青松科技为白杨智能提供核心技术。",
+                    evidenceUrls: ["https://example.com/source"],
+                  },
+                ],
               }),
             },
           ],
@@ -78,12 +87,27 @@ describe("公司外部调研运行时", () => {
     expect(result.candidates[0]?.evidenceUrls).toEqual([
       "https://example.com/source",
     ]);
+    expect(result.relations).toEqual([
+      {
+        targetName: "青松科技有限公司",
+        category: "upstream",
+        relationType: "技术提供方",
+        description: "青松科技为白杨智能提供核心技术。",
+        evidenceUrls: ["https://example.com/source"],
+      },
+    ]);
     expect(String(fetcher.mock.calls[0]?.[0])).toContain(
       "/opencode-api/session?directory=%2Fworkspace%2Fboyuan",
     );
     const prompt = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
     expect(prompt.tools).toEqual({ "*": false });
     expect(prompt.parts[0].text).toContain("本对话未确认候选");
+    expect(prompt.parts[0].text).toContain(
+      "upstream、downstream、customer、competitor",
+    );
+    expect(prompt.parts[0].text).toContain(
+      "逐字复制 webResults 提供的原样完整 URL",
+    );
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -102,6 +126,7 @@ describe("公司外部调研运行时", () => {
     const result = await adapter.analyze(workflowInput(skill));
 
     expect(result.summary).toBe(expectedSourceExcerptSummary(FROZEN_EXCERPT));
+    expect(result.relations).toEqual([]);
     expect(String(fetcher.mock.calls[0]?.[0])).toContain("/opencode-api/skill?");
     expect(String(fetcher.mock.calls[3]?.[0])).toContain(
       "/session/session-workflow/message?",
@@ -398,6 +423,62 @@ describe("公司外部调研运行时", () => {
         message: expect.stringContaining("institutional_decision"),
       }),
     );
+  });
+
+  it("兼容缺少 relations 的旧常规研究输出并规范化为空数组", () => {
+    expect(parseResearchJson(JSON.stringify({
+      summary: "公开研究摘要",
+      candidates: [],
+    }))).toEqual({
+      summary: "公开研究摘要",
+      candidates: [],
+      relations: [],
+    });
+  });
+
+  it("解析结构化外部关系并清理重复证据 URL", () => {
+    expect(parseResearchJson(JSON.stringify({
+      summary: "公开研究摘要",
+      candidates: [],
+      relations: [{
+        targetName: " 青松科技有限公司 ",
+        category: "customer",
+        relationType: " 标杆客户 ",
+        description: " 已公开披露双方合作。 ",
+        evidenceUrls: [
+          " https://example.com/source ",
+          "https://example.com/source",
+        ],
+      }],
+    })).relations).toEqual([{
+      targetName: "青松科技有限公司",
+      category: "customer",
+      relationType: "标杆客户",
+      description: "已公开披露双方合作。",
+      evidenceUrls: ["https://example.com/source"],
+    }]);
+  });
+
+  it.each([
+    ["非法 category", { category: "partner" }],
+    ["空 evidenceUrls", { evidenceUrls: [" "] }],
+    ["未知字段", { institutional_decision: "advance" }],
+    ["空目标名称", { targetName: " " }],
+  ])("%s 的外部关系会失败关闭", (_label, override) => {
+    expect(() => parseResearchJson(JSON.stringify({
+      summary: "公开研究摘要",
+      candidates: [],
+      relations: [{
+        targetName: "青松科技有限公司",
+        category: "upstream",
+        relationType: "技术提供方",
+        description: "公开来源披露双方合作。",
+        evidenceUrls: ["https://example.com/source"],
+        ...override,
+      }],
+    }))).toThrowError(expect.objectContaining({
+      code: "research_relation_invalid",
+    }));
   });
 
   it("OpenCode 未真实调用指定 Skill 时失败", async () => {
