@@ -1886,6 +1886,12 @@ svg {
   bottom: 12px;
   left: 16px;
 }
+.by-active-composer-note {
+  margin: 0 8px 6px;
+  color: var(--by-muted);
+  font-size: 10px;
+  text-align: center;
+}
 .by-composer.compact {
   margin: 0;
   border-radius: 13px;

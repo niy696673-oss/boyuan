@@ -1,10 +1,13 @@
-import type { ResearchTask } from "../../types";
+import type { Company, ResearchTask } from "../../types";
 import type {
   AnalysisSection,
   ConversationDetail,
   ConversationSummary,
   ConversationStatus,
   ExternalResearchSource,
+  KnowledgeCandidate,
+  PlatformCompany,
+  PlatformDocument,
   PlatformEvidence,
   TaskStep,
 } from "./types";
@@ -24,8 +27,11 @@ export interface WorkbenchResearch {
   platformStatus: ConversationStatus;
   materialDocumentId: string;
   materialFileName: string;
+  archiveStatus: PlatformDocument["archiveStatus"];
   pendingCandidateCount: number;
+  company?: Company;
   analysisSections?: AnalysisSection[];
+  candidates?: KnowledgeCandidate[];
   internalMaterialEvidence?: PlatformEvidence[];
   externalResearch?: WorkbenchExternalResearch;
   industry?: {
@@ -46,6 +52,7 @@ export function toWorkbenchConversation(
     platformStatus: conversation.status,
     materialDocumentId: conversation.document.documentId,
     materialFileName: conversation.document.fileName,
+    archiveStatus: conversation.document.archiveStatus,
     pendingCandidateCount: 0,
     task: {
       id: conversation.task.taskId,
@@ -57,11 +64,7 @@ export function toWorkbenchConversation(
             ? "行业"
             : "材料",
       status: workbenchStatus(conversation.status),
-      createdBy: conversation.sourceChannel === "feishu"
-        ? "飞书"
-        : conversation.sourceChannel === "wecom"
-          ? "企业微信"
-          : "工作台",
+      createdBy: sourceChannelLabel(conversation.sourceChannel),
       createdAt: conversation.createdAt,
       steps: (conversation.task.steps || []).map(toWorkbenchStep),
     },
@@ -104,6 +107,11 @@ export function toWorkbenchResearch(
     .join("\n");
 
   const summary = toWorkbenchConversation(conversation);
+  const companyId =
+    conversation.company?.companyId || conversation.companyResearch?.companyId;
+  const industryId =
+    conversation.industry?.industryId ||
+    conversation.industryResearch?.industryId;
   const researchRecord = conversation.companyResearch || conversation.industryResearch;
   const internalMaterialEvidence = uniqueEvidence(
     conversation.analysisSections.flatMap((section) =>
@@ -152,6 +160,9 @@ export function toWorkbenchResearch(
   );
   return {
     ...summary,
+    ...(conversation.company
+      ? { company: toWorkbenchCompany(conversation.company) }
+      : {}),
     ...(conversation.industry
       ? {
           industry: {
@@ -167,6 +178,7 @@ export function toWorkbenchResearch(
     pendingCandidateCount: conversation.candidates.filter((candidate) =>
       ["pending", "conflicted"].includes(candidate.status),
     ).length,
+    candidates: conversation.candidates,
     analysisSections: conversation.analysisSections.map((section) => ({
       ...section,
       evidence: section.evidence.filter(
@@ -204,6 +216,8 @@ export function toWorkbenchResearch(
       : {}),
     task: {
       ...summary.task,
+      ...(companyId ? { companyId } : {}),
+      ...(industryId ? { industryId } : {}),
       steps: conversation.task.steps.map(toWorkbenchStep),
       ...(answerText
         ? {
@@ -216,6 +230,34 @@ export function toWorkbenchResearch(
           }
         : {}),
     },
+  };
+}
+
+function sourceChannelLabel(
+  sourceChannel: ConversationSummary["sourceChannel"],
+): string {
+  if (sourceChannel === "feishu") return "飞书";
+  if (sourceChannel === "wecom") return "企业微信";
+  return "工作台";
+}
+
+function toWorkbenchCompany(company: PlatformCompany): Company {
+  return {
+    id: company.companyId,
+    standardName: company.canonicalName,
+    aliases: company.aliases.map((alias) => alias.alias),
+    description: "",
+    cognitionStatus:
+      company.status === "provisional"
+        ? "待完善"
+        : company.status === "merged"
+          ? "已合并"
+          : "已建档",
+    attentionStatus: "未关注",
+    positions: [],
+    claims: [],
+    evidence: [],
+    updatedAt: company.updatedAt,
   };
 }
 

@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationDetail } from "./types";
-import { toWorkbenchResearch } from "./workbench-view-model";
+import type { ConversationDetail, ConversationSummary } from "./types";
+import {
+  toWorkbenchConversation,
+  toWorkbenchResearch,
+} from "./workbench-view-model";
 
 describe("研究对话工作台视图模型", () => {
+  it.each([
+    ["web", "工作台"],
+    ["feishu", "飞书"],
+    ["wecom", "企业微信"],
+  ] as const)("把 %s 对话来源映射为 %s", (sourceChannel, createdBy) => {
+    const conversation = conversationSummary(sourceChannel);
+
+    expect(toWorkbenchConversation(conversation).task.createdBy).toBe(createdBy);
+  });
+
   it("把持久任务步骤和候选知识映射为现有工作台模型", () => {
     const detail = {
       conversationId: "conversation-1",
@@ -55,6 +68,15 @@ describe("研究对话工作台视图模型", () => {
             attempts: 1,
           },
         ],
+      },
+      company: {
+        companyId: "company-1",
+        canonicalName: "白杨智能有限公司",
+        aliases: [{ alias: "白杨智能", type: "short_name" }],
+        status: "active",
+        version: 2,
+        createdAt: "2026-08-25T00:00:00.000Z",
+        updatedAt: "2026-08-26T00:01:00.000Z",
       },
       analysisSections: [
         {
@@ -124,10 +146,18 @@ describe("研究对话工作台视图模型", () => {
       platformStatus: "completed",
       materialDocumentId: "document-1",
       materialFileName: "白杨智能 BP.txt",
+      archiveStatus: "archived",
       pendingCandidateCount: 1,
+      company: {
+        id: "company-1",
+        standardName: "白杨智能有限公司",
+        aliases: ["白杨智能"],
+      },
       task: {
         id: "task-1",
         query: "白杨智能 BP.txt",
+        companyId: "company-1",
+        contextType: "材料",
         status: "已完成",
         answer: {
           text: "公司与项目阶段：公司专注企业智能化服务。",
@@ -149,6 +179,13 @@ describe("研究对话工作台视图模型", () => {
       ],
       internalMaterialEvidence: [
         { evidenceId: "evidence-1", sourceType: "material" },
+      ],
+      candidates: [
+        {
+          candidateId: "candidate-1",
+          status: "pending",
+          version: 1,
+        },
       ],
       externalResearch: {
         requested: true,
@@ -182,6 +219,17 @@ describe("研究对话工作台视图模型", () => {
       sources: [],
     });
     expect(research.task.status).toBe("执行失败");
+    expect(research.task).toMatchObject(
+      kind === "company"
+        ? { contextType: "公司", companyId: "company-1" }
+        : { contextType: "行业", industryId: "industry-1" },
+    );
+    if (kind === "company") {
+      expect(research.company).toMatchObject({
+        id: "company-1",
+        standardName: "白杨智能有限公司",
+      });
+    }
   });
 
   it("把取消任务映射为终态，并停止显示外部检索仍在执行", () => {
@@ -203,6 +251,39 @@ describe("研究对话工作台视图模型", () => {
     });
   });
 });
+
+function conversationSummary(
+  sourceChannel: ConversationSummary["sourceChannel"],
+): ConversationSummary {
+  return {
+    conversationId: `conversation-${sourceChannel}`,
+    title: `${sourceChannel} research`,
+    type: "material",
+    sourceChannel,
+    status: "processing",
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:01:00.000Z",
+    receiptCount: 1,
+    document: {
+      documentId: `document-${sourceChannel}`,
+      fileName: `${sourceChannel}.txt`,
+      bytes: 1,
+      sha256: "fixture",
+      parseStatus: "parsed",
+      archiveStatus: "stored",
+      createdAt: "2026-08-26T00:00:00.000Z",
+    },
+    task: {
+      taskId: `task-${sourceChannel}`,
+      type: "material_analysis",
+      status: "running",
+      currentStep: "analyze_material",
+      createdAt: "2026-08-26T00:00:00.000Z",
+      updatedAt: "2026-08-26T00:01:00.000Z",
+      steps: [],
+    },
+  };
+}
 
 function failedResearchDetail(
   kind: "company" | "industry",
@@ -258,6 +339,15 @@ function failedResearchDetail(
     candidates: [],
     ...(kind === "company"
       ? {
+          company: {
+            companyId: "company-1",
+            canonicalName: "白杨智能有限公司",
+            aliases: [{ alias: "白杨智能", type: "short_name" }],
+            status: "active",
+            version: 1,
+            createdAt: "2026-08-25T00:00:00.000Z",
+            updatedAt: "2026-08-26T00:01:00.000Z",
+          },
           companyResearch: {
             ...researchRecord,
             companyId: "company-1",

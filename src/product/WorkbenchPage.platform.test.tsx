@@ -329,7 +329,8 @@ describe("工作台研究平台接缝", () => {
       </MemoryRouter>,
     );
 
-    const conversation = await screen.findByRole("button", {
+    const rail = screen.getByRole("complementary", { name: "研究对话" });
+    const conversation = await within(rail).findByRole("button", {
       name: /白杨智能 BP\.txt/,
     });
     fireEvent.click(conversation);
@@ -375,11 +376,10 @@ describe("工作台研究平台接缝", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: /白杨智能 BP\.txt/ }),
-    );
-
     const rail = screen.getByRole("complementary", { name: "研究对话" });
+    fireEvent.click(
+      await within(rail).findByRole("button", { name: /白杨智能 BP\.txt/ }),
+    );
     await waitFor(() =>
       expect(within(rail).getByText("待确认 1")).toBeTruthy(),
     );
@@ -414,11 +414,10 @@ describe("工作台研究平台接缝", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: /白杨智能 BP\.txt/ }),
-    );
-
     const rail = screen.getByRole("complementary", { name: "研究对话" });
+    fireEvent.click(
+      await within(rail).findByRole("button", { name: /白杨智能 BP\.txt/ }),
+    );
     const cancelled = await within(rail).findByText("已取消");
     expect(cancelled.classList.contains("warning")).toBe(true);
     expect(client.getConversation).toHaveBeenCalledTimes(1);
@@ -531,6 +530,241 @@ describe("工作台研究平台接缝", () => {
     expect(within(rail).getAllByRole("button", { name: /演示任务/ })).toHaveLength(30);
     expect(within(rail).getByText("演示任务 31")).toBeTruthy();
     expect(within(rail).queryByText("演示任务 30")).toBeNull();
+    fireEvent.click(
+      within(rail).getByRole("button", { name: "查看全部对话（31）" }),
+    );
+    expect(within(rail).getAllByRole("button", { name: /演示任务/ })).toHaveLength(31);
+    expect(within(rail).getByText("演示任务 30")).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: "收起对话" })).toBeTruthy();
+  });
+
+  it("首页近期任务读取平台对话并展示真实来源", async () => {
+    const detail = conversationDetail();
+    detail.sourceChannel = "wecom";
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([detail]),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    const recent = screen.getByRole("heading", { name: "近期任务" }).closest("section");
+    if (!recent) throw new Error("recent tasks section missing");
+    expect(await within(recent).findByText("白杨智能 BP.txt")).toBeTruthy();
+    expect(within(recent).getByText(/^企业微信 ·/)).toBeTruthy();
+    expect(within(recent).queryByRole("button", { name: "查看全部" })).toBeNull();
+    const rail = screen.getByRole("complementary", { name: "研究对话" });
+    expect(within(rail).getByText("企业微信")).toBeTruthy();
+  });
+
+  it("公司和行业选择器展示目录 API 的真实数量", async () => {
+    const company = directoryItem("company-1", "白杨智能有限公司", "白杨智能");
+    company.materialCount = 7;
+    const industry = industryItem("industry-1", "人工智能");
+    industry.companyCount = 4;
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient([company])}
+          industryClient={industryClient([industry])}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("从 1 家已有主体中选择");
+    const researchTypes = screen.getByLabelText("研究类型");
+    fireEvent.click(within(researchTypes).getByRole("button", { name: "公司" }));
+    fireEvent.click(await screen.findByRole("button", { name: /选择已有公司/ }));
+    expect(await screen.findByText("7 份 BP")).toBeTruthy();
+    fireEvent.click(within(researchTypes).getByRole("button", { name: "行业" }));
+    fireEvent.click(await screen.findByRole("button", { name: /选择已有行业/ }));
+    expect(await screen.findByText("4 家公司")).toBeTruthy();
+  });
+
+  it("材料模式拒绝空材料问题并把公司名单入口接到真实导入页", async () => {
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn(),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <WorkbenchPage
+                data={emptyBootstrap()}
+                reload={vi.fn()}
+                researchClient={client}
+                companyClient={directoryClient()}
+                industryClient={industryClient()}
+              />
+            }
+          />
+          <Route path="/companies/import" element={<h1>公司名单导入</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "研究问题" }), {
+      target: { value: "请直接分析这家公司" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+    expect(
+      await screen.findByText("材料模式请先上传材料；如需直接提问，请切换到公司或行业模式"),
+    ).toBeTruthy();
+    expect(client.startCompanyResearch).not.toHaveBeenCalled();
+    expect(client.startIndustryResearch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /处理公司名单/ }));
+    expect(await screen.findByRole("heading", { name: "公司名单导入" })).toBeTruthy();
+  });
+
+  it("未生成回答时显示等待态，并按真实归档状态与本次候选展示", async () => {
+    const detail = companyResearchDetail();
+    detail.document.archiveStatus = "stored";
+    detail.status = "processing";
+    detail.task.status = "running";
+    detail.task.currentStep = "analyze_company";
+    detail.analysisSections = [];
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+          initialConversationId={detail.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findAllByText("AI 正在生成本次分析结果，请稍候。"))
+      .toHaveLength(2);
+    expect(screen.queryByText("已自动归档")).toBeNull();
+    expect(screen.getByText("公司专注企业智能化服务。")).toBeTruthy();
+    expect(screen.getByText(/此处会发起新的研究任务/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "发起新的研究任务" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "查看执行详情" })).toBeNull();
+  });
+
+  it("公司研究结果从当前对话段落和候选项展示核心信息与待验证", async () => {
+    const detail = companyResearchDetail();
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation: vi.fn().mockResolvedValue(detail),
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+          initialConversationId={detail.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    const core = (await screen.findByRole("heading", { name: "核心信息" })).closest("section");
+    const risks = screen.getByRole("heading", { name: "风险与待验证" }).closest("section");
+    if (!core || !risks) throw new Error("analysis sections missing");
+    expect(within(core).getByText("内部材料与公开来源已分别核验。")).toBeTruthy();
+    expect(within(risks).getByText("公司专注企业智能化服务。")).toBeTruthy();
+  });
+
+  it("公司研究轮询完成后仍保留公司上下文、核心信息与待验证项", async () => {
+    const company = {
+      companyId: "company-1",
+      canonicalName: "白杨智能有限公司",
+      aliases: [{ alias: "白杨智能", type: "short_name" }],
+      status: "active" as const,
+      version: 1,
+      createdAt: "2026-08-26T00:00:00.000Z",
+      updatedAt: "2026-08-26T00:01:00.000Z",
+    };
+    const running = companyResearchDetail();
+    running.company = company;
+    running.status = "processing";
+    running.task.status = "running";
+    running.analysisSections = [];
+    running.candidates = [];
+    const completed = companyResearchDetail();
+    completed.company = company;
+    const getConversation = vi
+      .fn()
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(completed);
+    const client: ResearchPlatformClient = {
+      listConversations: vi.fn().mockResolvedValue([]),
+      getConversation,
+      uploadDocument: vi.fn(),
+      startCompanyResearch: vi.fn(),
+      startIndustryResearch: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <WorkbenchPage
+          data={emptyBootstrap()}
+          reload={vi.fn()}
+          researchClient={client}
+          companyClient={directoryClient()}
+          industryClient={industryClient()}
+          initialConversationId={running.conversationId}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getConversation).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/公司：白杨智能/)).toBeTruthy();
+    const core = screen.getByRole("heading", { name: "核心信息" }).closest("section");
+    const risks = screen.getByRole("heading", { name: "风险与待验证" }).closest("section");
+    if (!core || !risks) throw new Error("analysis sections missing");
+    expect(within(core).getByText("内部材料与公开来源已分别核验。")).toBeTruthy();
+    expect(within(risks).getByText("公司专注企业智能化服务。")).toBeTruthy();
   });
 
   it("分开呈现冻结材料证据与持久 Exa 来源，并只链接安全 URL", async () => {
