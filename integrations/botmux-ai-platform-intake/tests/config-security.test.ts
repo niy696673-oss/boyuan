@@ -1,7 +1,7 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseIntakeConfig } from '../src/config.js';
+import { parseIntakeConfig, parseWeComIntakeConfig } from '../src/config.js';
 import { validateAttachmentPath } from '../src/file-security.js';
 import { loadBotmuxLarkCredentials } from '../src/feishu-runtime.js';
 import { tempDir, testConfig } from './helpers.js';
@@ -49,6 +49,21 @@ describe('configuration and file safety', () => {
       const value = { ...testConfig(temp.path) } as Record<string, unknown>;
       Reflect.deleteProperty(value, 'publicProductUrl');
       expect(parseIntakeConfig(value, temp.path).publicProductUrl).toBe('https://demo.example.com');
+    } finally { temp.cleanup(); }
+  });
+
+  it('uses an independent WeCom port and only permits secure custom WebSocket URLs', () => {
+    const temp = tempDir();
+    try {
+      const base = testConfig(temp.path);
+      expect(parseWeComIntakeConfig({ ...base }, temp.path)).toMatchObject({ servicePort: 19470 });
+      const withoutPort = { ...base } as Record<string, unknown>;
+      Reflect.deleteProperty(withoutPort, 'servicePort');
+      expect(parseWeComIntakeConfig(withoutPort, temp.path).servicePort).toBe(9480);
+      expect(() => parseWeComIntakeConfig({ ...base, wsUrl: 'ws://localhost:9000' }, temp.path))
+        .toThrow('invalid_wsUrl');
+      expect(parseWeComIntakeConfig({ ...base, wsUrl: 'wss://wecom.example.com/' }, temp.path).wsUrl)
+        .toBe('wss://wecom.example.com');
     } finally { temp.cleanup(); }
   });
 

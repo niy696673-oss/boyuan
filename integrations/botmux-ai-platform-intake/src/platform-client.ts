@@ -29,12 +29,20 @@ export class HttpPlatformClient implements PlatformClient {
   readonly #intakeKey: string;
   readonly #fetch: typeof fetch;
   readonly #timeoutMs: number;
+  readonly #channel: 'feishu' | 'wecom';
 
-  constructor(baseUrl: string, intakeKey: string, timeoutMs: number, fetcher: typeof fetch = fetch) {
+  constructor(
+    baseUrl: string,
+    intakeKey: string,
+    timeoutMs: number,
+    fetcher: typeof fetch = fetch,
+    channel: 'feishu' | 'wecom' = 'feishu',
+  ) {
     this.#baseUrl = baseUrl;
     this.#intakeKey = intakeKey;
     this.#timeoutMs = timeoutMs;
     this.#fetch = fetcher;
+    this.#channel = channel;
   }
 
   async upload(input: IntakeTurn, attachment: IntakeAttachment, timeoutMs = this.#timeoutMs): Promise<PlatformUploadResult> {
@@ -53,7 +61,7 @@ export class HttpPlatformClient implements PlatformClient {
       for await (const chunk of createReadStream(attachment.path)) yield chunk;
       yield after;
     })());
-    const response = await this.#fetch(`${this.#baseUrl}/api/v1/feishu/documents`, {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/documents`, {
       method: 'POST',
       headers: {
         'content-type': `multipart/form-data; boundary=${boundary}`,
@@ -71,7 +79,7 @@ export class HttpPlatformClient implements PlatformClient {
   }
 
   async quickCard(conversationId: string): Promise<QuickCardResult> {
-    const response = await this.#fetch(`${this.#baseUrl}/api/v1/feishu/conversations/${encodeURIComponent(conversationId)}/quick-card`, {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/conversations/${encodeURIComponent(conversationId)}/quick-card`, {
       method: 'POST',
       headers: { accept: 'application/json', 'x-boyuan-intake-key': this.#intakeKey },
     });
@@ -79,7 +87,7 @@ export class HttpPlatformClient implements PlatformClient {
   }
 
   async startCompanyResearch(input: CompanyResearchTurn): Promise<PlatformCompanyResearchResult> {
-    const response = await this.#fetch(`${this.#baseUrl}/api/v1/feishu/company-research`, {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/company-research`, {
       method: 'POST',
       headers: {
         accept: 'application/json',
@@ -100,7 +108,7 @@ export class HttpPlatformClient implements PlatformClient {
   }
 
   async companyQuickCard(conversationId: string): Promise<CompanyQuickCardResult> {
-    const response = await this.#fetch(`${this.#baseUrl}/api/v1/feishu/company-research/${encodeURIComponent(conversationId)}/quick-card`, {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/company-research/${encodeURIComponent(conversationId)}/quick-card`, {
       method: 'POST',
       headers: { accept: 'application/json', 'x-boyuan-intake-key': this.#intakeKey },
     });

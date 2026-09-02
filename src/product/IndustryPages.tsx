@@ -759,7 +759,7 @@ function IndustryMaterials({
   onOpen: (conversationId: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [source, setSource] = useState<"全部" | "网页" | "飞书">("全部");
+  const [source, setSource] = useState<"全部" | "网页" | "飞书" | "企业微信">("全部");
   const filtered = materials.filter(({ material, company }) => {
     const matchesQuery = !query.trim() || [
       material.fileName,
@@ -767,7 +767,9 @@ function IndustryMaterials({
       ...(company?.aliases ?? []),
     ].some((value) => value.toLowerCase().includes(query.trim().toLowerCase()));
     const matchesSource = source === "全部"
-      || (source === "飞书" ? material.sourceChannel === "feishu" : material.sourceChannel === "web");
+      || (source === "飞书" && material.sourceChannel === "feishu")
+      || (source === "企业微信" && material.sourceChannel === "wecom")
+      || (source === "网页" && material.sourceChannel === "web");
     return matchesQuery && matchesSource;
   });
   return (
@@ -781,7 +783,13 @@ function IndustryMaterials({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <button onClick={() => setSource((current) => current === "全部" ? "网页" : current === "网页" ? "飞书" : "全部")}>
+        <button onClick={() => setSource((current) => current === "全部"
+          ? "网页"
+          : current === "网页"
+            ? "飞书"
+            : current === "飞书"
+              ? "企业微信"
+              : "全部")}>
           <Filter />
           {source === "全部" ? "筛选" : source}
         </button>
@@ -805,7 +813,11 @@ function IndustryMaterials({
               <strong>{material.fileName}</strong>
             </span>
             <span>行业材料</span>
-            <span>{material.sourceChannel === "feishu" ? "飞书" : "网页上传"}</span>
+            <span>{material.sourceChannel === "feishu"
+              ? "飞书"
+              : material.sourceChannel === "wecom"
+                ? "企业微信"
+                : "网页上传"}</span>
             <span>{company ? company.aliases[0] || company.standardName : "未关联公司"}</span>
             <span className={`by-status ${industryMaterialStatus(material.status).tone}`}>
               {industryMaterialStatus(material.status).label}

@@ -57,6 +57,8 @@ import type {
   ReviewCandidateEvidenceInput,
   SourceChannel,
   StartCompanyListResearchInput,
+  StartChannelCompanyResearchInput,
+  StartChannelCompanyResearchResult,
   StartCompanyResearchInput,
   StartFeishuCompanyResearchInput,
   StartFeishuCompanyResearchResult,
@@ -1662,13 +1664,22 @@ class SqlitePlatformModule implements PlatformModule {
   async startFeishuCompanyResearch(
     input: StartFeishuCompanyResearchInput,
   ): Promise<StartFeishuCompanyResearchResult> {
+    return this.startChannelCompanyResearch({ ...input, sourceChannel: 'feishu' });
+  }
+
+  async startChannelCompanyResearch(
+    input: StartChannelCompanyResearchInput,
+  ): Promise<StartChannelCompanyResearchResult> {
     const sourceMessageId = input.sourceMessageId.trim();
+    const metadataError = input.sourceChannel === 'feishu'
+      ? 'invalid_feishu_metadata'
+      : 'invalid_wecom_metadata';
     if (!sourceMessageId || sourceMessageId.length > 500 || /[\r\n]/u.test(sourceMessageId)) {
-      throw new PlatformInputError('invalid_feishu_metadata', 'source message id is invalid');
+      throw new PlatformInputError(metadataError, 'source message id is invalid');
     }
     const senderId = input.senderId?.trim();
     if (senderId !== undefined && (!senderId || senderId.length > 500 || /[\r\n]/u.test(senderId))) {
-      throw new PlatformInputError('invalid_feishu_metadata', 'sender id is invalid');
+      throw new PlatformInputError(metadataError, 'sender id is invalid');
     }
     const companyName = canonicalCompanyName(input.companyName);
     assertCompanyListName(companyName);
@@ -1677,7 +1688,7 @@ class SqlitePlatformModule implements PlatformModule {
       intent: `研究 ${companyName} 的公司概况、行业赛道、融资、团队、核心亮点与近期公开信号`,
       explicitWebSearch: true,
     }, {
-      sourceChannel: 'feishu',
+      sourceChannel: input.sourceChannel,
       sourceMessageId,
       sourceAttachmentKey: 'company-research',
       ...(senderId ? { senderId } : {}),
@@ -1720,7 +1731,7 @@ class SqlitePlatformModule implements PlatformModule {
       const matches = this.#matchCompanies(companyName);
       if (matches.length > 1) ambiguousOptions = matches;
       else companyId = matches[0]
-        ?? this.#createCompany(companyName, source.sourceChannel === 'feishu');
+        ?? this.#createCompany(companyName, source.sourceChannel !== 'web');
     }
     if (workflow) {
       if (!companyId) {
@@ -2130,7 +2141,7 @@ class SqlitePlatformModule implements PlatformModule {
 
   async #stage(input: IngestDocumentInput): Promise<StagedFile> {
     const fileName = safeFileName(input.fileName);
-    if (input.sourceChannel !== 'web' && input.sourceChannel !== 'feishu') {
+    if (!['web', 'feishu', 'wecom'].includes(input.sourceChannel)) {
       throw new PlatformInputError('invalid_source_channel', 'unsupported source channel');
     }
     const stagingId = this.#nextId();
@@ -2706,7 +2717,7 @@ class SqlitePlatformModule implements PlatformModule {
       FROM conversations c JOIN receipt_events re ON re.document_id = c.primary_document_id
       WHERE c.conversation_id = ? ORDER BY re.received_at DESC LIMIT 1
     `).get(target.conversationId) as { title: string; source_channel: string; sender_id: string | null } | undefined;
-    if (!conversation || (conversation.source_channel === 'feishu' && !conversation.sender_id)) return 'skipped';
+    if (!conversation || (conversation.source_channel !== 'web' && !conversation.sender_id)) return 'skipped';
     const previous = this.#db.prepare(`
       SELECT status FROM conversation_reuse_suggestions WHERE conversation_id = ?
     `).get(target.conversationId) as { status: string } | undefined;
@@ -2716,8 +2727,8 @@ class SqlitePlatformModule implements PlatformModule {
       JOIN companies company ON company.company_id = cc.company_id
       WHERE cc.conversation_id = ? AND cc.role = 'primary'
     `).get(target.conversationId) as { canonical_name: string } | undefined;
-    const sourceFilter = conversation.source_channel === 'feishu'
-      ? 'AND c.source_channel = \'feishu\' AND re.sender_id = ?'
+    const sourceFilter = conversation.source_channel !== 'web'
+      ? 'AND c.source_channel = ? AND re.sender_id = ?'
       : 'AND c.source_channel = \'web\'';
     const candidateStatement = this.#db.prepare(`
       SELECT DISTINCT c.conversation_id, c.title, c.primary_document_id, company.canonical_name
@@ -2728,8 +2739,8 @@ class SqlitePlatformModule implements PlatformModule {
       WHERE c.conversation_id != ? AND c.conversation_type = 'material' ${sourceFilter}
       ORDER BY c.created_at DESC LIMIT 20
     `);
-    const candidateRows = (conversation.source_channel === 'feishu'
-      ? candidateStatement.all(target.conversationId, conversation.sender_id)
+    const candidateRows = (conversation.source_channel !== 'web'
+      ? candidateStatement.all(target.conversationId, conversation.source_channel, conversation.sender_id)
       : candidateStatement.all(target.conversationId)) as unknown as Array<{
       conversation_id: string; title: string; primary_document_id: string; canonical_name: string | null;
     }>;

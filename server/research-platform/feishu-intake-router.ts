@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import express from "express";
 import multer from "multer";
 import { normalizeUploadedFileName } from "../upload-file-name.js";
-import type { PlatformModule } from "./contracts.js";
+import type { BotSourceChannel, PlatformModule } from "./contracts.js";
 import {
   PlatformConflictError,
   PlatformInputError,
@@ -16,11 +16,26 @@ export function createFeishuIntakeRouter(
   platform: PlatformModule,
   intakeKey: string | undefined,
 ): express.Router {
+  return createChannelIntakeRouter(platform, intakeKey, "feishu");
+}
+
+export function createWeComIntakeRouter(
+  platform: PlatformModule,
+  intakeKey: string | undefined,
+): express.Router {
+  return createChannelIntakeRouter(platform, intakeKey, "wecom");
+}
+
+function createChannelIntakeRouter(
+  platform: PlatformModule,
+  intakeKey: string | undefined,
+  sourceChannel: BotSourceChannel,
+): express.Router {
   const router = express.Router();
   const upload = multer({ dest: tmpdir(), limits: { files: 1 } });
   const authorize: express.RequestHandler = (request, response, next) => {
     if (!intakeKey) {
-      response.status(503).json({ error: "feishu_intake_unavailable" });
+      response.status(503).json({ error: `${sourceChannel}_intake_unavailable` });
       return;
     }
     if (!secureHeaderMatch(request.header("x-boyuan-intake-key"), intakeKey)) {
@@ -42,20 +57,23 @@ export function createFeishuIntakeRouter(
         const sourceMessageId = requiredMetadataHeader(
           request.header("x-boyuan-message-id"),
           "source message",
+          sourceChannel,
         );
         const senderId = optionalMetadataHeader(
           request.header("x-boyuan-sender-id"),
           "sender",
+          sourceChannel,
         );
         const sourceAttachmentKey = optionalMetadataHeader(
           request.header("x-boyuan-file-key"),
           "file key",
+          sourceChannel,
         );
         try {
           const result = await platform.ingestDocument({
             fileName: normalizeUploadedFileName(request.file.originalname),
             mimeType: request.file.mimetype,
-            sourceChannel: "feishu",
+            sourceChannel,
             sourceMessageId,
             ...(sourceAttachmentKey ? { sourceAttachmentKey } : {}),
             ...(senderId ? { senderId } : {}),
@@ -102,12 +120,15 @@ export function createFeishuIntakeRouter(
         const sourceMessageId = requiredMetadataHeader(
           request.header("x-boyuan-message-id"),
           "source message",
+          sourceChannel,
         );
         const senderId = optionalMetadataHeader(
           request.header("x-boyuan-sender-id"),
           "sender",
+          sourceChannel,
         );
-        response.status(201).json(await platform.startFeishuCompanyResearch({
+        response.status(201).json(await platform.startChannelCompanyResearch({
+          sourceChannel,
           companyName,
           sourceMessageId,
           ...(senderId ? { senderId } : {}),
@@ -155,11 +176,12 @@ function secureHeaderMatch(value: string | undefined, expected: string): boolean
 function requiredMetadataHeader(
   value: string | undefined,
   label: string,
+  sourceChannel: BotSourceChannel,
 ): string {
-  const result = optionalMetadataHeader(value, label);
+  const result = optionalMetadataHeader(value, label, sourceChannel);
   if (!result) {
     throw new PlatformInputError(
-      "missing_feishu_metadata",
+      sourceChannel === "feishu" ? "missing_feishu_metadata" : "missing_wecom_metadata",
       `${label} header is required`,
     );
   }
@@ -169,6 +191,7 @@ function requiredMetadataHeader(
 function optionalMetadataHeader(
   value: string | undefined,
   label: string,
+  sourceChannel: BotSourceChannel,
 ): string | undefined {
   if (value === undefined) return undefined;
   const normalized = value.trim();
@@ -178,7 +201,7 @@ function optionalMetadataHeader(
     /[\r\n]/u.test(normalized)
   ) {
     throw new PlatformInputError(
-      "invalid_feishu_metadata",
+      sourceChannel === "feishu" ? "invalid_feishu_metadata" : "invalid_wecom_metadata",
       `${label} header is invalid`,
     );
   }

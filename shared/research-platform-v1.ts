@@ -233,7 +233,7 @@ export type CompanyConversationStatusV1 =
   | "failed"
   | "cancelled";
 
-export type CompanySourceChannelV1 = "web" | "feishu";
+export type CompanySourceChannelV1 = "web" | "feishu" | "wecom";
 
 export interface CompanyMaterialV1 {
   conversationId: string;

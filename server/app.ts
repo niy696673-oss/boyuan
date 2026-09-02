@@ -15,7 +15,7 @@ import {
 } from "./industry-analysis.js";
 import type { PlatformModule as ResearchPlatformModule } from "./research-platform/contracts.js";
 import { createResearchPlatformV1Router } from "./research-platform/express-router.js";
-import { createFeishuIntakeRouter } from "./research-platform/feishu-intake-router.js";
+import { createFeishuIntakeRouter, createWeComIntakeRouter } from "./research-platform/feishu-intake-router.js";
 import { normalizeUploadedFileName } from "./upload-file-name.js";
 
 type AuthenticatedRequest = express.Request & { authUser?: User };
@@ -51,6 +51,7 @@ export function createApp(
   options: {
     researchPlatform?: ResearchPlatformModule;
     feishuIntakeKey?: string;
+    wecomIntakeKey?: string;
   } = {},
 ): Express {
   const app = express();
@@ -67,6 +68,13 @@ export function createApp(
       createFeishuIntakeRouter(
         options.researchPlatform,
         options.feishuIntakeKey,
+      ),
+    );
+    app.use(
+      "/api/v1/wecom",
+      createWeComIntakeRouter(
+        options.researchPlatform,
+        options.wecomIntakeKey,
       ),
     );
   }

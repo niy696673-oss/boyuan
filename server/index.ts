@@ -45,6 +45,7 @@ app.use(
   createApp(store, services, {
     researchPlatform,
     feishuIntakeKey: process.env.BOYUAN_FEISHU_INTAKE_KEY,
+    wecomIntakeKey: process.env.BOYUAN_WECOM_INTAKE_KEY,
   }),
 );
 const dist = path.join(root, "dist");
