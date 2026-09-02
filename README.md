@@ -108,6 +108,16 @@ pnpm dev:server
 
 插件配置中的 `platformBaseUrl` 应指向本服务端（本地默认 `http://127.0.0.1:4174`），`publicWorkbenchUrl` 应指向新工作台对外地址。30 秒只作为性能目标，代码不会等满 30 秒，也不会在达到 30 秒时硬中断。插件安装和配置说明见 [`integrations/botmux-ai-platform-intake/README.md`](./integrations/botmux-ai-platform-intake/README.md)。
 
+## 企业微信智能机器人入口
+
+同一集成包提供企业微信智能机器人长连接服务。它接收 PDF 等项目材料或 `分析/研究 <公司名>` 命令，先回复处理中，再在同一条流式文本中返回与飞书快速卡业务字段一致的纯文本结果；工作台深度分析会话在后台并行创建。服务端使用独立的渠道密钥：
+
+```bash
+export BOYUAN_WECOM_INTAKE_KEY=replace-with-a-random-secret
+```
+
+机器人 `botId` 和 `secret` 只通过企业微信服务进程的 `WECOM_BOT_ID`、`WECOM_BOT_SECRET` 环境变量提供，不写入仓库或 JSON 配置。完整配置、启动方法和无需真实企业租户的 PDF 端到端重放测试见 [`integrations/botmux-ai-platform-intake/README.md`](./integrations/botmux-ai-platform-intake/README.md)。真实企业微信环境仅剩后台创建机器人、取得凭证并完成租户内收发验收。
+
 ## 公司外部调研
 
 工作台的“公司”研究会创建 `/api/v1/company-research` 对话，先读取正式知识，再根据触发原因执行公开搜索，最后由研究适配器生成带 URL 证据的待确认候选。默认配置使用确定性研究与搜索适配器，便于无凭证开发；它不代表真实公开核验。

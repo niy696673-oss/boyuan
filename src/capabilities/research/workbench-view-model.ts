@@ -57,7 +57,11 @@ export function toWorkbenchConversation(
             ? "行业"
             : "材料",
       status: workbenchStatus(conversation.status),
-      createdBy: conversation.sourceChannel === "feishu" ? "飞书" : "工作台",
+      createdBy: conversation.sourceChannel === "feishu"
+        ? "飞书"
+        : conversation.sourceChannel === "wecom"
+          ? "企业微信"
+          : "工作台",
       createdAt: conversation.createdAt,
       steps: (conversation.task.steps || []).map(toWorkbenchStep),
     },

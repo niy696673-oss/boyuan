@@ -34,6 +34,7 @@ await Promise.all([
   bundle(join(sourceRoot, 'cli', 'index.ts'), join(outputRoot, 'cli', 'index.js')),
   bundle(join(sourceRoot, 'service', 'index.ts'), join(outputRoot, 'service', 'index.js')),
   bundle(join(sourceRoot, 'service', 'server.ts'), join(outputRoot, 'service', 'server.js')),
+  bundle(join(sourceRoot, 'service', 'wecom-server.ts'), join(outputRoot, 'service', 'wecom-server.js')),
 ]);
 const cliModule = await import(`${pathToFileURL(join(outputRoot, 'cli', 'index.js')).href}?t=${Date.now()}`);
 const commands = Object.entries(cliModule.default).map(([name, handler]) => ({
@@ -42,6 +43,7 @@ const commands = Object.entries(cliModule.default).map(([name, handler]) => ({
 })).sort((a, b) => a.name.localeCompare(b.name));
 writeFileSync(join(outputRoot, 'cli', 'commands.json'), `${JSON.stringify({ schemaVersion: 1, commands }, null, 2)}\n`);
 copyFileSync(join(packageRoot, 'README.md'), join(outputRoot, 'README.md'));
+copyFileSync(join(packageRoot, 'wecom.config.example.json'), join(outputRoot, 'wecom.config.example.json'));
 cpSync(join(packageRoot, 'skills'), join(outputRoot, 'skills'), { recursive: true });
 const rootPackage = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
 writeFileSync(join(outputRoot, 'manifest-snapshot.json'), `${JSON.stringify({

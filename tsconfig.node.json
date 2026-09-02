@@ -10,5 +10,8 @@
     "types": ["node"]
   },
   "include": ["vite.config.ts", "vitest.config.ts", "server/**/*.ts", "tests/**/*.ts", "shared/**/*.ts", "src/types.ts"],
-  "exclude": ["tests/feishu-company-research-e2e.test.ts"]
+  "exclude": [
+    "tests/feishu-company-research-e2e.test.ts",
+    "tests/wecom-intake-e2e.test.ts"
+  ]
 }

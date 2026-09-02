@@ -1,8 +1,8 @@
 # Boyuan AI Platform Intake
 
-BotMux service plugin for routing Feishu BP files and explicit company-research commands to the Boyuan AI platform. Feishu immediately receives one processing card; the same message is replaced with the concise Luna result when analysis finishes while the independent deep-analysis task continues in the workbench. Thirty seconds is a performance target, not a delivery deadline.
+Channel adapters for routing Feishu or WeCom BP files and explicit company-research commands to the Boyuan AI platform. Each channel immediately acknowledges the request, returns the independent quick result through the same reply, and starts the durable workbench deep-analysis task in parallel. Thirty seconds is a performance target, not a delivery deadline.
 
-## Configuration
+## Feishu configuration
 
 Save a JSON object using `botmux ai-platform-intake:configure <config.json>`:
 
@@ -31,6 +31,32 @@ The platform process must use the same `BOYUAN_FEISHU_INTAKE_KEY` value as `plat
 
 `publicWorkbenchUrl` is the new Boyuan workbench base used for the persistent deep-analysis conversation. `publicProductUrl` is the same product UI base used for company-network and industry-chain links. Existing configurations may omit `publicProductUrl`; it then defaults to the origin of `publicWorkbenchUrl`.
 
+## WeCom intelligent bot configuration
+
+Copy `wecom.config.example.json` to a local, untracked runtime path and set the platform and public URLs. The JSON file deliberately contains no WeCom credential. Configure the platform and start the separate WeCom long-connection service with:
+
+```bash
+export BOYUAN_WECOM_INTAKE_KEY=replace-with-a-random-secret
+export BOYUAN_WECOM_INTAKE_CONFIG_PATH=/absolute/path/to/wecom.config.json
+export WECOM_BOT_ID=replace-with-the-enterprise-wecom-bot-id
+export WECOM_BOT_SECRET=replace-with-the-enterprise-wecom-bot-secret
+
+npm run build
+npm run start:wecom
+```
+
+`platformIntakeKey` in `wecom.config.json` must equal `BOYUAN_WECOM_INTAKE_KEY` on the platform process. Leave `wsUrl` unset in a real tenant so the official SDK uses `wss://openws.work.weixin.qq.com`; the optional field exists for an isolated test endpoint and only accepts `wss:` URLs. The local service binds to loopback and exposes `GET /health` on port `9480` by default.
+
+The service uses the official `@wecom/aibot-node-sdk`. It receives `message.text` and `message.file` events over WebSocket, downloads and decrypts the five-minute file URL through the SDK, and never persists `botId` or `secret`. PDF, DOCX, XLSX, and CSV are accepted. WeCom receives normal Markdown-compatible text instead of an interactive card, but the company, identity, product/technology, industry, market, financing, team, highlights, risks, diligence questions, relations, deterministic fund match, confidence, and navigation semantics match the Feishu result.
+
+The implementation can be verified without a real enterprise tenant:
+
+```bash
+pnpm exec vitest run tests/wecom-intake-e2e.test.ts
+```
+
+This test replays the official WebSocket event shape with a real generated PDF, a fake SDK download/decryption port, the HTTP intake API, SQLite, quick analysis, and the background worker. It does not claim real-tenant authentication or delivery.
+
 ## Runtime behavior
 
 - Private-chat commands `分析 <公司名>` and `研究 <公司名>` start company research. Group-chat commands are accepted only when the bot is explicitly mentioned; ordinary chat text never enters the research path.
@@ -49,3 +75,5 @@ The platform process must use the same `BOYUAN_FEISHU_INTAKE_KEY` value as `plat
 - The durable job store retries completion-card delivery after service restarts without rerunning a successful quick analysis.
 - Feishu completion cards use a narrow vertical Card 2.0 layout: company identity, product/technology, industry, market, financing, key people, relation previews, highlights, deterministic fund match, preliminary risks, diligence questions, source summary, confidence, and navigation. Fund match is calculated locally from SQLite fund profiles and is displayed separately from analysis confidence. Evidence, full biographies, the full 13-dimension analysis, and detailed web-source records remain in the workbench.
 - Quick-card enrichment only reads existing company aliases and industry placements. It never creates a company, industry, node, or relation. A matched company links to its product network; a matched industry links to its chain. Missing targets link to the continuing deep-analysis conversation, which remains responsible for entity resolution and archiving.
+- WeCom follows the same quick/deep split. The first stream reply says the request is processing; the final quick result finishes that same stream. It never creates an intermediate BotMux model turn or adds a separate status narration.
+- WeCom file event metadata and the opaque stream receipt are persisted before download. Once platform acceptance is durable, the receipt is removed and only the durable job remains. A pre-acceptance failure finishes the stream with retry guidance; accepted jobs keep retrying final delivery without restarting quick or deep analysis.

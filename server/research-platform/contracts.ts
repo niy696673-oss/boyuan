@@ -2,7 +2,8 @@ import type { QuickCardAnalysisResult } from './quick-card/contracts.js';
 import type { CompanyQuickCardResult } from './company-quick-card/contracts.js';
 import type { CompanyResearchWorkflowSkill } from './research/contracts.js';
 
-export type SourceChannel = 'web' | 'feishu';
+export type SourceChannel = 'web' | 'feishu' | 'wecom';
+export type BotSourceChannel = Exclude<SourceChannel, 'web'>;
 export type ConversationType = 'material' | 'company' | 'industry';
 export type ConversationStatus = 'processing' | 'waiting' | 'pending_confirmation' | 'completed' | 'failed' | 'cancelled';
 export type TaskStatus = 'queued' | 'running' | 'waiting' | 'pending_confirmation' | 'completed' | 'failed' | 'cancelled';
@@ -555,10 +556,16 @@ export interface StartFeishuCompanyResearchInput {
   senderId?: string;
 }
 
-export interface StartFeishuCompanyResearchResult {
+export interface StartChannelCompanyResearchInput extends StartFeishuCompanyResearchInput {
+  sourceChannel: BotSourceChannel;
+}
+
+export interface StartChannelCompanyResearchResult {
   conversation: ConversationDetail;
   reusedResearch: boolean;
 }
+
+export type StartFeishuCompanyResearchResult = StartChannelCompanyResearchResult;
 
 export interface CompanyResearchWorkflowRequest {
   skill: CompanyResearchWorkflowSkill;
@@ -647,6 +654,9 @@ export interface PlatformModule {
   startFeishuCompanyResearch(
     input: StartFeishuCompanyResearchInput,
   ): Promise<StartFeishuCompanyResearchResult>;
+  startChannelCompanyResearch(
+    input: StartChannelCompanyResearchInput,
+  ): Promise<StartChannelCompanyResearchResult>;
   startIndustryResearch(input: StartIndustryResearchInput): Promise<ConversationDetail>;
   listAdminOverview(): Promise<AdminOverview>;
   cancelTask(taskId: string): Promise<ConversationDetail>;

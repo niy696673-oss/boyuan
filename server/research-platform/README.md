@@ -15,4 +15,4 @@
 
 设置 `BOYUAN_ANALYSIS_ADAPTER=opencode` 与 `BOYUAN_OPENCODE_BASE_URL` 后启用真实 OpenCode。BP 原文分析的单次会话默认禁用全部工具，只放行项目 BP skill 与 Sequential Thinking。公司外部调研通过 `BOYUAN_RESEARCH_ADAPTER` 和 `BOYUAN_SEARCH_ADAPTER` 独立选择 OpenCode 与 Exa；OpenCode 研究会话不调用工具，只消费正式知识和带 URL 的搜索结果。项目级 OpenCode 还配置了 Exa 与 NEI MCP，供通用工作台任务使用；NEI 是投研 Skill/连接器目录，不作为公司事实搜索适配器。
 
-飞书入口通过 `feishu-intake-router.ts` 接入同一业务内核：上传 BP 或提交公司名研究都会立即创建持久工作台会话和后台深度任务，独立的 Luna 快速分析提取卡片字段与基金匹配输入，SQLite 本地规则随后计算基金匹配度并更新同一张飞书状态卡。公司快速分析与深度研究通过 `company_research_runs` 和 `web_search_results` 复用同一公开检索快照；快速结果另行持久化以支持重试，不写正式知识。30 秒仅用于观测与优化，不会成为 Luna 或 Exa 的硬截止。现有 RBAC 和生产基础设施仍未接入该单用户业务内核。
+飞书与企业微信入口通过 `feishu-intake-router.ts` 中的渠道适配器接入同一业务内核：上传 BP 或提交公司名研究都会立即创建持久工作台会话和后台深度任务，独立的 Luna 快速分析提取渠道展示字段与基金匹配输入，SQLite 本地规则随后计算基金匹配度并更新同一条渠道回复。公司快速分析与深度研究通过 `company_research_runs` 和 `web_search_results` 复用同一公开检索快照；快速结果另行持久化以支持重试，不写正式知识。30 秒仅用于观测与优化，不会成为 Luna 或 Exa 的硬截止。现有 RBAC 和生产基础设施仍未接入该单用户业务内核。

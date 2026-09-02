@@ -64,7 +64,7 @@ export interface ConversationSummary {
   conversationId: string;
   title: string;
   type: "material" | "company" | "industry";
-  sourceChannel: "web" | "feishu";
+  sourceChannel: "web" | "feishu" | "wecom";
   status: ConversationStatus;
   createdAt: string;
   updatedAt: string;

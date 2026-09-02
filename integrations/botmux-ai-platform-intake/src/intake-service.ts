@@ -1,22 +1,21 @@
 import { createHash } from 'node:crypto';
 import {
   companyNetworkUrl,
-  companyResearchCompletionCard,
-  completionCard,
-  failureCard,
   industryChainUrl,
   workbenchConversationUrl,
 } from './cards.js';
+import { FeishuIntakeDelivery } from './intake-delivery.js';
 import type {
-  CompanyQuickCardResult, CompanyResearchTurn, IntakeConfig, IntakeJob, IntakeOutcome, IntakeTurn, JobStore, Messenger, PlatformClient, QuickCardResult,
+  CompanyQuickCardResult, CompanyResearchTurn, IntakeDelivery, IntakeJob, IntakeOutcome, IntakeServiceConfig, IntakeTurn, JobStore, Messenger, PlatformClient, QuickCardResult,
   StatusCardReceipt,
 } from './types.js';
 import { COMPANY_RESEARCH_FILE_KEY } from './types.js';
 
 export interface IntakeServiceOptions {
-  config: IntakeConfig;
+  config: IntakeServiceConfig;
   platform: PlatformClient;
-  messenger: Messenger;
+  messenger?: Messenger;
+  delivery?: IntakeDelivery;
   store: JobStore;
   nowMs?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => unknown;
@@ -24,9 +23,9 @@ export interface IntakeServiceOptions {
 }
 
 export class IntakeService {
-  readonly #config: IntakeConfig;
+  readonly #config: IntakeServiceConfig;
   readonly #platform: PlatformClient;
-  readonly #messenger: Messenger;
+  readonly #delivery: IntakeDelivery;
   readonly #store: JobStore;
   readonly #nowMs: () => number;
   readonly #setTimer: (callback: () => void, delayMs: number) => unknown;
@@ -38,7 +37,9 @@ export class IntakeService {
   constructor(options: IntakeServiceOptions) {
     this.#config = options.config;
     this.#platform = options.platform;
-    this.#messenger = options.messenger;
+    if (!options.messenger && !options.delivery) throw new Error('intake_delivery_required');
+    if (options.messenger && options.delivery) throw new Error('intake_delivery_conflict');
+    this.#delivery = options.delivery ?? new FeishuIntakeDelivery(options.messenger!);
     this.#store = options.store;
     this.#nowMs = options.nowMs ?? Date.now;
     this.#setTimer = options.setTimer ?? ((callback, delayMs) => {
@@ -63,13 +64,24 @@ export class IntakeService {
     cardMessageId: string;
     createdAt: string;
     senderId?: string;
+    metadata?: StatusCardReceipt['metadata'];
   }): void {
     const key = jobKey(input.messageId, input.fileKey);
     const existing = this.statusCardId(input.messageId, input.fileKey);
     if (existing && existing !== input.cardMessageId) {
       throw new Error('status_card_conflict');
     }
-    this.#store.putStatusCard({ key, ...input });
+    this.#store.putStatusCard({
+      key,
+      chatId: input.chatId,
+      messageId: input.messageId,
+      fileKey: input.fileKey,
+      fileName: input.fileName,
+      cardMessageId: input.cardMessageId,
+      createdAt: input.createdAt,
+      ...(input.senderId ? { senderId: input.senderId } : {}),
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    });
   }
 
   listOrphanStatusCards(): StatusCardReceipt[] {
@@ -109,20 +121,17 @@ export class IntakeService {
         const message = errorMessage(error);
         outcomes.push({ fileKey: attachment.fileKey, fileName: attachment.name, status: 'failed', error: message });
         if (!this.#store.get(jobKey(turn.messageId, attachment.fileKey))) {
-          const card = failureCard(attachment.name);
-          if (attachmentTurn.statusCardMessageId && this.#messenger.updateCard) {
-            await this.#messenger.updateCard({ cardMessageId: attachmentTurn.statusCardMessageId, card }).catch(() => undefined);
-          } else {
-            await this.#messenger.sendCard({
-              chatId: turn.chatId,
-              sessionId: turn.sessionId,
-              messageId: turn.messageId,
-              fileKey: attachment.fileKey,
-              responseKind: 'final',
-              cardKind: 'failure',
-              card,
-            }).catch(() => undefined);
-          }
+          await this.#delivery.fail({
+            kind: 'bp',
+            chatId: turn.chatId,
+            sessionId: turn.sessionId,
+            messageId: turn.messageId,
+            fileKey: attachment.fileKey,
+            subject: attachment.name,
+            ...(attachmentTurn.statusCardMessageId
+              ? { statusReceipt: attachmentTurn.statusCardMessageId }
+              : {}),
+          }).catch(() => undefined);
         }
       }
     }
@@ -339,24 +348,20 @@ export class IntakeService {
       ? industryChainUrl(this.#config.publicProductUrl, job.quickCard.navigation.industryId)
       : undefined;
     try {
-      const card = completionCard(job.quickCard, {
-        deepAnalysisUrl: url,
-        ...(companyUrl ? { companyNetworkUrl: companyUrl } : {}),
-        ...(industryUrl ? { industryChainUrl: industryUrl } : {}),
+      await this.#delivery.complete({
+        kind: 'bp',
+        chatId: job.chatId,
+        sessionId: job.sessionId,
+        messageId: job.messageId,
+        fileKey: job.fileKey,
+        ...(job.statusCardMessageId ? { statusReceipt: job.statusCardMessageId } : {}),
+        result: job.quickCard,
+        links: {
+          deepAnalysisUrl: url,
+          ...(companyUrl ? { companyNetworkUrl: companyUrl } : {}),
+          ...(industryUrl ? { industryChainUrl: industryUrl } : {}),
+        },
       });
-      if (job.statusCardMessageId && this.#messenger.updateCard) {
-        await this.#messenger.updateCard({ cardMessageId: job.statusCardMessageId, card });
-      } else {
-        await this.#messenger.sendCard({
-          chatId: job.chatId,
-          sessionId: job.sessionId,
-          messageId: job.messageId,
-          fileKey: job.fileKey,
-          responseKind: 'final',
-          cardKind: 'completion',
-          card,
-        });
-      }
       job.completionCardSent = true;
       job.completionCardMs = Math.max(0, this.#nowMs() - Date.parse(job.createdAt));
       delete job.lastError;
@@ -390,24 +395,20 @@ export class IntakeService {
       ? industryChainUrl(this.#config.publicProductUrl, result.navigation.industryId)
       : undefined;
     try {
-      const card = companyResearchCompletionCard(result, {
-        deepAnalysisUrl,
-        ...(companyUrl ? { companyNetworkUrl: companyUrl } : {}),
-        ...(industryUrl ? { industryChainUrl: industryUrl } : {}),
+      await this.#delivery.complete({
+        kind: 'company_research',
+        chatId: job.chatId,
+        sessionId: job.sessionId,
+        messageId: job.messageId,
+        fileKey: job.fileKey,
+        ...(job.statusCardMessageId ? { statusReceipt: job.statusCardMessageId } : {}),
+        result,
+        links: {
+          deepAnalysisUrl,
+          ...(companyUrl ? { companyNetworkUrl: companyUrl } : {}),
+          ...(industryUrl ? { industryChainUrl: industryUrl } : {}),
+        },
       });
-      if (job.statusCardMessageId && this.#messenger.updateCard) {
-        await this.#messenger.updateCard({ cardMessageId: job.statusCardMessageId, card });
-      } else {
-        await this.#messenger.sendCard({
-          chatId: job.chatId,
-          sessionId: job.sessionId,
-          messageId: job.messageId,
-          fileKey: job.fileKey,
-          responseKind: 'final',
-          cardKind: 'completion',
-          card,
-        });
-      }
       job.completionCardSent = true;
       job.completionCardMs = Math.max(0, this.#nowMs() - Date.parse(job.createdAt));
       delete job.lastError;
