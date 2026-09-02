@@ -1,0 +1,35 @@
+{
+  "prototype": "/var/folders/ky/95mh034940q9m95d5jxm7jkc0000gn/T/codex-clipboard-1f0f3ac9-cf02-4174-966c-b07b1613b293.png",
+  "implementation_screenshot": "verification/implemented-card-618x562.png",
+  "diff_image": "verification/diff-618x562.png",
+  "viewport": { "width": 618, "height": 562 },
+  "thresholds": {
+    "pixel_difference_percent": 1.0,
+    "position_error_px": 4,
+    "font_size_error_px": 1
+  },
+  "result": {
+    "pixel_difference_percent": 16.5449,
+    "passed": false,
+    "structural_review": "passed"
+  },
+  "remaining_differences": [
+    "The implementation renders real directory data instead of the StarRiver sample text in the reference.",
+    "The implementation adds a compact materials, knowledge, updated-at, and open-entity footer so the directory card retains existing product operations.",
+    "Team slots show explicit pending-verification states because the directory API does not expose structured people records.",
+    "Minor spacing and font rasterization differences remain after scaling the 608 by 547 rendered card to the 618 by 562 reference size."
+  ],
+  "copilot_verification": {
+    "screenshot": "verification/implemented-entity-copilot.png",
+    "viewport": { "width": 1440, "height": 900 },
+    "visible": true,
+    "interaction": "suggestion fill, send, collapse, and expand flows passed",
+    "positioning": "fixed sidecar",
+    "scroll_check": {
+      "before": { "top": 72, "right": 12 },
+      "after_page_scroll": { "top": 72, "right": 12 },
+      "passed": true
+    },
+    "collapsed_width": 50
+  }
+}

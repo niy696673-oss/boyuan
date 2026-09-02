@@ -1,0 +1,32 @@
+{
+  "colors": {
+    "page_background": "#F4F5F6",
+    "surface": "#FFFFFF",
+    "surface_muted": "#F5F6F7",
+    "surface_soft": "#F0F2F3",
+    "text_primary": "#24292E",
+    "text_secondary": "#66717C",
+    "text_muted": "#929CA5",
+    "accent": "#0A9788",
+    "accent_dark": "#08796F",
+    "accent_soft": "#E5F7F3",
+    "link": "#087EC9",
+    "warning": "#C48714",
+    "warning_soft": "#FFF7E6",
+    "border": "#DDE1E3",
+    "border_strong": "#ABB9C7"
+  },
+  "typography": {
+    "font_family": "Geist, Noto Sans SC, PingFang SC, system-ui, sans-serif",
+    "scale": {
+      "page_title": { "size": 28, "weight": 700, "line_height": 38 },
+      "section_title": { "size": 15, "weight": 700, "line_height": 22 },
+      "body": { "size": 13, "weight": 400, "line_height": 20 },
+      "meta": { "size": 11, "weight": 400, "line_height": 17 }
+    }
+  },
+  "radii": { "page": 18, "section": 14, "card": 10, "pill": 999 },
+  "shadows": { "page": "0 18px 50px rgba(29, 40, 52, 0.08)", "card": "none" },
+  "effects": { "opacity_disabled": 0.52, "backdrop_filter": null, "blend_mode": "normal" },
+  "spacing": { "page_gutter": 22, "section_gap": 12, "card_gap": 18 }
+}

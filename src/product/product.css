@@ -1,7 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap");
 
 :root {
-  font-family: "Geist", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  font-family: "Outfit", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   color: #14243a;
   background: #f7f9fc;
   font-synthesis: none;
@@ -74,7 +74,9 @@ svg {
   width: 100%;
   min-height: 100dvh;
   overflow-x: hidden;
-  background: var(--by-canvas);
+  background:
+    radial-gradient(circle at 10% -8%, rgba(20, 104, 232, 0.08), transparent 32rem),
+    var(--by-canvas);
 }
 .by-skip-link {
   position: fixed;
@@ -92,43 +94,40 @@ svg {
 }
 
 .by-global-nav {
-  position: sticky;
+  position: fixed;
   z-index: 50;
   top: 0;
+  right: 0;
+  left: 0;
   display: grid;
   height: 64px;
   grid-template-columns: 180px auto minmax(300px, 550px) 1fr;
   align-items: center;
   gap: 26px;
   padding: 0 28px;
-  border-bottom: 1px solid var(--by-line);
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(205, 213, 225, 0.78);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 30px rgba(16, 39, 71, 0.07);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
 }
 .by-brand {
   display: flex;
+  width: 150px;
+  height: 42px;
   align-items: center;
-  gap: 11px;
-  width: max-content;
   color: var(--by-text);
 }
-.by-brand-symbol {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 11px;
-  color: #fff;
-  background: var(--by-accent);
-  box-shadow: 0 8px 18px rgba(20, 104, 232, 0.18);
+.by-brand img {
+  display: block;
+  width: 142px;
+  height: auto;
+  object-fit: contain;
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 420ms ease;
 }
-.by-brand-symbol svg {
-  width: 17px;
-}
-.by-brand strong {
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.035em;
+.by-brand:hover img,
+.by-brand:focus-visible img {
+  transform: translateY(-1px) scale(1.02);
 }
 .by-primary-nav {
   display: flex;
@@ -147,6 +146,7 @@ svg {
   color: var(--by-secondary);
   font-size: 13px;
   font-weight: 500;
+  transition: color 180ms ease, background 180ms ease, transform 180ms ease;
 }
 .by-primary-nav a svg {
   display: none;
@@ -165,6 +165,7 @@ svg {
 .by-primary-nav a:hover {
   color: var(--by-text);
   background: #fafbfd;
+  transform: translateY(-1px);
 }
 .by-primary-nav a.active {
   color: var(--by-text);
@@ -172,6 +173,9 @@ svg {
 }
 .by-primary-nav a.active::after {
   background: var(--by-accent);
+}
+.by-primary-nav a:active {
+  transform: translateY(0) scale(0.98);
 }
 .by-global-search {
   position: relative;
@@ -183,6 +187,12 @@ svg {
   border: 1px solid var(--by-line);
   border-radius: 10px;
   background: #fafbfd;
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+.by-global-search:focus-within {
+  border-color: rgba(20, 104, 232, 0.48);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(20, 104, 232, 0.08);
 }
 
 .by-search-panel,
@@ -427,7 +437,8 @@ svg {
   display: none;
 }
 .by-main {
-  min-height: calc(100dvh - 64px);
+  min-height: 100dvh;
+  padding-top: 64px;
 }
 
 .by-center-state {
@@ -835,19 +846,6 @@ svg {
   margin: 0 auto;
   padding: clamp(60px, 8vh, 100px) 0 50px;
   text-align: center;
-}
-.by-assistant-mark {
-  display: grid;
-  width: 50px;
-  height: 50px;
-  margin: 0 auto 18px;
-  place-items: center;
-  border-radius: 17px;
-  color: var(--by-accent);
-  background: var(--by-accent-soft);
-}
-.by-assistant-mark svg {
-  width: 23px;
 }
 .by-home-center > h1 {
   max-width: 960px;
@@ -5329,12 +5327,11 @@ svg {
     grid-template-columns: 1fr auto;
     padding-inline: 14px;
   }
-  .by-brand strong {
-    font-size: 16px;
+  .by-brand {
+    width: 132px;
   }
-  .by-brand-symbol {
-    width: 32px;
-    height: 32px;
+  .by-brand img {
+    width: 128px;
   }
   .by-primary-nav,
   .by-pending-link span,
@@ -5377,7 +5374,8 @@ svg {
     width: 12px;
   }
   .by-main {
-    min-height: calc(100dvh - 60px);
+    min-height: 100dvh;
+    padding-top: 60px;
   }
   .by-workbench {
     display: block;
@@ -5393,11 +5391,6 @@ svg {
   .by-home-center {
     width: 100%;
     padding: 56px 16px 42px;
-  }
-  .by-assistant-mark {
-    width: 44px;
-    height: 44px;
-    border-radius: 14px;
   }
   .by-home-center > h1 {
     font-size: 30px;

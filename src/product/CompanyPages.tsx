@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Bot,
   BookOpen,
   Building2,
   Check,
@@ -21,8 +22,11 @@ import {
   ListChecks,
   MapPin,
   Network,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Search,
+  SendHorizontal,
   ShieldCheck,
   Sparkles,
   Star,
@@ -174,7 +178,7 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
           </div>
         </div>
         <div className={`by-company-grid ${view}`}>
-          {companies.map((company) => <CompanyCard company={company} data={data} key={company.id} watching={watchingCompanyId === company.id} onWatch={() => void toggleWatched(company)} onOpen={() => navigate(`/companies/${company.id}`)} />)}
+          {companies.map((company) => <CompanyCard company={company} key={company.id} watching={watchingCompanyId === company.id} onWatch={() => void toggleWatched(company)} onOpen={() => navigate(`/companies/${company.id}`)} />)}
           {!companies.length && <section className="by-catalog-empty"><Building2 /><h2>还没有研究主体</h2><p>上传材料、导入公司名单，或从工作台发起研究后，主体会在这里持续沉淀。</p><button className="primary" onClick={() => navigate("/companies/import")}><ListChecks />导入公司名单</button></section>}
         </div>
       </section>
@@ -182,15 +186,28 @@ export function CompaniesPage({ data, companyClient = defaultCompanyClient }: { 
   );
 }
 
-function CompanyCard({ company, data: _data, watching, onWatch, onOpen }: { company: CompanyView; data: Bootstrap; watching: boolean; onWatch: () => void; onOpen: () => void }) {
-  const positions = company.industryTags.slice(0, 2);
+function CompanyCard({ company, watching, onWatch, onOpen }: { company: CompanyView; watching: boolean; onWatch: () => void; onOpen: () => void }) {
+  const identity = [company.standardName, company.location, company.foundedAt].filter(Boolean).join(" · ");
+  const industry = company.industryTags.join(" / ") || "行业与产业位置待确认";
+  const funding = company.latestFunding || "融资轮次、金额与估值待确认";
+  const productSummary = company.latestMaterialAnalysis?.summary || company.description || "产品与技术路径待材料分析";
+  const teamSlots = [
+    ["负", "负责人待确认", "核心负责人", "待材料核验"],
+    ["技", "技术负责人待确认", "技术负责人", "待材料核验"],
+    ["业", "业务负责人待确认", "业务负责人", "待材料核验"],
+  ];
   return (
     <article className="by-company-card" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}>
-      <header><CompanyMark company={company} /><div><h2>{company.standardName}</h2><p>{company.englishName || company.standardName}</p></div><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></header>
-      <p className="by-company-description">{company.description}</p>
-      <div className="by-company-tags">{positions.length ? positions.map((item) => <span key={item}>{item}</span>) : <span>产业位置待确认</span>}</div>
-      <dl><div><dt>材料</dt><dd>{company.materialCount}</dd></div><div><dt>已确认知识</dt><dd>{company.knowledgeCount}</dd></div><div><dt>最近更新</dt><dd>{new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</dd></div></dl>
-      <footer><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><span>{subjectKindLabel(company.subjectKindStatus === "confirmed" ? company.subjectKind : company.suggestedSubjectKind || "unknown")}</span><button>打开主体<ArrowRight /></button></footer>
+      <header className="by-company-card-heading"><div><h2>{company.standardName}</h2><p>仅反映经核验本份 BP 自陈事实；跨文档完整画像见公司实体页</p></div><div><span className={company.analysisStatus.tone}>{company.analysisStatus.label}</span><button aria-label={`${company.attentionStatus === "未关注" ? "关注" : "取消关注"}${company.standardName}`} aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={(event) => { event.stopPropagation(); onWatch(); }} onKeyDown={(event) => event.stopPropagation()}><Star /></button></div></header>
+      <section className="by-company-card-facts"><h3>关键信息（来自 BP 事实核验）</h3><div>
+        <article><strong>公司身份</strong><p>{identity || company.standardName} · {subjectKindLabel(company.subjectKindStatus === "confirmed" ? company.subjectKind : company.suggestedSubjectKind || "unknown")}</p></article>
+        <article><strong>行业 / 赛道</strong><p>{industry}</p></article>
+        <article><strong>融资信息</strong><p>{funding}</p></article>
+        <article><strong>团队关键人</strong><p>核心团队信息待材料核验</p></article>
+      </div></section>
+      <section className="by-company-card-product"><h3>产品与技术路径</h3><p>{productSummary}</p></section>
+      <section className="by-company-card-team"><h3>核心团队</h3><div>{teamSlots.map(([mark, name, role, status]) => <article key={role}><i>{mark}</i><strong>{name}</strong><em>{role}</em><p>{status}；进入公司实体页可查看跨材料人物关联。</p><span>{status}</span></article>)}</div></section>
+      <footer className="by-company-card-footer"><div><span>材料 {company.materialCount}</span><span>已确认知识 {company.knowledgeCount}</span><span>更新 {new Date(company.updatedAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</span></div><button>打开公司实体页<ArrowRight /></button></footer>
     </article>
   );
 }
@@ -297,8 +314,7 @@ export function CompanyDetailPage({ data, reload, companyClient = defaultCompany
 function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onResolveSubject }: { data: Bootstrap; company: CompanyView; directory: CompanyView[]; onUpload: (file: File) => Promise<string>; onWatch: (watched: boolean) => Promise<void>; onResolveSubject: (input: SubjectResolutionInputV1) => Promise<void> }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(searchParams.get("tab") === "relations" ? "产业关系" : "概览");
-  const [feedbackIndex, setFeedbackIndex] = useState(0);
+  const [tab, setTab] = useState(searchParams.get("tab") === "relations" ? "产业关系" : "画像");
   const [uploading, setUploading] = useState(false);
   const [watching, setWatching] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
@@ -309,6 +325,7 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
   );
   const [targetCompanyId, setTargetCompanyId] = useState("");
   const [resolvingSubject, setResolvingSubject] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const confirmed = company.claims.filter((claim) => claim.status === "confirmed");
   const pending = company.claims.filter((claim) => ["candidate", "disputed"].includes(claim.status));
@@ -322,7 +339,13 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
   );
 
   const tabs = [
-    ["概览", ""], ["材料", company.materialCount], ["已确认知识", confirmed.length], ["待确认", pending.length], ["研究记录", company.researchRecords.length], ["产业关系", ""],
+    ["画像", ""],
+    ["尽调与决策", ""],
+    ["日志", company.researchRecords.length],
+    ["材料", company.materialCount],
+    ["已确认知识", confirmed.length],
+    ["待确认", pending.length],
+    ["产业关系", ""],
   ] as const;
 
   const selectTab = (name: (typeof tabs)[number][0]) => {
@@ -386,123 +409,230 @@ function CompanyDetailContent({ data, company, directory, onUpload, onWatch, onR
     }
   };
 
+  const relatedEntityCount = new Set(company.relations.map((item) => item.company.companyId)).size;
+  const completeness = Math.min(98, 40 + Math.min(company.materialCount, 4) * 8 + Math.min(confirmed.length, 6) * 5 + Math.min(company.industryTags.length, 3) * 4);
+  const sourceChannels = [...new Set(company.materials.map((item) => item.sourceChannel === "feishu" ? "飞书" : "工作台"))];
+
   return (
-    <div className="by-company-detail-page">
-      <CompanyDirectory companies={directory} activeId={company.id} />
+    <div className={`by-company-detail-page by-entity-page ${copilotOpen ? "copilot-open" : "copilot-collapsed"}`}>
       <section className="by-company-detail-main">
-        <header className="by-company-hero">
-          <div className="by-company-title-line">
-            <span className="by-company-inline-image"><CompanyMark company={company} /></span>
-            <div><h1>{companyName}</h1><p>{company.englishName || company.standardName}<span />标准名称：{company.standardName}</p><div>{company.industryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div></div>
-          </div>
-          <p>{company.description}</p>
-          <section className="by-company-warning">
-            <Building2 />
+        <header className="by-entity-header">
+          <div className="by-entity-context">统一公司实体页 · 投资判断视图（关键信息 · 产品/行业/客户/市场 · 基金匹配 · 尽调问题）</div>
+          <div className="by-entity-title-row">
             <div>
-              <strong>
-                主体类型：{subjectKindLabel(company.subjectKind)}
-                {company.subjectKindStatus === "pending" ? "（待确认）" : "（已确认）"}
-              </strong>
-              <p>
-                {company.parentCompany
-                  ? `归属法律公司：${company.parentCompany.canonicalName}`
-                  : company.subjectKindStatus === "pending"
-                    ? `系统建议：${subjectKindLabel(company.suggestedSubjectKind || "unknown")}；${company.subjectKindReason || "请结合材料确认"}`
-                    : "该主体尚未关联其他法律公司。"}
-              </p>
+              <h1>{companyName}</h1>
+              <span>{relatedEntityCount || 1} 个关联实体</span>
             </div>
-            <select
-              aria-label="主体类型"
-              value={subjectKind}
-              onChange={(event) => setSubjectKind(event.target.value as Exclude<SubjectKindV1, "unknown">)}
-            >
-              <option value="legal_company">法律公司</option>
-              <option value="project">项目 / 产品 / 技术</option>
-              <option value="institution">机构</option>
-              <option value="team">团队</option>
-            </select>
-            <button
-              disabled={resolvingSubject}
-              onClick={() => void resolveIdentity("confirm")}
-            >
-              确认类型
-            </button>
-            {subjectKind !== "legal_company" && (
-              <>
-                <select
-                  aria-label="归属法律公司"
-                  value={targetCompanyId}
-                  onChange={(event) => setTargetCompanyId(event.target.value)}
-                >
-                  <option value="">选择已确认的法律公司</option>
-                  {legalCompanyTargets.map((item) => (
-                    <option value={item.id} key={item.id}>{item.standardName}</option>
-                  ))}
-                </select>
-                <button
-                  disabled={resolvingSubject || !targetCompanyId}
-                  onClick={() => void resolveIdentity("link")}
-                >
-                  确认归属
-                </button>
-              </>
-            )}
-            <select
-              aria-label="合并目标公司"
-              value={targetCompanyId}
-              onChange={(event) => setTargetCompanyId(event.target.value)}
-            >
-              <option value="">选择重复主体的合并目标</option>
-              {legalCompanyTargets.map((item) => (
-                <option value={item.id} key={item.id}>{item.standardName}</option>
-              ))}
-            </select>
-            <button
-              disabled={resolvingSubject || !targetCompanyId}
-              onClick={() => void resolveIdentity("merge")}
-            >
-              合并重复主体
-            </button>
-          </section>
-          <div className="by-company-actions"><button onClick={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)}><Sparkles />发起研究</button><button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button><button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button></div>
+            <div className="by-entity-actions">
+              <button onClick={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)}><Sparkles />发起研究</button>
+              <button disabled={uploading} onClick={() => fileInput.current?.click()}><Upload />{uploading ? "处理中…" : "上传材料"}</button>
+              <button aria-pressed={company.attentionStatus !== "未关注"} disabled={watching} onClick={() => void toggleWatched()}><Star />{watching ? "保存中…" : company.attentionStatus === "未关注" ? "关注" : company.attentionStatus}</button>
+            </div>
+          </div>
+          <p className="by-entity-meta">别名：{company.aliases.join(" / ") || company.englishName || "暂无"}<span />完整度 {completeness}%<span />来源：{sourceChannels.join("·") || "尚未导入"}<span />诉讼提示：公开渠道待核验<span />本页为跨来源累积视图</p>
+          <details className="by-entity-governance">
+            <summary><Building2 />主体治理：{subjectKindLabel(company.subjectKind)}{company.subjectKindStatus === "pending" ? "（待确认）" : "（已确认）"}</summary>
+            <div>
+              <p>{company.parentCompany ? `归属法律公司：${company.parentCompany.canonicalName}` : company.subjectKindReason || "该主体尚未关联其他法律公司。"}</p>
+              <select aria-label="主体类型" value={subjectKind} onChange={(event) => setSubjectKind(event.target.value as Exclude<SubjectKindV1, "unknown">)}>
+                <option value="legal_company">法律公司</option><option value="project">项目 / 产品 / 技术</option><option value="institution">机构</option><option value="team">团队</option>
+              </select>
+              <button disabled={resolvingSubject} onClick={() => void resolveIdentity("confirm")}>确认类型</button>
+              {subjectKind !== "legal_company" && <><select aria-label="归属法律公司" value={targetCompanyId} onChange={(event) => setTargetCompanyId(event.target.value)}><option value="">选择已确认的法律公司</option>{legalCompanyTargets.map((item) => <option value={item.id} key={item.id}>{item.standardName}</option>)}</select><button disabled={resolvingSubject || !targetCompanyId} onClick={() => void resolveIdentity("link")}>确认归属</button></>}
+              <select aria-label="合并目标公司" value={targetCompanyId} onChange={(event) => setTargetCompanyId(event.target.value)}><option value="">选择重复主体的合并目标</option>{legalCompanyTargets.map((item) => <option value={item.id} key={item.id}>{item.standardName}</option>)}</select>
+              <button disabled={resolvingSubject || !targetCompanyId} onClick={() => void resolveIdentity("merge")}>合并重复主体</button>
+            </div>
+          </details>
           <input ref={fileInput} hidden type="file" accept=".pdf,.docx,.txt,.md" onChange={(event) => void uploadFile(event.target.files?.[0])} />
-          {actionNotice && <p role="status">{actionNotice}</p>}
-          <dl><div><dt>分析状态</dt><dd>{company.analysisStatus.tone === "success" ? <Check /> : <Clock3 />}{company.analysisStatus.label}</dd></div><div><dt>负责人</dt><dd>{data.user.name}</dd></div><div><dt>最后更新</dt><dd>{relativeDate(company.updatedAt)}</dd></div></dl>
+          {actionNotice && <p className="by-entity-notice" role="status">{actionNotice}</p>}
+
+          <nav className="by-detail-tabs by-entity-tabs">{tabs.map(([name, count], index) => <button className={`${tab === name ? "active" : ""} ${index > 2 ? "counter" : ""}`} key={name} onClick={() => selectTab(name)}>{name}{count !== "" && <em>{count}</em>}</button>)}</nav>
+
+          <div className="by-entity-summary-grid">
+            <article><strong>公司概况</strong><p>{companyName}<br />{company.industryTags.slice(0, 2).join(" · ") || "基础信息待补充"}<br />{company.description}</p></article>
+            <article><strong>产品 / 技术路径</strong><p>{company.latestMaterialAnalysis?.sections?.find((item) => /(?:产品|技术)/u.test(item.title))?.summary || company.description || "产品与技术路径待材料确认"}</p></article>
+            <article><strong>行业 / 赛道</strong><p>{company.industryTags.join(" / ") || "产业位置待确认"}</p></article>
+            <article><strong>融资信息</strong><p>{company.latestMaterialAnalysis?.sections?.find((item) => /(?:融资|财务|股权)/u.test(item.title))?.summary || "轮次、金额与估值待材料确认"}</p></article>
+          </div>
         </header>
 
-        {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning" onClick={() => selectTab("待确认")}><AlertTriangle />{pending.length} 条待确认候选需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
+        {(pending.length > 0 || conflicts.length > 0) && <button className="by-company-warning by-entity-warning" onClick={() => selectTab("待确认")}><AlertTriangle />{pending.length} 条待确认候选需要验证<span />{conflicts.length} 条知识冲突需要处理<ChevronRight /></button>}
 
-        <nav className="by-detail-tabs">{tabs.map(([name, count]) => <button className={tab === name ? "active" : ""} key={name} onClick={() => selectTab(name)}>{name}{count !== "" && <em>{count}</em>}</button>)}</nav>
-
-        {tab === "概览" && (
-          <div className="by-company-overview-grid">
-            <div className="by-company-primary-column">
-              <MaterialAnalysisOverview company={company} />
-              <section className="by-confirmed-overview">
-                <header><h2>主体已确认知识</h2><span><ShieldCheck />仅展示正式知识</span></header>
-                {["主体身份", "产品与技术", "商业与融资", "风险与待验证"].map((category, index) => {
-                  const claim = confirmed[index];
-                  return <KnowledgeRow key={category} icon={index === 0 ? <Building2 /> : index === 1 ? <Sparkles /> : index === 2 ? <Globe2 /> : <ShieldCheck />} category={category} claim={claim} evidenceCount={claim?.evidenceIds.length || 0} />;
-                })}
-              </section>
-              <IndustryLane company={company} />
-            </div>
-            <aside className="by-company-support-column">
-              <SupportList title="最近材料" action="查看全部" rows={company.materials.slice(0, 3).map((item) => ({ icon: <FileText />, title: item.fileName, meta: `${relativeDate(item.updatedAt)} · 原始材料` }))} />
-              <SupportList title="最近证据" rows={company.evidence.slice(0, 3).map((item) => ({ icon: <FileSearch />, title: item.excerpt, meta: `${item.fileName}${item.page ? ` · 第 ${item.page} 页` : ""}` }))} />
-              <FeedbackCarousel tasks={company.researchRecords.map((record) => ({ id: record.runId, query: record.intent, status: platformTaskStatus(record.status), createdBy: "研究平台", createdAt: record.updatedAt, steps: [] }))} index={feedbackIndex} onIndex={setFeedbackIndex} />
-              <SupportList title="信息缺口" rows={materialInformationGaps(company)} emptyText={company.latestMaterialAnalysis?.sections?.length ? "最近材料分析未识别出明确的信息缺口" : "暂无材料分析结果"} />
-            </aside>
-          </div>
-        )}
+        {tab === "画像" && <EntityPortraitDashboard company={company} confirmed={confirmed} pending={pending} owner={data.user.name} />}
+        {tab === "尽调与决策" && <EntityDiligencePanel company={company} />}
+        {tab === "日志" && <EntityLogPanel company={company} />}
         {tab === "材料" && <CompanyMaterials company={company} uploading={uploading} onUpload={() => fileInput.current?.click()} />}
         {tab === "已确认知识" && <CompanyClaims claims={confirmed} title="已确认知识" />}
         {tab === "待确认" && <CompanyClaims claims={pending} title="待确认候选知识" />}
-        {tab === "研究记录" && <CompanyResearch company={company} onResearch={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)} />}
         {tab === "产业关系" && <IndustryLane company={company} expanded />}
       </section>
+      <CompanyCopilot company={company} open={copilotOpen} onToggle={() => setCopilotOpen((current) => !current)} onOpenWorkbench={() => navigate(`/?companyId=${encodeURIComponent(company.id)}`)} />
     </div>
   );
+}
+
+function CompanyCopilot({ company, open, onToggle, onOpenWorkbench }: { company: CompanyView; open: boolean; onToggle: () => void; onOpenWorkbench: () => void }) {
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
+    { role: "assistant", text: `我已连接 ${company.standardName} 的材料、知识与关联实体。你可以直接问我投资判断相关问题。` },
+  ]);
+  const submit = () => {
+    const nextQuestion = question.trim();
+    if (!nextQuestion) return;
+    setMessages((current) => [...current, { role: "user", text: nextQuestion }, { role: "assistant", text: "问题已记录。当前侧栏为 Copilot 预览，点击下方按钮可在研究工作台中调用完整研究流程。" }]);
+    setQuestion("");
+  };
+  const suggestions = ["总结核心亮点", "列出主要风险", "生成尽调问题"];
+  if (!open) {
+    return (
+      <aside className="by-company-copilot collapsed" aria-label="公司 Copilot">
+        <button className="by-copilot-rail" aria-label="展开公司 Copilot" aria-expanded="false" title="展开 Company Copilot" onClick={onToggle}><Bot /><span>Copilot</span><PanelRightOpen /></button>
+      </aside>
+    );
+  }
+  return (
+    <aside className="by-company-copilot" aria-label="公司 Copilot">
+      <header><div><Bot /><span><strong>Company Copilot</strong><small>已连接当前公司</small></span></div><div className="by-copilot-header-actions"><em>预览</em><button aria-label="收起公司 Copilot" aria-expanded="true" title="收起 Company Copilot" onClick={onToggle}><PanelRightClose /></button></div></header>
+      <section className="by-copilot-context"><span>当前实体</span><strong>{company.standardName}</strong><p>{company.materialCount} 份材料 · {company.knowledgeCount} 条已确认知识 · {company.pendingCandidateCount} 条待确认</p></section>
+      <div className="by-copilot-messages">{messages.map((message, index) => <article className={message.role} key={`${message.role}-${index}`}><span>{message.role === "assistant" ? "AI" : "你"}</span><p>{message.text}</p></article>)}</div>
+      <div className="by-copilot-suggestions">{suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}</div>
+      <div className="by-copilot-composer"><textarea aria-label="向公司 Copilot 提问" value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }} placeholder="围绕当前公司提问…" /><button aria-label="发送给公司 Copilot" disabled={!question.trim()} onClick={submit}><SendHorizontal /></button></div>
+      <button className="by-copilot-workbench" onClick={onOpenWorkbench}>在研究工作台继续<ArrowRight /></button>
+      <small className="by-copilot-note">回答将遵循来源权限，并区分事实、判断与待确认信息。</small>
+    </aside>
+  );
+}
+
+function EntityPortraitDashboard({ company, confirmed, pending, owner }: { company: CompanyView; confirmed: Claim[]; pending: Claim[]; owner: string }) {
+  const competitors = company.relations.filter((item) => /(?:竞争|竞品|替代|同层)/u.test(item.relationType));
+  const upstream = company.relations.filter((item) => item.direction === "incoming" && !competitors.includes(item));
+  const downstream = company.relations.filter((item) => item.direction === "outgoing" && !competitors.includes(item));
+  const gaps = materialInformationGaps(company);
+  const questions = uniqueStrings([
+    ...gaps.map((item) => item.title),
+    ...pending.map((item) => item.text),
+    ...company.researchRecords.map((item) => item.intent),
+  ]).slice(0, 8);
+  const highlights = confirmed.slice(0, 4);
+  const teamClaims = confirmed.filter((item) => /(?:团队|创始|高管|人物|董事|管理)/u.test(item.category + item.text)).slice(0, 3);
+  const marketSummary = company.latestMaterialAnalysis?.sections?.find((item) => /(?:市场|行业|竞争)/u.test(item.title))?.summary;
+  const financingSummary = company.latestMaterialAnalysis?.sections?.find((item) => /(?:融资|财务|股权|估值)/u.test(item.title))?.summary;
+  const latestMaterial = company.materials[0];
+
+  return (
+    <div className="by-entity-portrait">
+      <section className="by-relation-panorama">
+        <header>
+          <h2>关联性全景</h2>
+          <div><span>上游 {upstream.length}</span><ArrowRight /><strong>{company.standardName} · 本实体</strong><ArrowRight /><span>下游 {downstream.length}</span></div>
+          <em>同层竞对 {competitors.length} · 非流向</em>
+        </header>
+        <div className="by-relation-columns">
+          <RelationGroup title="上游" subtitle="输入 · 供给" items={upstream} empty="暂无已确认上游关系" />
+          <RelationGroup title="下游及客户" subtitle="输出 · 交付" items={downstream} empty="暂无已确认客户关系" />
+          <RelationGroup title="潜在竞对" subtitle="同层 · 替代" items={competitors} empty="暂无已确认竞对" />
+        </div>
+        <footer>交付相关的上下文注释 / 灰=材料内部信息　青=已确认企业关系　蓝=外部来源　虚线=待确认</footer>
+      </section>
+
+      <div className="by-entity-two-up">
+        <section className="by-entity-card by-market-card">
+          <h2>市场维度</h2>
+          <p>{marketSummary || company.description || "尚未形成经证据确认的市场判断。"}</p>
+          <small>行业与主体标签：{company.industryTags.join(" · ") || "待补充"}</small>
+        </section>
+        <section className="by-entity-card by-fund-card">
+          <h2>基金匹配度</h2>
+          <p>{financingSummary || `建议核对 ${company.industryTags.slice(0, 2).join(" / ") || "当前产业方向"} 与基金策略、阶段及地域约束。`}</p>
+          <small>基金偏好数据待接入 · 当前不生成虚构匹配分</small>
+        </section>
+      </div>
+
+      <div className="by-entity-decision-grid">
+        <section className="by-entity-card by-highlight-card">
+          <h2>亮点</h2>
+          {highlights.length ? <ul>{highlights.map((item) => <li key={item.id}>{item.text}</li>)}</ul> : <p>暂无已确认亮点，请先完成材料分析与人工确认。</p>}
+          <small>来源：已确认知识 · 内部材料</small>
+        </section>
+        <section className="by-entity-card by-risk-card">
+          <h2>风险（AI 初步识别）</h2>
+          {gaps.length || pending.length ? <ul>{[...gaps.map((item) => item.title), ...pending.map((item) => item.text)].slice(0, 5).map((item) => <li key={item}>{item}</li>)}</ul> : <p>当前材料未识别出明确风险，不等于无风险。</p>}
+          <small>AI 初步识别 · 不构成投资判断</small>
+        </section>
+        <section className="by-entity-card by-question-card">
+          <header><h2>建议尽调问题（{questions.length} 条）</h2><button>查看全部 {Math.max(questions.length, 8)} 条</button></header>
+          {questions.length ? <ol>{questions.slice(0, 6).map((item) => <li key={item}>{item}</li>)}</ol> : <p>尚未生成尽调问题。可先上传 BP 或发起公司研究。</p>}
+          <small>来源：AI 生成 · 待核验</small>
+        </section>
+      </div>
+
+      <section className="by-entity-section by-team-section">
+        <h2>核心团队与人物关联</h2>
+        {teamClaims.length ? <div>{teamClaims.map((item, index) => <article key={item.id}><a href={`#person-${index}`}>{teamRole(item, index)} <ExternalLink /></a><p>{item.text}</p><small>{item.evidenceIds.length} 条证据 · 已确认</small></article>)}</div> : <div className="by-entity-empty">暂无已确认的核心团队与人物信息。</div>}
+      </section>
+
+      <section className="by-entity-section by-access-history">
+        <header><div><h2>访问记录</h2><p>团队成员围绕本实体的浏览、上传和研究动态。</p></div><span>模拟数据</span></header>
+        <div className="by-access-list">
+          <article><i>张</i><div><strong>张三</strong><span>上传了 BP《{latestMaterial?.fileName || `${company.standardName}商业计划书.pdf`}》</span></div><time>今天 10:32</time></article>
+          <article><i>李</i><div><strong>李四</strong><span>浏览过公司实体页</span></div><time>今天 09:18</time></article>
+          <article><i>王</i><div><strong>王五</strong><span>查看了关联性全景</span></div><time>昨天 16:45</time></article>
+          <article><i>赵</i><div><strong>赵六</strong><span>发起了一次公司研究</span></div><time>08月30日</time></article>
+        </div>
+        <small>当前为演示记录；正式接入后将展示 {owner} 及其他成员的真实访问动态。</small>
+      </section>
+
+      <section className="by-entity-reserved by-external-research">
+        <header><div><h2>外部情报与行研</h2><p>工商 / 新闻 / 舆情 + 行业研究将在此汇总，并注入市场 / 风险 / 关联维度。</p></div></header>
+        <div>
+          <article><strong>[外部网] 新闻 / 舆情</strong>{company.evidence.slice(0, 2).map((item) => <p key={item.id}>{item.excerpt}<small>{item.fileName}{item.page ? ` · 第 ${item.page} 页` : ""}</small></p>)}{!company.evidence.length && <p>暂无外部证据</p>}</article>
+          <article><strong>[行业研究] 行研对照</strong>{company.researchRecords.slice(0, 2).map((item) => <p key={item.runId}>{item.intent}<small>{platformTaskStatus(item.status)} · {relativeDate(item.updatedAt)}</small></p>)}{!company.researchRecords.length && <p>暂无研究记录</p>}</article>
+        </div>
+      </section>
+
+      <EntityDiligencePanel company={company} embedded />
+
+      <details className="by-entity-analysis-details">
+        <summary>最近材料分析详情（原始 13 维度）</summary>
+        <MaterialAnalysisOverview company={company} />
+      </details>
+
+    </div>
+  );
+}
+
+function RelationGroup({ title, subtitle, items, empty }: { title: string; subtitle: string; items: CompanyView["relations"]; empty: string }) {
+  return <section><header><h3>{title}</h3><span>{subtitle}</span></header>{items.length ? items.slice(0, 4).map((item) => <Link to={`/companies/${item.company.companyId}`} key={item.relationId}><span>{item.company.canonicalName}</span><em className={item.status}>{item.relationType}</em></Link>) : <p>{empty}</p>}</section>;
+}
+
+function EntityDiligencePanel({ company, embedded = false }: { company: CompanyView; embedded?: boolean }) {
+  const gaps = materialInformationGaps(company);
+  const latest = company.materials[0];
+  return (
+    <section className={`by-entity-reserved by-diligence-panel ${embedded ? "embedded" : ""}`}>
+      <header><div><h2>尽调与决策</h2><p>工商核验、尽调材料、访谈记录、立项意见、风控意见、IC 纪要将在此汇总。</p></div></header>
+      <article><strong>[尽调材料]</strong><p>{latest ? latest.fileName : "尚无尽调材料"}</p><small>{gaps[0]?.title || "项目推进后，可在此记录核验结论与原文。"}</small></article>
+    </section>
+  );
+}
+
+function EntityLogPanel({ company }: { company: CompanyView }) {
+  return (
+    <section className="by-tab-panel by-entity-log-panel">
+      <header><div><h2>实体日志</h2><p>跨文档导入、研究任务与更新事件按时间累积。</p></div></header>
+      {[...company.materials.map((item) => ({ id: item.documentId, at: item.updatedAt, title: `导入 ${item.fileName}`, detail: materialStatusLabel(item.status) })), ...company.researchRecords.map((item) => ({ id: item.runId, at: item.updatedAt, title: item.intent, detail: platformTaskStatus(item.status) }))].sort((a, b) => +new Date(b.at) - +new Date(a.at)).map((item) => <article key={item.id}><time>{new Date(item.at).toLocaleString("zh-CN")}</time><strong>{item.title}</strong><span>{item.detail}</span></article>)}
+      {!company.materials.length && !company.researchRecords.length && <div className="by-inline-empty">暂无日志</div>}
+    </section>
+  );
+}
+
+function uniqueStrings(items: string[]): string[] {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+}
+
+function teamRole(claim: Claim, index: number): string {
+  const match = claim.text.match(/([\u4e00-\u9fa5A-Za-z·]{2,12})[\s·・]*(CEO|CTO|COO|CFO|创始人|董事长|总经理)/u);
+  return match ? `${match[1]} · ${match[2]}` : `核心人物 ${index + 1}`;
 }
 
 function CompanyDirectory({ companies, activeId }: { companies: CompanyView[]; activeId: string }) {

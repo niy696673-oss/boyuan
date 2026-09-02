@@ -39,6 +39,9 @@ export interface CompanyView extends Company {
   pendingCandidateCount: number;
   hasConflict: boolean;
   industryTags: string[];
+  location?: string;
+  foundedAt?: string;
+  latestFunding?: string;
   materials: CompanyMaterialV1[];
   researchRecords: CompanyResearchRecordV1[];
   relations: CompanyRelationV1[];
@@ -62,6 +65,9 @@ export function companyDirectoryView(item: CompanyDirectoryItem): CompanyView {
       item.profile.primaryIndustry.value,
       item.profile.industryPosition.value,
     ].filter((value): value is string => Boolean(value)),
+    ...(item.profile.location.value ? { location: item.profile.location.value } : {}),
+    ...(item.profile.foundedAt.value ? { foundedAt: item.profile.foundedAt.value } : {}),
+    ...(item.profile.latestFunding.value ? { latestFunding: item.profile.latestFunding.value } : {}),
     materials: [],
     researchRecords: [],
     relations: [],
@@ -104,6 +110,9 @@ export function companyDetailView(detail: CompanyDetailResponse): CompanyView {
         (value, index, values): value is string =>
           Boolean(value) && values.indexOf(value) === index,
       ),
+    ...(detail.profile.location.value ? { location: detail.profile.location.value } : {}),
+    ...(detail.profile.foundedAt.value ? { foundedAt: detail.profile.foundedAt.value } : {}),
+    ...(detail.profile.latestFunding.value ? { latestFunding: detail.profile.latestFunding.value } : {}),
     materials: detail.materials,
     researchRecords: detail.researchRecords,
     relations: detail.relations,

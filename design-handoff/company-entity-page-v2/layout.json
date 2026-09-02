@@ -1,0 +1,89 @@
+{
+  "source_image": "/var/folders/ky/95mh034940q9m95d5jxm7jkc0000gn/T/codex-clipboard-c62ca333-dca2-44dc-8f0b-edfb4d3b4e2b.png",
+  "viewport": { "width": 1192, "height": 1612 },
+  "breakpoints": [
+    { "name": "mobile", "width": 390 },
+    { "name": "tablet", "width": 768 },
+    { "name": "desktop", "width": 1192 }
+  ],
+  "components": [
+    {
+      "id": "entity-page",
+      "type": "page",
+      "bounds": { "x": 28, "y": 6, "width": 1136, "height": 1606 },
+      "layout": { "display": "flex", "direction": "column", "gap": 12 },
+      "box_model": { "padding": { "top": 20, "right": 22, "bottom": 22, "left": 22 }, "border": { "width": 1, "color": "#DDE1E3" }, "radius": 18 },
+      "responsive": "full width below 1192px with 14px mobile gutters"
+    },
+    {
+      "id": "entity-header",
+      "type": "header",
+      "bounds": { "x": 50, "y": 24, "width": 1092, "height": 242 },
+      "children": ["context-title", "company-identity", "view-tabs", "summary-grid"],
+      "layout": { "display": "grid", "direction": "row", "gap": 12 },
+      "responsive": "summary cards collapse from four columns to two and then one"
+    },
+    {
+      "id": "summary-grid",
+      "type": "card-grid",
+      "bounds": { "x": 50, "y": 174, "width": 1092, "height": 90 },
+      "layout": { "display": "grid", "columns": 4, "gap": 18 },
+      "box_model": { "padding": { "top": 12, "right": 14, "bottom": 12, "left": 14 }, "border": { "width": 0, "color": "transparent" }, "radius": 14 }
+    },
+    {
+      "id": "relation-panorama",
+      "type": "relationship-map",
+      "bounds": { "x": 50, "y": 276, "width": 1090, "height": 242 },
+      "layout": { "display": "grid", "columns": 3, "gap": 24 },
+      "box_model": { "padding": { "top": 16, "right": 18, "bottom": 16, "left": 18 }, "border": { "width": 2, "color": "#12998B" }, "radius": 14 },
+      "computed_style": { "background": "#E8F8F5" },
+      "responsive": "stacks upstream, company, downstream and competitor groups on mobile"
+    },
+    {
+      "id": "market-and-fund",
+      "type": "two-column-section",
+      "bounds": { "x": 50, "y": 530, "width": 1092, "height": 139 },
+      "layout": { "display": "grid", "columns": 2, "gap": 18 }
+    },
+    {
+      "id": "decision-row",
+      "type": "three-column-section",
+      "bounds": { "x": 50, "y": 681, "width": 1092, "height": 160 },
+      "layout": { "display": "grid", "columns": 4, "gap": 18 },
+      "responsive": "highlight and risk occupy one column each; questions occupies two columns"
+    },
+    {
+      "id": "team-section",
+      "type": "team-grid",
+      "bounds": { "x": 50, "y": 851, "width": 1092, "height": 170 },
+      "layout": { "display": "grid", "columns": 3, "gap": 20 }
+    },
+    {
+      "id": "import-history",
+      "type": "audit-strip",
+      "bounds": { "x": 50, "y": 1032, "width": 1092, "height": 96 },
+      "layout": { "display": "flex", "direction": "column", "gap": 6 }
+    },
+    {
+      "id": "future-research",
+      "type": "reserved-panel",
+      "bounds": { "x": 50, "y": 1142, "width": 1092, "height": 152 },
+      "layout": { "display": "grid", "columns": 2, "gap": 18 },
+      "box_model": { "padding": { "top": 16, "right": 18, "bottom": 16, "left": 18 }, "border": { "width": 1, "color": "#AEBCCB" }, "radius": 12 }
+    },
+    {
+      "id": "diligence",
+      "type": "reserved-panel",
+      "bounds": { "x": 50, "y": 1312, "width": 1092, "height": 192 },
+      "layout": { "display": "flex", "direction": "column", "gap": 12 },
+      "box_model": { "padding": { "top": 16, "right": 18, "bottom": 16, "left": 18 }, "border": { "width": 1, "color": "#AEBCCB" }, "radius": 12 }
+    },
+    {
+      "id": "phase-two",
+      "type": "footer-note",
+      "bounds": { "x": 50, "y": 1516, "width": 1092, "height": 52 },
+      "layout": { "display": "flex", "direction": "row", "gap": 18 }
+    }
+  ],
+  "tolerance": { "position_px": 4, "size_px": 4, "font_px": 1 }
+}

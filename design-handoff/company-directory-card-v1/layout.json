@@ -1,0 +1,44 @@
+{
+  "source_image": "/var/folders/ky/95mh034940q9m95d5jxm7jkc0000gn/T/codex-clipboard-1f0f3ac9-cf02-4174-966c-b07b1613b293.png",
+  "viewport": { "width": 618, "height": 562 },
+  "breakpoints": [
+    { "name": "mobile", "width": 390 },
+    { "name": "reference-card", "width": 618 },
+    { "name": "desktop", "width": 1440 }
+  ],
+  "components": [
+    {
+      "id": "company-card-heading",
+      "type": "header",
+      "bounds": { "x": 21, "y": 9, "width": 576, "height": 51 },
+      "layout": { "display": "flex", "direction": "column", "gap": 9 },
+      "responsive": "full card width"
+    },
+    {
+      "id": "verified-facts",
+      "type": "section",
+      "bounds": { "x": 21, "y": 72, "width": 588, "height": 154 },
+      "layout": { "display": "grid", "columns": 2, "gap": 12, "padding": 10 },
+      "responsive": "one column below 520px"
+    },
+    {
+      "id": "product-path",
+      "type": "section",
+      "bounds": { "x": 21, "y": 237, "width": 588, "height": 98 },
+      "layout": { "display": "block", "padding": 16 },
+      "responsive": "full card width"
+    },
+    {
+      "id": "core-team",
+      "type": "section",
+      "bounds": { "x": 21, "y": 350, "width": 588, "height": 164 },
+      "layout": { "display": "grid", "columns": 3, "gap": 32 },
+      "responsive": "one column below 520px"
+    }
+  ],
+  "implementation_notes": {
+    "directory": "Repeat the approved card hierarchy for every directory item; use one or two columns based on available width.",
+    "data_integrity": "Render existing directory fields and explicit pending states where the API has no structured team data.",
+    "copilot": "Add a separate sticky 304px company-scoped panel to the right of the detailed entity page."
+  }
+}

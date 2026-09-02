@@ -25,6 +25,7 @@ import {
   type GlobalSearchResults,
   type PlatformNavigationClient,
 } from "../capabilities/navigation/client";
+import boyuanCapitalLogo from "../assets/boyuan-capital-logo.png";
 import type { PlatformNotificationV1 } from "../../shared/research-platform-v1";
 import {
   createReviewQueueClient,
@@ -203,10 +204,7 @@ export function ProductShell({
       </a>
       <header className="by-global-nav">
         <NavLink className="by-brand" to="/" aria-label="博源 AI 首页">
-          <span className="by-brand-symbol">
-            <Sparkles />
-          </span>
-          <strong>博源 AI</strong>
+          <img src={boyuanCapitalLogo} alt="博源资本" />
         </NavLink>
 
         <nav className="by-primary-nav" aria-label="一级导航">

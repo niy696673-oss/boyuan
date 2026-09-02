@@ -1,0 +1,25 @@
+{
+  "colors": {
+    "surface": "#FFFFFF",
+    "subtle_surface": "#F3F4F5",
+    "border": "#DCDFE2",
+    "text_primary": "#20272B",
+    "text_secondary": "#4F5B63",
+    "text_muted": "#8D979F",
+    "link": "#087EC9",
+    "accent": "#079587",
+    "accent_soft": "#E2F3EF"
+  },
+  "typography": {
+    "font_family": "system-ui, sans-serif",
+    "scale": {
+      "company_title": { "size": 20, "weight": 720, "line_height": 25 },
+      "section_title": { "size": 11, "weight": 720, "line_height": 15 },
+      "body": { "size": 9, "weight": 400, "line_height": 13 },
+      "meta": { "size": 8, "weight": 400, "line_height": 12 }
+    }
+  },
+  "radii": { "card": 14, "section": 11, "fact": 8, "pill": 999 },
+  "shadows": { "card": "0 7px 22px rgba(24, 35, 44, 0.04)" },
+  "effects": { "gradient": null, "backdrop_filter": null }
+}
