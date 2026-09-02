@@ -174,6 +174,41 @@ export interface CompanyRelationRecord {
   evidence?: EvidenceRecord;
 }
 
+/** A material-derived natural-person entity linked to a company by role. */
+export interface CompanyPersonRecord {
+  personId: string;
+  name: string;
+  role: string;
+  summary: string;
+  sourceLabel: string;
+  evidence: EvidenceRecord[];
+}
+
+/** An analysis-derived relationship lead, kept separate from confirmed company relations. */
+export interface CompanyRelationInsightRecord {
+  insightId: string;
+  targetName: string;
+  category: 'upstream' | 'downstream' | 'customer' | 'competitor';
+  relationType: string;
+  description: string;
+  sourceLabel: string;
+  evidence: EvidenceRecord[];
+}
+
+export interface CompanyCopilotMessageRecord {
+  messageId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface CompanyCopilotThreadRecord {
+  threadId: string;
+  companyId: string;
+  status: 'idle';
+  messages: CompanyCopilotMessageRecord[];
+}
+
 export interface CompanyIndustryPlacementRecord {
   industryId: string;
   industryName: string;
@@ -262,6 +297,8 @@ export interface CompanyDetail extends CompanyRecord {
   pendingCandidates: KnowledgeCandidateRecord[];
   researchRecords: CompanyResearchSummary[];
   relations: CompanyRelationRecord[];
+  people: CompanyPersonRecord[];
+  relationInsights: CompanyRelationInsightRecord[];
   industryPlacements: CompanyIndustryPlacementRecord[];
   latestMaterialAnalysis?: LatestMaterialAnalysisSummary & {
     sections: AnalysisSectionRecord[];
@@ -630,6 +667,11 @@ export interface PlatformModule {
   restoreKnowledge(knowledgeId: string, expectedCompanyVersion: number): Promise<CompanyDetail>;
   listCompanies(): Promise<CompanyCardRecord[]>;
   getCompany(companyId: string): Promise<CompanyDetail>;
+  getCompanyCopilot(companyId: string): Promise<CompanyCopilotThreadRecord>;
+  sendCompanyCopilotMessage(
+    companyId: string,
+    content: string,
+  ): Promise<CompanyCopilotThreadRecord>;
   resolveSubject(input: ResolveSubjectInput): Promise<CompanyDetail>;
   getCompanyResearchWorkflowSources(
     companyId: string,

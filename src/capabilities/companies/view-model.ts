@@ -3,7 +3,9 @@ import type {
   CompanyDirectoryItem,
   CompanyIndustryPlacementV1,
   CompanyMaterialV1,
+  CompanyPersonV1,
   CompanyRelationV1,
+  CompanyRelationInsightV1,
   CompanyResearchRecordV1,
   LatestMaterialAnalysisV1,
   ReviewCandidate,
@@ -45,6 +47,8 @@ export interface CompanyView extends Company {
   materials: CompanyMaterialV1[];
   researchRecords: CompanyResearchRecordV1[];
   relations: CompanyRelationV1[];
+  people: CompanyPersonV1[];
+  relationInsights: CompanyRelationInsightV1[];
   industryPlacements: CompanyIndustryPlacementV1[];
   latestMaterialAnalysis?: CompanyMaterialAnalysisView;
   analysisStatus: CompanyAnalysisStatus;
@@ -71,6 +75,8 @@ export function companyDirectoryView(item: CompanyDirectoryItem): CompanyView {
     materials: [],
     researchRecords: [],
     relations: [],
+    people: [],
+    relationInsights: [],
     industryPlacements: [],
     ...(item.latestMaterialAnalysis
       ? { latestMaterialAnalysis: item.latestMaterialAnalysis }
@@ -116,6 +122,8 @@ export function companyDetailView(detail: CompanyDetailResponse): CompanyView {
     materials: detail.materials,
     researchRecords: detail.researchRecords,
     relations: detail.relations,
+    people: detail.people || [],
+    relationInsights: detail.relationInsights || [],
     industryPlacements: detail.industryPlacements,
     ...(detail.latestMaterialAnalysis
       ? { latestMaterialAnalysis: detail.latestMaterialAnalysis }

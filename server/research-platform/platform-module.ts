@@ -27,6 +27,7 @@ import type {
   CompanyMaterialRecord,
   CompanyResearchRecord,
   CompanyProfile,
+  CompanyCopilotThreadRecord,
   ConfirmCompanyListRowsInput,
   CompanyDetail,
   CompanyMatchCase,
@@ -83,6 +84,10 @@ import type {
   CompanyResearchWorkflowSkill,
 } from './research/contracts.js';
 import type {
+  CompanyCopilotContext,
+  CompanyCopilotPort,
+} from './copilot/contracts.js';
+import type {
   IndustryResearchMaterial,
   IndustryResearchPort,
 } from './industry-research/contracts.js';
@@ -136,6 +141,7 @@ const DEFAULT_LEASE_MS = 30_000;
 const MAX_AI_BLOCKS = 200;
 const MAX_AI_BLOCK_CHARACTERS = 8_000;
 const MAX_AI_TOTAL_CHARACTERS = 64_000;
+const MAX_COPILOT_MESSAGE_CHARACTERS = 12_000;
 
 interface PlatformModuleOptions {
   dataRoot: string;
@@ -149,6 +155,7 @@ interface PlatformModuleOptions {
   semanticSearch?: SemanticSearchPort;
   companyListExtraction?: CompanyListExtractionPort;
   conversationRelatedness?: ConversationRelatednessPort;
+  companyCopilot?: CompanyCopilotPort;
   now?: () => Date;
   nextId?: () => string;
   leaseMs?: number;
@@ -292,6 +299,7 @@ class SqlitePlatformModule implements PlatformModule {
   readonly #semanticSearch: SemanticSearchPort;
   readonly #companyListExtraction: CompanyListExtractionPort;
   readonly #conversationRelatedness: ConversationRelatednessPort;
+  readonly #companyCopilot?: CompanyCopilotPort;
   readonly #companySearches = new Map<string, Promise<void>>();
   readonly #companyQuickAnalyses = new Map<string, Promise<CompanyQuickCardResult>>();
   #finalizeQueue: Promise<void> = Promise.resolve();
@@ -323,6 +331,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#semanticSearch = options.semanticSearch ?? createDeterministicSemanticSearchAdapter();
     this.#companyListExtraction = options.companyListExtraction ?? createDeterministicCompanyListExtractionAdapter();
     this.#conversationRelatedness = options.conversationRelatedness ?? createDeterministicConversationRelatednessAdapter();
+    this.#companyCopilot = options.companyCopilot;
     this.#db = new DatabaseSync(join(databaseRoot, 'platform.sqlite'));
     this.#migrate();
   }
@@ -1202,9 +1211,58 @@ class SqlitePlatformModule implements PlatformModule {
           ...(item.evidence_id ? { evidence: this.#evidenceById(item.evidence_id) } : {}),
         };
       }),
+      people: this.#companyPeople(companyId),
+      relationInsights: this.#companyRelationInsights(companyId),
       industryPlacements: this.#companyIndustryPlacements(companyId),
       ...(latestMaterialAnalysis ? { latestMaterialAnalysis } : {}),
     };
+  }
+
+  async getCompanyCopilot(companyId: string): Promise<CompanyCopilotThreadRecord> {
+    this.#assertOpen();
+    this.#companyRecord(companyId);
+    return this.#companyCopilotThreadRecord(this.#ensureCompanyCopilotThread(companyId).thread_id);
+  }
+
+  async sendCompanyCopilotMessage(companyId: string, content: string): Promise<CompanyCopilotThreadRecord> {
+    this.#assertOpen();
+    const company = this.#companyRecord(companyId);
+    if (!this.#companyCopilot) {
+      throw new PlatformInputError('company_copilot_unavailable', '公司 Copilot 当前不可用');
+    }
+    const question = content.trim();
+    if (!question) throw new PlatformInputError('copilot_message_required', '请输入要向 Copilot 提出的问题');
+    if (question.length > MAX_COPILOT_MESSAGE_CHARACTERS) {
+      throw new PlatformInputError('copilot_message_too_long', `Copilot 消息不能超过 ${MAX_COPILOT_MESSAGE_CHARACTERS} 个字符`);
+    }
+    const thread = this.#ensureCompanyCopilotThread(companyId);
+    const result = await this.#companyCopilot.chat({
+      companyId,
+      companyName: company.canonicalName,
+      question,
+      context: this.#companyCopilotContext(companyId),
+      ...(thread.session_id ? { sessionId: thread.session_id } : {}),
+    });
+    const now = this.#now().toISOString();
+    this.#transaction(() => {
+      const position = this.#db.prepare(`
+        SELECT COALESCE(MAX(position), 0) AS position
+        FROM company_copilot_messages WHERE thread_id = ?
+      `).get(thread.thread_id) as { position: number };
+      this.#db.prepare(`
+        INSERT INTO company_copilot_messages (
+          message_id, thread_id, role, content, position, created_at
+        ) VALUES (?, ?, 'user', ?, ?, ?), (?, ?, 'assistant', ?, ?, ?)
+      `).run(
+        this.#nextId(), thread.thread_id, question, position.position + 1, now,
+        this.#nextId(), thread.thread_id, result.answer, position.position + 2, now,
+      );
+      this.#db.prepare(`
+        UPDATE company_copilot_threads SET session_id = ?, provider_id = ?, model_id = ?,
+          status = 'idle', updated_at = ? WHERE thread_id = ?
+      `).run(result.sessionId, result.providerId, result.modelId, now, thread.thread_id);
+    });
+    return this.#companyCopilotThreadRecord(thread.thread_id);
   }
 
   async getCompanyResearchWorkflowSources(companyId: string) {
@@ -2807,10 +2865,41 @@ class SqlitePlatformModule implements PlatformModule {
       })),
       ...(task.session_id ? { sessionId: task.session_id } : {}),
     });
+    const people = [...new Map((result.people ?? []).map((person) => [
+      `${normalizeEntityLabel(person.name)}\u0000${normalizeEntityLabel(person.role)}`,
+      person,
+    ])).values()];
+    const relationInsights = [...new Map((result.relations ?? []).map((relation) => [
+      `${relation.category}\u0000${normalizeEntityLabel(relation.targetName)}\u0000${normalizeEntityLabel(relation.relationType)}`,
+      relation,
+    ])).values()];
     const validBlockIds = new Set(analysisBlocks.map((block) => block.blockId));
     for (const section of result.sections) assertKnownBlockIds(section.blockIds, validBlockIds, `section ${section.key}`, true);
     for (const [index, candidate] of result.candidates.entries()) {
       assertKnownBlockIds(candidate.blockIds, validBlockIds, `candidate ${index}`, false);
+    }
+    for (const [index, person] of people.entries()) {
+      assertKnownBlockIds(person.blockIds, validBlockIds, `person ${index}`, false);
+    }
+    for (const [index, relation] of relationInsights.entries()) {
+      assertKnownBlockIds(relation.blockIds, validBlockIds, `relation ${index}`, false);
+    }
+    const existingPersonIds = new Map<string, string>();
+    const existingPeople = this.#db.prepare(`
+      SELECT person.normalized_name, person.person_id
+      FROM company_person_relations relation
+      JOIN people person ON person.person_id = relation.person_id
+      WHERE relation.company_id = ?
+      ORDER BY CASE WHEN relation.source_task_id = ? THEN 0 ELSE 1 END,
+        relation.updated_at DESC
+    `).all(company.company_id, step.taskId) as unknown as Array<{
+      normalized_name: string;
+      person_id: string;
+    }>;
+    for (const person of existingPeople) {
+      if (!existingPersonIds.has(person.normalized_name)) {
+        existingPersonIds.set(person.normalized_name, person.person_id);
+      }
     }
     const now = this.#now().toISOString();
     this.#transaction(() => {
@@ -2825,6 +2914,89 @@ class SqlitePlatformModule implements PlatformModule {
           candidate_drafts_json = excluded.candidate_drafts_json,
           tool_usage_json = excluded.tool_usage_json, created_at = excluded.created_at
       `).run(this.#nextId(), step.taskId, result.rawText, JSON.stringify(result.candidates), JSON.stringify(result.toolUsage), now);
+      this.#db.prepare('DELETE FROM company_person_relations WHERE source_task_id = ?').run(step.taskId);
+      this.#db.prepare('DELETE FROM company_relation_insights WHERE source_task_id = ?').run(step.taskId);
+      for (const person of people) {
+        const normalizedName = normalizeEntityLabel(person.name);
+        const existingPersonId = existingPersonIds.get(normalizedName);
+        let personRow = existingPersonId ? { person_id: existingPersonId } : undefined;
+        if (!personRow) {
+          personRow = { person_id: this.#nextId() };
+          this.#db.prepare(`
+            INSERT INTO people (
+              person_id, canonical_name, normalized_name, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+          `).run(personRow.person_id, person.name, normalizedName, now, now);
+        } else {
+          this.#db.prepare('UPDATE people SET updated_at = ? WHERE person_id = ?')
+            .run(now, personRow.person_id);
+        }
+        existingPersonIds.set(normalizedName, personRow.person_id);
+        const personRelationId = this.#nextId();
+        this.#db.prepare(`
+          INSERT INTO company_person_relations (
+            person_relation_id, company_id, person_id, role, summary,
+            source_task_id, source_document_id, source_label, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          personRelationId,
+          company.company_id,
+          personRow.person_id,
+          person.role,
+          person.summary,
+          step.taskId,
+          target.documentId,
+          target.fileName,
+          now,
+          now,
+        );
+        for (const blockId of person.blockIds) {
+          const block = blocks.find((candidate) => candidate.blockId === blockId);
+          if (!block) throw new Error('person_evidence_block_missing');
+          const evidenceId = this.#evidenceForBlock(target.documentId, block, now);
+          this.#db.prepare(`
+            INSERT INTO company_person_relation_evidence (person_relation_id, evidence_id)
+            VALUES (?, ?)
+          `).run(personRelationId, evidenceId);
+        }
+      }
+      for (const relation of relationInsights) {
+        const insightId = this.#nextId();
+        this.#db.prepare(`
+          INSERT INTO company_relation_insights (
+            insight_id, company_id, target_name, category, relation_type, description,
+            source_task_id, source_document_id, source_label, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          insightId,
+          company.company_id,
+          relation.targetName,
+          relation.category,
+          relation.relationType,
+          relation.description,
+          step.taskId,
+          target.documentId,
+          target.fileName,
+          now,
+          now,
+        );
+        for (const blockId of relation.blockIds) {
+          const block = blocks.find((candidate) => candidate.blockId === blockId);
+          if (!block) throw new Error('relation_evidence_block_missing');
+          const evidenceId = this.#evidenceForBlock(target.documentId, block, now);
+          this.#db.prepare(`
+            INSERT INTO company_relation_insight_evidence (insight_id, evidence_id)
+            VALUES (?, ?)
+          `).run(insightId, evidenceId);
+        }
+      }
+      this.#db.prepare(`
+        DELETE FROM people
+        WHERE NOT EXISTS (
+          SELECT 1 FROM company_person_relations relation
+          WHERE relation.person_id = people.person_id
+        )
+      `).run();
       this.#db.prepare(`
         DELETE FROM analysis_section_evidence WHERE section_id IN (
           SELECT section_id FROM analysis_sections WHERE task_id = ?
@@ -3942,6 +4114,172 @@ class SqlitePlatformModule implements PlatformModule {
     `).all(companyId, ...knowledgeTypes) as unknown as Array<{ status: string }>;
     if (candidates.some((item) => item.status === 'conflicted')) return { state: 'conflicted' };
     return { state: candidates.length > 0 ? 'pending' : 'missing' };
+  }
+
+  #companyPeople(companyId: string): CompanyDetail['people'] {
+    const rows = this.#db.prepare(`
+      SELECT relation.person_relation_id, relation.person_id, person.canonical_name,
+        relation.role, relation.summary, relation.source_label
+      FROM company_person_relations relation
+      JOIN people person ON person.person_id = relation.person_id
+      WHERE relation.company_id = ?
+      ORDER BY relation.updated_at DESC, relation.person_relation_id DESC
+    `).all(companyId) as unknown as Array<{
+      person_relation_id: string;
+      person_id: string;
+      canonical_name: string;
+      role: string;
+      summary: string;
+      source_label: string;
+    }>;
+    const seen = new Set<string>();
+    return rows.flatMap((row) => {
+      if (seen.has(row.person_id)) return [];
+      seen.add(row.person_id);
+      return [{
+        personId: row.person_id,
+        name: row.canonical_name,
+        role: row.role,
+        summary: row.summary,
+        sourceLabel: row.source_label,
+        evidence: this.#evidenceRecords(`
+          WHERE e.evidence_id IN (
+            SELECT evidence_id FROM company_person_relation_evidence
+            WHERE person_relation_id = ?
+          )
+        `, row.person_relation_id),
+      }];
+    });
+  }
+
+  #companyRelationInsights(companyId: string): CompanyDetail['relationInsights'] {
+    const rows = this.#db.prepare(`
+      SELECT insight_id, target_name, category, relation_type, description, source_label
+      FROM company_relation_insights WHERE company_id = ?
+      ORDER BY updated_at DESC, insight_id DESC
+    `).all(companyId) as unknown as Array<{
+      insight_id: string;
+      target_name: string;
+      category: string;
+      relation_type: string;
+      description: string;
+      source_label: string;
+    }>;
+    const seen = new Set<string>();
+    return rows.flatMap((row) => {
+      const key = `${row.category}\u0000${normalizeEntityLabel(row.target_name)}\u0000${normalizeEntityLabel(row.relation_type)}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{
+        insightId: row.insight_id,
+        targetName: row.target_name,
+        category: row.category as CompanyDetail['relationInsights'][number]['category'],
+        relationType: row.relation_type,
+        description: row.description,
+        sourceLabel: row.source_label,
+        evidence: this.#evidenceRecords(`
+          WHERE e.evidence_id IN (
+            SELECT evidence_id FROM company_relation_insight_evidence
+            WHERE insight_id = ?
+          )
+        `, row.insight_id),
+      }];
+    });
+  }
+
+  #ensureCompanyCopilotThread(companyId: string): {
+    thread_id: string;
+    session_id: string | null;
+  } {
+    const existing = this.#db.prepare(`
+      SELECT thread_id, session_id FROM company_copilot_threads WHERE company_id = ?
+    `).get(companyId) as { thread_id: string; session_id: string | null } | undefined;
+    if (existing) return existing;
+    const threadId = this.#nextId();
+    const now = this.#now().toISOString();
+    this.#db.prepare(`
+      INSERT INTO company_copilot_threads (
+        thread_id, company_id, status, created_at, updated_at
+      ) VALUES (?, ?, 'idle', ?, ?)
+    `).run(threadId, companyId, now, now);
+    return { thread_id: threadId, session_id: null };
+  }
+
+  #companyCopilotThreadRecord(threadId: string): CompanyCopilotThreadRecord {
+    const thread = this.#db.prepare(`
+      SELECT thread_id, company_id FROM company_copilot_threads WHERE thread_id = ?
+    `).get(threadId) as { thread_id: string; company_id: string } | undefined;
+    if (!thread) throw new PlatformNotFoundError(`company copilot thread not found: ${threadId}`);
+    const messages = this.#db.prepare(`
+      SELECT message_id, role, content, created_at
+      FROM company_copilot_messages WHERE thread_id = ?
+      ORDER BY position, message_id
+    `).all(threadId) as unknown as Array<{
+      message_id: string;
+      role: string;
+      content: string;
+      created_at: string;
+    }>;
+    return {
+      threadId: thread.thread_id,
+      companyId: thread.company_id,
+      status: 'idle',
+      messages: messages.map((message) => ({
+        messageId: message.message_id,
+        role: message.role as CompanyCopilotThreadRecord['messages'][number]['role'],
+        content: message.content,
+        createdAt: message.created_at,
+      })),
+    };
+  }
+
+  #companyCopilotContext(companyId: string): CompanyCopilotContext {
+    const confirmedKnowledge = this.#knowledgeRecords(companyId)
+      .filter((item) => item.status === 'current')
+      .slice(0, 40)
+      .map((item) => ({
+        text: compactCopilotText(`${item.knowledgeType}：${item.statement}${item.value ? `；${item.value}` : ''}`),
+        ...(copilotEvidenceLabel(item.evidence) ? { source: copilotEvidenceLabel(item.evidence) } : {}),
+      }));
+    const materialRows = this.#db.prepare(`
+      SELECT section.summary, document.file_name
+      FROM analysis_sections section
+      JOIN analysis_tasks task ON task.task_id = section.task_id
+      JOIN conversation_companies link ON link.conversation_id = task.conversation_id
+      JOIN conversations conversation ON conversation.conversation_id = task.conversation_id
+      JOIN documents document ON document.document_id = conversation.primary_document_id
+      WHERE link.company_id = ? AND task.task_type = 'material_analysis'
+        AND task.status = 'completed'
+      ORDER BY task.updated_at DESC, section.created_at DESC
+      LIMIT 36
+    `).all(companyId) as unknown as Array<{ summary: string; file_name: string }>;
+    const people = this.#companyPeople(companyId).slice(0, 12);
+    const relations = this.#companyRelationInsights(companyId).slice(0, 20);
+    const materialSummaries = compactCopilotContextItems([
+      ...materialRows
+        .filter((item) => item.summary.trim() && !/^(?:材料未披露|证据不足)$/u.test(item.summary.trim()))
+        .map((item) => ({ text: compactCopilotText(item.summary), source: item.file_name })),
+      ...people.map((person) => ({
+        text: compactCopilotText(`人物：${person.name}｜${person.role}｜${person.summary}`),
+        source: person.sourceLabel,
+      })),
+      ...relations.map((relation) => ({
+        text: compactCopilotText(`关联：${relation.targetName}｜${relation.relationType}｜${relation.description}`),
+        source: relation.sourceLabel,
+      })),
+    ], 48);
+    const pendingInformation = this.#candidateRecords(
+      "WHERE kc.company_id = ? AND kc.status IN ('pending', 'conflicted')",
+      companyId,
+    ).slice(0, 32).map((item) => ({
+      text: compactCopilotText(`${item.status === 'conflicted' ? '冲突' : '待确认'}：${item.statement}${item.value ? `；${item.value}` : ''}`),
+      ...(copilotEvidenceLabel(item.evidence) ? { source: copilotEvidenceLabel(item.evidence) } : {}),
+    }));
+    return {
+      confirmedKnowledge: compactCopilotContextItems(confirmedKnowledge, 40),
+      materialSummaries,
+      pendingInformation: compactCopilotContextItems(pendingInformation, 32),
+    };
   }
 
   #companyMaterials(companyId: string): CompanyDetail['materials'] {
@@ -5344,6 +5682,8 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateSubjectIdentitySchema();
     this.#migrateCompanyQuickCardSchema();
     this.#migrateFundProfilesSchema();
+    this.#migrateAnalysisEntitySchema();
+    this.#migrateCompanyCopilotSchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -6150,6 +6490,123 @@ class SqlitePlatformModule implements PlatformModule {
       this.#db.prepare(
         'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (19, ?)',
       ).run(now);
+    });
+  }
+
+  #migrateAnalysisEntitySchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 20',
+    ).get();
+    const complete = [
+      'people',
+      'company_person_relations',
+      'company_person_relation_evidence',
+      'company_relation_insights',
+      'company_relation_insight_evidence',
+    ].every((tableName) => this.#databaseTableExists(tableName));
+    if (applied && complete) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS people (
+          person_id TEXT PRIMARY KEY,
+          canonical_name TEXT NOT NULL,
+          normalized_name TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS company_person_relations (
+          person_relation_id TEXT PRIMARY KEY,
+          company_id TEXT NOT NULL REFERENCES companies(company_id),
+          person_id TEXT NOT NULL REFERENCES people(person_id),
+          role TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          source_task_id TEXT NOT NULL REFERENCES analysis_tasks(task_id),
+          source_document_id TEXT NOT NULL REFERENCES documents(document_id),
+          source_label TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE (source_task_id, person_id, role)
+        );
+
+        CREATE TABLE IF NOT EXISTS company_person_relation_evidence (
+          person_relation_id TEXT NOT NULL REFERENCES company_person_relations(person_relation_id) ON DELETE CASCADE,
+          evidence_id TEXT NOT NULL REFERENCES evidence(evidence_id),
+          PRIMARY KEY (person_relation_id, evidence_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS company_relation_insights (
+          insight_id TEXT PRIMARY KEY,
+          company_id TEXT NOT NULL REFERENCES companies(company_id),
+          target_name TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN ('upstream', 'downstream', 'customer', 'competitor')),
+          relation_type TEXT NOT NULL,
+          description TEXT NOT NULL,
+          source_task_id TEXT NOT NULL REFERENCES analysis_tasks(task_id),
+          source_document_id TEXT NOT NULL REFERENCES documents(document_id),
+          source_label TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE (source_task_id, target_name, category, relation_type)
+        );
+
+        CREATE TABLE IF NOT EXISTS company_relation_insight_evidence (
+          insight_id TEXT NOT NULL REFERENCES company_relation_insights(insight_id) ON DELETE CASCADE,
+          evidence_id TEXT NOT NULL REFERENCES evidence(evidence_id),
+          PRIMARY KEY (insight_id, evidence_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS company_person_relations_company_idx
+          ON company_person_relations(company_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS company_person_relations_person_idx
+          ON company_person_relations(person_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS people_normalized_name_idx
+          ON people(normalized_name);
+        CREATE INDEX IF NOT EXISTS company_relation_insights_company_idx
+          ON company_relation_insights(company_id, category, updated_at DESC);
+      `);
+      this.#db.prepare(
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (20, ?)',
+      ).run(this.#now().toISOString());
+    });
+  }
+
+  #migrateCompanyCopilotSchema(): void {
+    const applied = this.#db.prepare(
+      'SELECT 1 AS applied FROM schema_migrations WHERE version = 21',
+    ).get();
+    const complete = ['company_copilot_threads', 'company_copilot_messages']
+      .every((tableName) => this.#databaseTableExists(tableName));
+    if (applied && complete) return;
+    this.#transaction(() => {
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS company_copilot_threads (
+          thread_id TEXT PRIMARY KEY,
+          company_id TEXT NOT NULL UNIQUE REFERENCES companies(company_id),
+          session_id TEXT,
+          provider_id TEXT,
+          model_id TEXT,
+          status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'failed')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS company_copilot_messages (
+          message_id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL REFERENCES company_copilot_threads(thread_id) ON DELETE CASCADE,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+          content TEXT NOT NULL,
+          position INTEGER NOT NULL CHECK (position > 0),
+          created_at TEXT NOT NULL,
+          UNIQUE (thread_id, position)
+        );
+
+        CREATE INDEX IF NOT EXISTS company_copilot_messages_thread_idx
+          ON company_copilot_messages(thread_id, position);
+      `);
+      this.#db.prepare(
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (21, ?)',
+      ).run(this.#now().toISOString());
     });
   }
 
@@ -6974,6 +7431,35 @@ function uniqueEvidence(values: EvidenceRecord[]): EvidenceRecord[] {
 function semanticText(values: string[], maxLength = 30_000): string {
   const normalized = values.map((value) => value.trim()).filter(Boolean).join('\n');
   return normalized.length <= maxLength ? normalized : normalized.slice(0, maxLength);
+}
+
+function normalizeEntityLabel(value: string): string {
+  return value.normalize('NFKC').replace(/[\s\u3000]+/gu, '').toLocaleLowerCase('zh-CN');
+}
+
+function compactCopilotText(value: string, maxLength = 1_800): string {
+  const normalized = value.replace(/\s+/gu, ' ').trim();
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}…`;
+}
+
+function copilotEvidenceLabel(evidence: EvidenceRecord[]): string | undefined {
+  const source = evidence.find((item) => item.fileName || item.title || item.site || item.url);
+  return source?.fileName ?? source?.title ?? source?.site ?? source?.url;
+}
+
+function compactCopilotContextItems(
+  items: CompanyCopilotContext['confirmedKnowledge'],
+  limit: number,
+): CompanyCopilotContext['confirmedKnowledge'] {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    const text = compactCopilotText(item.text);
+    if (!text) return [];
+    const key = `${text}\u0000${item.source ?? ''}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ text, ...(item.source ? { source: item.source } : {}) }];
+  }).slice(0, limit);
 }
 
 function boundedAiBlocks(blocks: ParsedBlock[]): ParsedBlock[] {
