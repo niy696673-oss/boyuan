@@ -53,6 +53,7 @@ describe("全局待确认数量", () => {
       </MemoryRouter>,
     );
 
+    expect(screen.getByRole("img", { name: "博源资本" })).toBeTruthy();
     expect(
       await screen.findByRole("link", { name: /待确认\s*4/ }),
     ).toBeTruthy();

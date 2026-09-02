@@ -646,9 +646,6 @@ export function WorkbenchPage({
       {!activeResearch ? (
         <section className="by-workbench-home">
           <div className="by-home-center">
-            <div className="by-assistant-mark">
-              <Sparkles />
-            </div>
             <h1>今天想研究什么？</h1>
             <p>
               提交问题或材料，博源 AI
