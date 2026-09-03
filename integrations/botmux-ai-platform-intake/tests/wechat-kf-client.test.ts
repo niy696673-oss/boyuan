@@ -46,6 +46,7 @@ describe('WechatKfClient', () => {
     })).resolves.toEqual({
       nextCursor: 'cursor-after',
       hasMore: false,
+      recalledMessageIds: [],
       messages: [{
         messageId: 'message-1',
         openKfid: 'wkAJ2GCAAAexample',
@@ -53,6 +54,67 @@ describe('WechatKfClient', () => {
         receivedAt: new Date(1_788_000_000_000).toISOString(),
         mediaId: 'media-1',
       }],
+    });
+  });
+
+  it('supports cursor recovery without a callback token and reports recalled messages', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/cgi-bin/gettoken') {
+        return Response.json({ errcode: 0, errmsg: 'ok', access_token: 'access-token', expires_in: 7200 });
+      }
+      if (url.pathname === '/cgi-bin/kf/sync_msg') {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          cursor: 'cursor-before',
+          limit: 1000,
+          open_kfid: 'wkAJ2GCAAAexample',
+        });
+        return Response.json({
+          errcode: 0,
+          errmsg: 'ok',
+          next_cursor: 'cursor-after',
+          has_more: 0,
+          msg_list: [
+            {
+              msgid: 'message-1',
+              open_kfid: 'wkAJ2GCAAAexample',
+              external_userid: 'wmAJ2GCAAAcustomer',
+              send_time: 1_788_000_000,
+              origin: 3,
+              msgtype: 'file',
+              file: { media_id: 'media-1' },
+            },
+            {
+              msgid: 'recall-event-1',
+              send_time: 1_788_000_001,
+              origin: 4,
+              msgtype: 'event',
+              event: { event_type: 'user_recall_msg', recall_msgid: 'message-1' },
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected_url:${url.pathname}`);
+    });
+    const client = new WechatKfClient({
+      corpId: 'ww1234567890abcdef',
+      secret: 'application-secret',
+    }, fetcher);
+
+    await expect(client.syncMessages({
+      openKfid: 'wkAJ2GCAAAexample',
+      cursor: 'cursor-before',
+    })).resolves.toEqual({
+      nextCursor: 'cursor-after',
+      hasMore: false,
+      messages: [{
+        messageId: 'message-1',
+        openKfid: 'wkAJ2GCAAAexample',
+        externalUserId: 'wmAJ2GCAAAcustomer',
+        receivedAt: new Date(1_788_000_000_000).toISOString(),
+        mediaId: 'media-1',
+      }],
+      recalledMessageIds: ['message-1'],
     });
   });
 

@@ -70,6 +70,8 @@ export WECOM_CORP_ID=replace-with-the-enterprise-corp-id
 export WECHAT_KF_APP_SECRET=replace-with-the-authorized-application-secret
 export WECHAT_KF_CALLBACK_TOKEN=replace-with-1-to-32-alphanumeric-characters
 export WECHAT_KF_ENCODING_AES_KEY=replace-with-exactly-43-alphanumeric-characters
+# Optional: callback-gap recovery; valid range 30000-3600000 ms, default 60000.
+export WECHAT_KF_RECOVERY_POLL_INTERVAL_MS=60000
 
 npm run build
 npm run start:wechat-kf
@@ -77,7 +79,7 @@ npm run start:wechat-kf
 
 The service binds to loopback on port `9481` by default. Publish only its `/callback` path behind HTTPS, then enter that URL, the same callback token, and the same EncodingAESKey under the self-built application's “接收消息服务器” setting. Enterprise WeChat verifies the URL immediately with an encrypted GET request, so the service and HTTPS endpoint must already be running. After the callback is saved, add the server's stable public egress IP under “企业可信 IP”. The application must also be selected under 微信客服 → API → 可调用接口的应用.
 
-When a callback arrives, the service verifies its SHA-1 signature and AES-256-CBC envelope, responds `success` before analysis starts, and uses `kf/sync_msg` with a durable per-account cursor. Only customer-originated PDF files enter phase one. The media file is capped at the official 20 MB limit, checked by PDF magic bytes, written with mode `0600`, uploaded to the existing `wecom` platform intake API, and then removed. The customer gets one processing message followed by the same BP quick-result fields used by the intelligent-bot channel. Long results are split on line boundaries below the official 2,048-byte text limit, while the workbench deep-analysis conversation starts independently in the background.
+When a callback arrives, the service verifies its SHA-1 signature and AES-256-CBC envelope, responds `success` before analysis starts, and uses `kf/sync_msg` with a durable per-account cursor. A low-frequency cursor poll recovers gaps when callback delivery is unavailable; callbacks remain the primary low-latency path because tokenless sync is rate-limited by Enterprise WeChat. Each sync window is collected before ingestion so files recalled later in the same window are skipped, remaining PDFs are processed sequentially, and the cursor advances only after ingestion succeeds. Only customer-originated PDF files enter phase one. The media file is capped at the official 20 MB limit, checked by PDF magic bytes, written with mode `0600`, uploaded to the existing `wecom` platform intake API, and then removed. The customer gets one processing message followed by the same BP quick-result fields used by the intelligent-bot channel. Long results are split on line boundaries below the official 2,048-byte text limit, while the workbench deep-analysis conversation starts independently in the background.
 
 The complete local integration can be verified without a real tenant:
 
