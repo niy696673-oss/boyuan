@@ -2,11 +2,12 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { dirname } from 'node:path';
 import type { DirectWechatKfFileIngress } from './direct-wechat-kf-intake.js';
 import type { WechatKfCallbackEvent } from './wechat-kf-callback.js';
-import type { WechatKfClient } from './wechat-kf-client.js';
+import type { WechatKfClient, WechatKfFileMessage } from './wechat-kf-client.js';
 
 export interface WechatKfCursorStore {
   get(openKfid: string): string | undefined;
   put(openKfid: string, cursor: string): void;
+  listOpenKfids(): string[];
 }
 
 export interface WechatKfMessagePumpOptions {
@@ -25,33 +26,55 @@ export class WechatKfMessagePump {
 
   async handleEvent(event: WechatKfCallbackEvent): Promise<void> {
     if (!event.openKfid) throw new Error('wechat_kf_callback_open_kfid_missing');
-    const previous = this.#active.get(event.openKfid) ?? Promise.resolve();
+    await this.#enqueue(event.token, event.openKfid);
+  }
+
+  async pollKnownAccounts(): Promise<void> {
+    await Promise.all(this.#options.cursorStore.listOpenKfids().map((openKfid) => (
+      this.#enqueue(undefined, openKfid)
+    )));
+  }
+
+  async #enqueue(callbackToken: string | undefined, openKfid: string): Promise<void> {
+    const previous = this.#active.get(openKfid) ?? Promise.resolve();
     const current = previous
       .catch(() => undefined)
-      .then(() => this.#pull(event.token, event.openKfid!));
-    this.#active.set(event.openKfid, current);
+      .then(() => this.#pull(callbackToken, openKfid));
+    this.#active.set(openKfid, current);
     try {
       await current;
     } finally {
-      if (this.#active.get(event.openKfid) === current) this.#active.delete(event.openKfid);
+      if (this.#active.get(openKfid) === current) this.#active.delete(openKfid);
     }
   }
 
-  async #pull(callbackToken: string, openKfid: string): Promise<void> {
+  async #pull(callbackToken: string | undefined, openKfid: string): Promise<void> {
     let cursor = this.#options.cursorStore.get(openKfid);
+    let finalCursor = cursor;
+    const messages: WechatKfFileMessage[] = [];
+    const recalledMessageIds = new Set<string>();
     for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
       const page = await this.#options.client.syncMessages({
-        callbackToken,
+        ...(callbackToken ? { callbackToken } : {}),
         openKfid,
         ...(cursor ? { cursor } : {}),
       });
-      await Promise.all(page.messages.map((message) => this.#options.ingress.handle(message)));
+      messages.push(...page.messages);
+      for (const messageId of page.recalledMessageIds) recalledMessageIds.add(messageId);
       if (page.hasMore && page.nextCursor === cursor) throw new Error('wechat_kf_cursor_did_not_advance');
-      this.#options.cursorStore.put(openKfid, page.nextCursor);
       cursor = page.nextCursor;
-      if (!page.hasMore) return;
+      finalCursor = page.nextCursor;
+      if (!page.hasMore) break;
+      if (pageNumber === 99) throw new Error('wechat_kf_sync_page_limit_exceeded');
     }
-    throw new Error('wechat_kf_sync_page_limit_exceeded');
+    const seenMessageIds = new Set<string>();
+    for (const message of messages) {
+      if (recalledMessageIds.has(message.messageId) || seenMessageIds.has(message.messageId)) continue;
+      seenMessageIds.add(message.messageId);
+      await this.#options.ingress.handle(message);
+    }
+    if (!finalCursor) throw new Error('wechat_kf_cursor_missing');
+    this.#options.cursorStore.put(openKfid, finalCursor);
   }
 }
 
@@ -64,6 +87,10 @@ export class MemoryWechatKfCursorStore implements WechatKfCursorStore {
 
   put(openKfid: string, cursor: string): void {
     this.#cursors.set(openKfid, cursor);
+  }
+
+  listOpenKfids(): string[] {
+    return [...this.#cursors.keys()].sort();
   }
 }
 
@@ -87,6 +114,10 @@ export class JsonWechatKfCursorStore implements WechatKfCursorStore {
       'wechat_kf_cursor_invalid',
     );
     this.#save();
+  }
+
+  listOpenKfids(): string[] {
+    return Object.keys(this.#cursors).sort();
   }
 
   #load(): Record<string, string> {

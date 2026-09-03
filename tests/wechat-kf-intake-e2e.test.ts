@@ -159,6 +159,7 @@ describe('微信客服本地端到端', () => {
     const syncMessages = vi.fn(async () => ({
       nextCursor: 'cursor-1',
       hasMore: false,
+      recalledMessageIds: [],
       messages: [inbound],
     }));
     const pump = new WechatKfMessagePump({

@@ -90,6 +90,9 @@ const pump = new WechatKfMessagePump({
   ingress,
   cursorStore: new JsonWechatKfCursorStore(config.cursorStatePath),
 });
+const recoveryPollIntervalMs = parseRecoveryPollInterval(
+  process.env.WECHAT_KF_RECOVERY_POLL_INTERVAL_MS,
+);
 
 const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
@@ -106,6 +109,11 @@ const callbackHandler = createWechatKfCallbackHandler({
 
 service.resumePending();
 for (const receipt of service.listOrphanStatusCards()) resumeOrphan(receipt);
+void pump.pollKnownAccounts().catch(reportIngressError);
+const recoveryPollTimer = setInterval(() => {
+  void pump.pollKnownAccounts().catch(reportIngressError);
+}, recoveryPollIntervalMs);
+recoveryPollTimer.unref();
 
 const server = createServer((request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
@@ -163,8 +171,18 @@ function respond(response: ServerResponse, status: number, body: Record<string, 
 }
 
 function shutdown(): void {
+  clearInterval(recoveryPollTimer);
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 4_000).unref();
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+function parseRecoveryPollInterval(value: string | undefined): number {
+  if (value === undefined) return 60_000;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 30_000 || parsed > 3_600_000) {
+    throw new Error('wechat_kf_recovery_poll_interval_invalid');
+  }
+  return parsed;
+}

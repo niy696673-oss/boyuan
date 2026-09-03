@@ -15,6 +15,7 @@ export interface WechatKfSyncPage {
   nextCursor: string;
   hasMore: boolean;
   messages: WechatKfFileMessage[];
+  recalledMessageIds: string[];
 }
 
 interface AccessToken {
@@ -41,18 +42,20 @@ export class WechatKfClient {
   }
 
   async syncMessages(input: {
-    callbackToken: string;
+    callbackToken?: string;
     openKfid: string;
     cursor?: string;
   }): Promise<WechatKfSyncPage> {
-    const callbackToken = requiredString(input.callbackToken, 128, 'wechat_kf_callback_sync_token_invalid');
+    const callbackToken = input.callbackToken
+      ? requiredString(input.callbackToken, 128, 'wechat_kf_callback_sync_token_invalid')
+      : undefined;
     const openKfid = requiredString(input.openKfid, 256, 'wechat_kf_open_kfid_invalid');
     const cursor = input.cursor
       ? requiredString(input.cursor, 64, 'wechat_kf_cursor_invalid')
       : undefined;
     const payload = await this.#requestJson('/cgi-bin/kf/sync_msg', {
       ...(cursor ? { cursor } : {}),
-      token: callbackToken,
+      ...(callbackToken ? { token: callbackToken } : {}),
       limit: 1_000,
       open_kfid: openKfid,
     });
@@ -62,6 +65,15 @@ export class WechatKfClient {
     return {
       nextCursor,
       hasMore: payload.has_more === 1,
+      recalledMessageIds: payload.msg_list.flatMap((value) => {
+        const message = record(value);
+        const event = record(message?.event);
+        if (message?.origin !== 4 || message?.msgtype !== 'event' || event?.event_type !== 'user_recall_msg') {
+          return [];
+        }
+        const recalledMessageId = optionalString(event.recall_msgid, 512);
+        return recalledMessageId ? [recalledMessageId] : [];
+      }),
       messages: payload.msg_list.flatMap((value) => {
         const message = record(value);
         const file = record(message?.file);
