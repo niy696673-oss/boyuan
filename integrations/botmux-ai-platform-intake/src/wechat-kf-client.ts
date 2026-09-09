@@ -22,7 +22,10 @@ export interface WechatKfTextMessage extends Omit<WechatKfFileMessage, 'mediaId'
   text: string;
 }
 
-export type WechatKfInboundMessage = WechatKfFileMessage | WechatKfTextMessage;
+export interface WechatKfImageMessage extends Omit<WechatKfFileMessage, 'mediaId'> {
+  imageMediaId: string;
+}
+export type WechatKfInboundMessage = WechatKfFileMessage | WechatKfTextMessage | WechatKfImageMessage;
 
 interface AccessToken {
   value: string;
@@ -83,7 +86,7 @@ export class WechatKfClient {
       messages: payload.msg_list.flatMap<WechatKfInboundMessage>((value) => {
         const message = record(value);
         const file = record(message?.file);
-        if (message?.origin !== 3 || !['file', 'text'].includes(String(message.msgtype))) return [];
+        if (message?.origin !== 3 || !['file', 'text', 'image'].includes(String(message.msgtype))) return [];
         const messageId = optionalString(message.msgid, 512);
         const messageOpenKfid = optionalString(message.open_kfid, 256);
         const externalUserId = optionalString(message.external_userid, 256);
@@ -105,6 +108,10 @@ export class WechatKfClient {
           return typeof content === 'string' && content.length <= 4_096
             ? [{ ...common, text: content }]
             : [];
+        }
+        if (message.msgtype === 'image') {
+          const imageMediaId = optionalString(record(message.image)?.media_id, 2_048);
+          return imageMediaId ? [{ ...common, imageMediaId }] : [];
         }
         return mediaId ? [{ ...common, mediaId }] : [];
       }),
