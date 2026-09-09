@@ -25,11 +25,13 @@ function fixture(path: string) {
 }
 
 describe('company list extraction', () => {
-  it.each(['宁德时代、比亚迪', '宁德时代，比亚迪', '1. 宁德时代\n2. 比亚迪', '分析宁德时代和比亚迪'])('routes %s to extraction', (text) => {
+  it.each(['宁德时代、比亚迪', '宁德时代，比亚迪', '1. 宁德时代\n2. 比亚迪', '分析宁德时代和比亚迪', '宁德时代 比亚迪 腾讯控股'])('routes %s to extraction', (text) => {
     expect(isCompanyListText(text)).toBe(true);
   });
   it('preserves single-company routing and deduplicates names without inventing entities', () => {
     expect(isCompanyListText('分析宁德时代')).toBe(false);
+    expect(isCompanyListText('研究 宁德时代')).toBe(false);
+    expect(isCompanyListText('Acme Robotics')).toBe(false);
     expect(parseCompanyList('{"companies":[" Acme ","ACME","比亚迪"],"uncertain":["模糊"]}')).toEqual({ companies: ['Acme', '比亚迪'], uncertain: ['模糊'] });
     expect(() => parseCompanyList('{"companies":[12],"uncertain":[]}')).toThrow();
   });

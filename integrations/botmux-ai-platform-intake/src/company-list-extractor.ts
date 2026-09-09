@@ -65,5 +65,7 @@ export function parseCompanyList(raw: string): CompanyListExtraction {
 }
 
 export function isCompanyListText(text: string): boolean {
-  return /[\n\r、,，;；\t|]|(?:以及|分别|以下|这些|名单|列表|帮我|请.*分析)|.{2,}和.{2,}/u.test(text);
+  const names = text.replace(/^(?:分析|研究)(?:一下|下)?\s*[：:]?\s*/u, '');
+  return /[\n\r、,，;；\t|]|(?:以及|分别|以下|这些|名单|列表|帮我|请.*分析)|.{2,}和.{2,}/u.test(text)
+    || /\p{Script=Han}[\p{L}\p{N}]{1,}\s+\p{Script=Han}[\p{L}\p{N}]/u.test(names);
 }
