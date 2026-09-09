@@ -14,9 +14,15 @@ export interface WechatKfFileMessage {
 export interface WechatKfSyncPage {
   nextCursor: string;
   hasMore: boolean;
-  messages: WechatKfFileMessage[];
+  messages: WechatKfInboundMessage[];
   recalledMessageIds: string[];
 }
+
+export interface WechatKfTextMessage extends Omit<WechatKfFileMessage, 'mediaId'> {
+  text: string;
+}
+
+export type WechatKfInboundMessage = WechatKfFileMessage | WechatKfTextMessage;
 
 interface AccessToken {
   value: string;
@@ -74,27 +80,33 @@ export class WechatKfClient {
         const recalledMessageId = optionalString(event.recall_msgid, 512);
         return recalledMessageId ? [recalledMessageId] : [];
       }),
-      messages: payload.msg_list.flatMap((value) => {
+      messages: payload.msg_list.flatMap<WechatKfInboundMessage>((value) => {
         const message = record(value);
         const file = record(message?.file);
-        if (message?.origin !== 3 || message?.msgtype !== 'file' || !file) return [];
+        if (message?.origin !== 3 || !['file', 'text'].includes(String(message.msgtype))) return [];
         const messageId = optionalString(message.msgid, 512);
         const messageOpenKfid = optionalString(message.open_kfid, 256);
         const externalUserId = optionalString(message.external_userid, 256);
-        const mediaId = optionalString(file.media_id, 2_048);
+        const mediaId = optionalString(file?.media_id, 2_048);
         const timestamp = typeof message.send_time === 'number' || typeof message.send_time === 'string'
           ? Number(message.send_time)
           : Number.NaN;
-        if (!messageId || !messageOpenKfid || !externalUserId || !mediaId || !Number.isFinite(timestamp) || timestamp <= 0) {
+        if (!messageId || !messageOpenKfid || !externalUserId || !Number.isFinite(timestamp) || timestamp <= 0) {
           return [];
         }
-        return [{
+        const common = {
           messageId,
           openKfid: messageOpenKfid,
           externalUserId,
-          mediaId,
           receivedAt: new Date(timestamp < 10_000_000_000 ? timestamp * 1_000 : timestamp).toISOString(),
-        }];
+        };
+        if (message.msgtype === 'text') {
+          const content = record(message.text)?.content;
+          return typeof content === 'string' && content.length <= 4_096
+            ? [{ ...common, text: content }]
+            : [];
+        }
+        return mediaId ? [{ ...common, mediaId }] : [];
       }),
     };
   }

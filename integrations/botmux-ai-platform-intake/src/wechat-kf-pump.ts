@@ -1,8 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { DirectWechatKfFileIngress } from './direct-wechat-kf-intake.js';
 import type { WechatKfCallbackEvent } from './wechat-kf-callback.js';
-import type { WechatKfClient, WechatKfFileMessage } from './wechat-kf-client.js';
+import type { WechatKfClient, WechatKfInboundMessage } from './wechat-kf-client.js';
 
 export interface WechatKfCursorStore {
   get(openKfid: string): string | undefined;
@@ -12,7 +11,7 @@ export interface WechatKfCursorStore {
 
 export interface WechatKfMessagePumpOptions {
   client: Pick<WechatKfClient, 'syncMessages'>;
-  ingress: Pick<DirectWechatKfFileIngress, 'handle'>;
+  ingress: { handle(message: WechatKfInboundMessage): Promise<void> };
   cursorStore: WechatKfCursorStore;
 }
 
@@ -51,7 +50,7 @@ export class WechatKfMessagePump {
   async #pull(callbackToken: string | undefined, openKfid: string): Promise<void> {
     let cursor = this.#options.cursorStore.get(openKfid);
     let finalCursor = cursor;
-    const messages: WechatKfFileMessage[] = [];
+    const messages: WechatKfInboundMessage[] = [];
     const recalledMessageIds = new Set<string>();
     for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
       const page = await this.#options.client.syncMessages({
