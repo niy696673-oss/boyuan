@@ -16,6 +16,8 @@ import { createWechatKfCallbackHandler } from '../wechat-kf-callback.js';
 import { WechatKfClient } from '../wechat-kf-client.js';
 import { JsonWechatKfCursorStore, WechatKfMessagePump } from '../wechat-kf-pump.js';
 import { loadWechatKfCredentials, WechatKfFileMaterializer } from '../wechat-kf-runtime.js';
+import { createCompanyListExtractor, isCompanyListText } from '../company-list-extractor.js';
+import { WechatKfCompanyBatch } from '../wechat-kf-company-batch.js';
 
 const configPath = process.env.BOYUAN_WECHAT_KF_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('wechat_kf_intake_config_path_missing');
@@ -90,7 +92,10 @@ const ingress = new DirectWechatKfFileIngress({
 const pump = new WechatKfMessagePump({
   client,
   ingress: {
-    handle: (message) => 'text' in message ? companyIngress.handle(message) : ingress.handle(message),
+    handle: (message) => {
+      if ('imageMediaId' in message || ('text' in message && isCompanyListText(message.text))) return companyBatch.handle(message);
+      return 'text' in message ? companyIngress.handle(message) : ingress.handle(message);
+    },
   },
   cursorStore: new JsonWechatKfCursorStore(config.cursorStatePath),
 });
@@ -108,6 +113,26 @@ const reportIngressError = (error: unknown) => {
   process.stderr.write(`[wechat-kf-intake] ingress error: ${message.slice(0, 300)}\n`);
 };
 
+const extractionUrl = process.env.BOYUAN_OPENCODE_BASE_URL;
+const extractionPassword = process.env.BOYUAN_OPENCODE_PASSWORD;
+const companyBatch = new WechatKfCompanyBatch({
+  statePath: `${config.statePath}.company-batches.json`,
+  client,
+  publicProductUrl: config.publicProductUrl,
+  onError: reportIngressError,
+  extractor: extractionUrl ? createCompanyListExtractor({
+    baseUrl: new URL(extractionUrl),
+    directory: process.env.BOYUAN_OPENCODE_DIRECTORY ?? process.cwd(),
+    ...(extractionPassword ? { credentials: { username: process.env.BOYUAN_OPENCODE_USERNAME ?? 'opencode', password: extractionPassword } } : {}),
+    model: {
+      providerId: process.env.BOYUAN_QUICK_CARD_PROVIDER_ID ?? 'openai',
+      modelId: process.env.BOYUAN_QUICK_CARD_MODEL_ID ?? 'gpt-5.6-luna',
+    },
+  }) : { extract: async () => { throw new Error('company_list_extraction_not_configured'); } },
+  platform: new HttpPlatformClient(config.platformBaseUrl, config.platformIntakeKey, 180_000,
+    (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(180_000) }), 'wecom'),
+});
+
 const callbackHandler = createWechatKfCallbackHandler({
   token: credentials.callbackToken,
   encodingAESKey: credentials.encodingAESKey,
@@ -117,10 +142,12 @@ const callbackHandler = createWechatKfCallbackHandler({
 });
 
 service.resumePending();
+companyBatch.resumePending();
 for (const receipt of service.listOrphanStatusCards()) resumeOrphan(receipt);
 void pump.pollKnownAccounts().catch(reportIngressError);
 const recoveryPollTimer = setInterval(() => {
   void pump.pollKnownAccounts().catch(reportIngressError);
+  companyBatch.resumePending();
 }, recoveryPollIntervalMs);
 recoveryPollTimer.unref();
 
