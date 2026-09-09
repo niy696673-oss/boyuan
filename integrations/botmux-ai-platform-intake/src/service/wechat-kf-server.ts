@@ -4,12 +4,14 @@ import { dirname } from 'node:path';
 import { parseWechatKfIntakeConfig, prepareRuntimeDirectories } from '../config.js';
 import {
   DirectWechatKfFileIngress,
+  DirectWechatKfCompanyResearchIngress,
   WechatKfTextDelivery,
 } from '../direct-wechat-kf-intake.js';
 import { IntakeService } from '../intake-service.js';
 import { JsonJobStore } from '../job-store.js';
 import { HttpPlatformClient } from '../platform-client.js';
 import type { JsonObject, StatusCardReceipt } from '../types.js';
+import { COMPANY_RESEARCH_FILE_KEY } from '../types.js';
 import { createWechatKfCallbackHandler } from '../wechat-kf-callback.js';
 import { WechatKfClient } from '../wechat-kf-client.js';
 import { JsonWechatKfCursorStore, WechatKfMessagePump } from '../wechat-kf-pump.js';
@@ -87,8 +89,15 @@ const ingress = new DirectWechatKfFileIngress({
 });
 const pump = new WechatKfMessagePump({
   client,
-  ingress,
+  ingress: {
+    handle: (message) => 'text' in message ? companyIngress.handle(message) : ingress.handle(message),
+  },
   cursorStore: new JsonWechatKfCursorStore(config.cursorStatePath),
+});
+const companyIngress = new DirectWechatKfCompanyResearchIngress({
+  delivery,
+  researchCompany: (turn) => service.researchCompany(turn),
+  ...receiptStore,
 });
 const recoveryPollIntervalMs = parseRecoveryPollInterval(
   process.env.WECHAT_KF_RECOVERY_POLL_INTERVAL_MS,
@@ -126,6 +135,21 @@ server.listen(port, host);
 
 function resumeOrphan(receipt: StatusCardReceipt): void {
   const openKfid = metadataString(receipt.metadata, 'openKfid');
+  if (receipt.fileKey === COMPANY_RESEARCH_FILE_KEY) {
+    const companyName = metadataString(receipt.metadata, 'companyName');
+    if (!openKfid || !companyName || !receipt.senderId) {
+      terminalOrphan(receipt, 'wechat_kf_orphan_metadata_invalid');
+      return;
+    }
+    void companyIngress.handle({
+      messageId: receipt.messageId,
+      openKfid,
+      externalUserId: receipt.senderId,
+      receivedAt: receipt.createdAt,
+      text: `研究 ${companyName}`,
+    }).catch(reportIngressError);
+    return;
+  }
   const mediaId = metadataString(receipt.metadata, 'mediaId');
   if (!openKfid || !mediaId || !receipt.senderId) {
     terminalOrphan(receipt, 'wechat_kf_orphan_metadata_invalid');
@@ -142,7 +166,7 @@ function resumeOrphan(receipt: StatusCardReceipt): void {
 
 function terminalOrphan(receipt: StatusCardReceipt, code: string): void {
   void delivery.fail({
-    kind: 'bp',
+    kind: receipt.fileKey === COMPANY_RESEARCH_FILE_KEY ? 'company_research' : 'bp',
     chatId: receipt.chatId,
     sessionId: `wechat-kf:${receipt.messageId}`,
     messageId: receipt.messageId,

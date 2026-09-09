@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
-import type { WechatKfFileMessage } from './wechat-kf-client.js';
+import type { WechatKfFileMessage, WechatKfTextMessage } from './wechat-kf-client.js';
+import { COMPANY_RESEARCH_FILE_KEY } from './types.js';
 import type {
   FailureDeliveryInput,
   IntakeAttachment,
   IntakeDelivery,
   IntakeOutcome,
   IntakeTurn,
+  CompanyResearchTurn,
 } from './types.js';
 import {
   renderWeComCompletion,
@@ -59,7 +61,12 @@ export class WechatKfTextDelivery implements IntakeDelivery {
     this.#port = port;
   }
 
-  async openProcessing(input: WechatKfFileMessage & { fileKey: string }): Promise<string> {
+  async openProcessing(input: Omit<WechatKfFileMessage, 'mediaId'> & {
+    fileKey: string;
+    mediaId?: string;
+    kind?: 'bp' | 'company_research';
+    subject?: string;
+  }): Promise<string> {
     const receipt = encodeReceipt({
       externalUserId: input.externalUserId,
       openKfid: input.openKfid,
@@ -67,7 +74,7 @@ export class WechatKfTextDelivery implements IntakeDelivery {
     await this.#port.sendText({
       externalUserId: input.externalUserId,
       openKfid: input.openKfid,
-      content: wecomProcessingText('bp'),
+      content: wecomProcessingText(input.kind ?? 'bp', input.subject),
     });
     return receipt;
   }
@@ -86,6 +93,77 @@ export class WechatKfTextDelivery implements IntakeDelivery {
       content: input.kind === 'bp'
         ? `【博源AI】“${input.subject}”接入失败，请确认文件可正常打开且为不超过 20MB 的 PDF 后重试。`
         : wecomFailureText(input.kind, input.subject),
+    });
+  }
+}
+
+export interface DirectWechatKfCompanyResearchIngressOptions extends WechatKfIngressStore {
+  delivery: WechatKfTextDelivery;
+  researchCompany(turn: CompanyResearchTurn): Promise<IntakeOutcome>;
+}
+
+// A short name is the direct-entry contract; commands may contain spaces in an English name.
+// Ignore common acknowledgements and questions instead of treating every chat as a company.
+export function parseWechatKfCompanyName(value: string): string | undefined {
+  const command = value.trim();
+  if (!command || /[\r\n\0]/u.test(command)) return undefined;
+  if (/^(?:分析|研究)(?:一下|下)?\s*[：:]?$/u.test(command)) return undefined;
+  const match = /^(?:分析|研究)(?:一下|下)?\s*[：:]?\s*(.{2,80})$/u.exec(command);
+  const name = (match?.[1] ?? command).trim();
+  if (name.length < 2 || name.length > 80 || !/[\p{L}]/u.test(name)) return undefined;
+  if (/[!?？！。；;：:\/\\]/u.test(name)) return undefined;
+  if (/^(?:你好|您好|谢谢|好的|收到|已发送|已配置|继续|继续处理|测试|帮助|取消|停止|分析|研究|分析一下|研究一下|hi|hello|ok|thanks|test|help)$/iu.test(name)) return undefined;
+  if (!match && /[吗么呢呀啊]$/u.test(name)) return undefined;
+  return name;
+}
+
+export class DirectWechatKfCompanyResearchIngress {
+  readonly #options: DirectWechatKfCompanyResearchIngressOptions;
+  readonly #active = new Map<string, Promise<void>>();
+
+  constructor(options: DirectWechatKfCompanyResearchIngressOptions) {
+    this.#options = options;
+  }
+
+  async handle(message: WechatKfTextMessage): Promise<void> {
+    const companyName = parseWechatKfCompanyName(message.text);
+    if (!companyName) return;
+    let active = this.#active.get(message.messageId);
+    if (!active) {
+      active = this.#research(message, companyName);
+      this.#active.set(message.messageId, active);
+      void active.finally(() => this.#active.delete(message.messageId)).catch(() => undefined);
+    }
+    await active;
+  }
+
+  async #research(message: WechatKfTextMessage, companyName: string): Promise<void> {
+    const fileKey = COMPANY_RESEARCH_FILE_KEY;
+    if (this.#options.statusReceiptTerminal(message.messageId, fileKey)) return;
+    let receipt = this.#options.statusReceiptId(message.messageId, fileKey);
+    if (!receipt) {
+      receipt = await this.#options.delivery.openProcessing({ ...message, fileKey, kind: 'company_research', subject: companyName });
+      this.#options.rememberStatusReceipt({
+        chatId: message.externalUserId,
+        messageId: message.messageId,
+        fileKey,
+        fileName: companyName,
+        receipt,
+        createdAt: message.receivedAt,
+        senderId: message.externalUserId,
+        metadata: { openKfid: message.openKfid, companyName },
+      });
+    }
+    // Keep the durable receipt on failure so callback/poll retries and restart recovery
+    // resume the same platform job without sending another processing message.
+    await this.#options.researchCompany({
+      chatId: message.externalUserId,
+      sessionId: `wechat-kf:${message.messageId}`,
+      messageId: message.messageId,
+      companyName,
+      receivedAt: message.receivedAt,
+      senderId: message.externalUserId,
+      statusCardMessageId: receipt,
     });
   }
 }
