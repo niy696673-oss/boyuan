@@ -26,19 +26,19 @@ export function wecomFailureText(
   return `【博源AI】“${subject}”接入失败，请确认文件可正常打开且格式为 PDF、DOCX、XLSX 或 CSV 后重试。`;
 }
 
-export function renderWeComCompletion(input: CompletionDeliveryInput): string {
+export function renderWeComCompletion(input: CompletionDeliveryInput, options: { includeNavigation?: boolean } = {}): string {
   return input.kind === 'company_research'
-    ? renderCompanyResearch(input.result, input.links)
-    : renderBp(input.result, input.links);
+    ? renderCompanyResearch(input.result, options.includeNavigation === false ? undefined : input.links)
+    : renderBp(input.result, options.includeNavigation === false ? undefined : input.links);
 }
 
 function renderBp(
   result: Extract<CompletionDeliveryInput, { kind: 'bp' }>['result'],
-  links: CompletionLinks,
+  links: CompletionLinks | undefined,
 ): string {
   if (result.status === 'fallback') {
     return fitWithFooter(
-      ['【博源AI｜BP事实核验】', '快速分析未完成，深度分析仍在后台运行。'],
+      ['【博源AI｜BP事实核验】', links ? '快速分析未完成，深度分析仍在后台运行。' : '这次分析未完成，请稍后重试。'],
       linkFooter(links, '查看深度分析'),
     );
   }
@@ -68,11 +68,11 @@ function renderBp(
 
 function renderCompanyResearch(
   result: Extract<CompletionDeliveryInput, { kind: 'company_research' }>['result'],
-  links: CompletionLinks,
+  links: CompletionLinks | undefined,
 ): string {
   if (result.status === 'fallback') {
     return fitWithFooter(
-      ['【博源AI｜公司快速研究】', `公司：${result.companyName}`, '快速分析未完成，深度研究仍在后台运行。'],
+      ['【博源AI｜公司快速研究】', `公司：${result.companyName}`, links ? '快速分析未完成，深度研究仍在后台运行。' : '这次研究未完成，请稍后重试。'],
       linkFooter(links, '查看深度研究'),
     );
   }
@@ -165,7 +165,8 @@ function fundMatchSection(result: FundMatchSummary): string[] {
   ];
 }
 
-function linkFooter(links: CompletionLinks, deepLabel: string): string[] {
+function linkFooter(links: CompletionLinks | undefined, deepLabel: string): string[] {
+  if (!links) return [];
   return [
     '▍继续查看',
     fieldLine(deepLabel, links.deepAnalysisUrl),

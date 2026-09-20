@@ -86,7 +86,7 @@ export class WechatKfCompanyBatch {
     if (!active) {
       active = this.#options.client.sendText({
         externalUserId: batch.input.externalUserId, openKfid: batch.input.openKfid,
-        content: '【博源AI】已收到，正在识别公司名单并逐家启动快速分析和后台深度研究。完成后将汇总回复。',
+        content: '【博源AI】已收到，正在识别公司名单并逐家分析。完成后将汇总回复。',
       }).then(() => { batch.processingSent = true; this.#save(); });
       this.#acknowledging.set(batch, active);
     }
@@ -177,24 +177,21 @@ export class WechatKfCompanyBatch {
   }
 }
 
-export function renderBatch(items: CompanyItem[], uncertain: string[], publicProductUrl: string): string[] {
+export function renderBatch(items: CompanyItem[], uncertain: string[], _publicProductUrl: string): string[] {
   const short = (value: string, limit: number) => {
     const chars = [...value.replace(/[\r\n]/gu, ' ')];
     return chars.length > limit ? `${chars.slice(0, limit).join('')}…` : chars.join('');
   };
-  const blocks = [`【博源AI｜公司批量研究】\n识别 ${items.length} 家，快速分析完成 ${items.filter((i) => !i.failed).length} 家。深度研究进度见各公司链接。`];
+  const blocks = [`【博源AI｜公司批量研究】\n识别 ${items.length} 家，快速分析完成 ${items.filter((i) => !i.failed).length} 家。`];
   for (const [index, item] of items.entries()) {
-    const url = item.conversationId
-      ? new URL(`/workbench/conversations/${encodeURIComponent(item.conversationId)}`, publicProductUrl).href : undefined;
     blocks.push([
       `${index + 1}）${short(item.name, 20)}`,
-      item.failed ? (url ? '快速分析暂未完成；深度研究已启动。' : '研究启动失败，请单独重试。')
+      item.failed ? '该公司分析未完成，请单独重试。'
         : `主业：${short(item.summary ?? '待核验', 18)}\n待核验：${short(item.risk ?? '待核验', 12)}`,
-      ...(url ? [url] : []),
     ].join('\n'));
   }
   if (uncertain.length) blocks.push(`另有 ${uncertain.length} 处名称不清晰，未纳入分析：${short(uncertain.join('、'), 80)}。请补充文字确认。`);
-  blocks.push('以上为快速预览，不构成投资判断。完整分析见工作台。');
+  blocks.push('以上为快速预览，不构成投资判断。可以继续提问。');
   const pages: string[] = [];
   let page = '';
   for (const block of blocks) {

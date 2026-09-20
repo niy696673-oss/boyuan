@@ -4,6 +4,7 @@ export interface WechatKfCredentials {
 }
 
 export interface WechatKfFileMessage {
+  conversationChatId?: string;
   messageId: string;
   openKfid: string;
   externalUserId: string;
@@ -142,6 +143,7 @@ export class WechatKfClient {
   }
 
   async sendText(input: {
+    msgid?: string;
     externalUserId: string;
     openKfid: string;
     content: string;
@@ -149,7 +151,9 @@ export class WechatKfClient {
     const externalUserId = requiredString(input.externalUserId, 256, 'wechat_kf_external_userid_invalid');
     const openKfid = requiredString(input.openKfid, 256, 'wechat_kf_open_kfid_invalid');
     const content = boundedMultilineText(input.content, 2_048, 'wechat_kf_text_invalid');
+    if (input.msgid !== undefined && !/^[0-9a-zA-Z_-]{1,32}$/u.test(input.msgid)) throw new Error('wechat_kf_msgid_invalid');
     await this.#requestJson('/cgi-bin/kf/send_msg', {
+      ...(input.msgid ? { msgid: input.msgid } : {}),
       touser: externalUserId,
       open_kfid: openKfid,
       msgtype: 'text',

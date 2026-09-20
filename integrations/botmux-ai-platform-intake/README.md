@@ -149,3 +149,11 @@ The last six turns plus up to three recent completed BP records provide explicit
 The dialogue protocol is validated strictly. A format reminder follows the context, and a malformed JSON response is regenerated at most once in the same session and deadline, keeping the configured low thinking variant. No fields are stripped or invented. OpenCode forced structured-output tool choice is not enabled because the deployed DeepSeek thinking mode rejects it.
 
 Only the designated server should run the dedicated bot receiver. An old Mac receiver with the same app credentials will split events across machines and invalidate server-only capacity measurements. Stop it and save the supervisor state before acceptance testing; keep the Feishu client available as a real user test client.
+
+### 飞书与微信客服共用自然对话
+
+两者使用 `ChannelConversation` 和 `createConversationWorkflows`，包含自然意图、持久模型 session、BP 原文追问、同用户消息排队和重启恢复。文字入口不需要“研究/分析”固定前缀。微信生产装配入口是 `createWechatConversationRuntime`；测试应从此入口验证，不能用旧关键词子模块代替实际路由。图片名单仍走专用识别器。
+
+微信服务也必须配置与飞书相同的 `BOYUAN_CHAT_*` 或其 `BOYUAN_OPENCODE_*` / `BOYUAN_QUICK_CARD_*` 后备设置，包括模型、variant、目录和网关凭据。认证值放在服务环境文件中，不写入配置示例或日志。原微信 callback 与 cursor 配置保持不变。
+
+状态文件：`<statePath>.conversations.json` 保存会话与收件队列，`<statePath>.outbox.json` 保存微信回复进度；迁移或恢复必须与原 jobs/cursors 一并保留。同一 statePath 只允许运行一个服务实例。腾讯真实收发需另做渠道验收；本地替身不会验证 API 权限、发送额度和客户端显示。

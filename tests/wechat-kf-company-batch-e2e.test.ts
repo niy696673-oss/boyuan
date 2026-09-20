@@ -58,7 +58,7 @@ it('微信公司列表经 HTTP/SQLite 创建两家公司研究并汇总，重放
     const result = sendText.mock.calls.map(([input]) => input.content).join('\n');
     expect(result).toContain('公司批量研究');
     expect(result).toContain('新研科技有限公司');
-    expect(result).toContain('/workbench/conversations/');
+    expect(result).not.toContain('/workbench/conversations/');
     expect(sendText.mock.calls.every(([input]) => input.openKfid === 'wk-account' && input.externalUserId === 'customer')).toBe(true);
     const conversations = await platform.listConversations();
     expect(conversations).toHaveLength(2);

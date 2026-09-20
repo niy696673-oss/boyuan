@@ -1803,9 +1803,7 @@ class SqlitePlatformModule implements PlatformModule {
     }
     const companyName = canonicalCompanyName(input.companyName);
     assertCompanyListName(companyName);
-    const researchFocus = input.sourceChannel === 'feishu'
-      ? normalizeResearchFocus(input.researchFocus)
-      : undefined;
+    const researchFocus = normalizeResearchFocus(input.researchFocus);
     return this.#startCompanyResearchWithSource({
       companyName,
       intent: researchFocus ?? `研究 ${companyName} 的公司概况、行业赛道、融资、团队、核心亮点与近期公开信号`,

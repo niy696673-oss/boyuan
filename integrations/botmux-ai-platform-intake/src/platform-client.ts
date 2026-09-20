@@ -102,7 +102,7 @@ export class HttpPlatformClient implements PlatformClient {
 
   async startCompanyResearch(input: CompanyResearchTurn): Promise<PlatformCompanyResearchResult> {
     // Legacy receipts use the default file key and must replay the original request ID.
-    const requestId = this.#channel === 'feishu' && input.researchKey?.startsWith(`${COMPANY_RESEARCH_FILE_KEY}:`)
+    const requestId = input.researchKey?.startsWith(`${COMPANY_RESEARCH_FILE_KEY}:`)
       ? `company-research:${createHash('sha256').update(JSON.stringify([input.messageId, input.researchKey])).digest('hex')}`
       : input.messageId;
     const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/company-research`, {
@@ -116,7 +116,7 @@ export class HttpPlatformClient implements PlatformClient {
       },
       body: JSON.stringify({
         companyName: input.companyName,
-        ...(this.#channel === 'feishu' && input.researchFocus !== undefined
+        ...(input.researchFocus !== undefined
           ? { researchFocus: input.researchFocus }
           : {}),
       }),

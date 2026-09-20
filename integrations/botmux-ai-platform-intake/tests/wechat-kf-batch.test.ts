@@ -76,7 +76,7 @@ describe('durable company batches', () => {
       expect(sendText).toHaveBeenCalledTimes(2);
       const final = sendText.mock.calls[1]![0].content;
       expect(final).toContain('宁德时代'); expect(final).toContain('比亚迪');
-      expect(final).toContain('/workbench/conversations/'); expect(final).toContain('名称不清晰');
+      expect(final).not.toContain('/workbench/conversations/'); expect(final).toContain('名称不清晰');
     } finally { temp.cleanup(); }
   });
   it('resumes failed delivery after restart without rerunning research or repeating the processing message', async () => {
@@ -118,7 +118,7 @@ describe('durable company batches', () => {
       const batch = new WechatKfCompanyBatch(options);
       await batch.handle(input); await batch.waitForIdle();
       expect(sendText.mock.calls[1]![0].content).toContain('快速分析完成 1 家');
-      expect(sendText.mock.calls[1]![0].content).toContain('深度研究已启动');
+      expect(sendText.mock.calls[1]![0].content).toContain('该公司分析未完成');
     } finally { temp.cleanup(); }
   });
   it('keeps a worst-case 20-company summary inside four 2048-byte replies', () => {
@@ -126,7 +126,8 @@ describe('durable company batches', () => {
     const pages = renderBatch(items, ['文字'.repeat(80)], 'https://restaurant-west-enter-far.trycloudflare.com');
     expect(pages.length).toBeLessThanOrEqual(4);
     expect(pages.every((page) => Buffer.byteLength(page) <= 2048)).toBe(true);
-    expect(pages.join('\n').match(/\/workbench\/conversations\//gu)).toHaveLength(20);
+    expect(pages.join('\n')).not.toContain('/workbench/');
+    expect(pages.join('\n')).toContain('20）');
   });
   it('pulls images from sync, filters recalled images, and dispatches only the active image', async () => {
     const temp = tempDir();
