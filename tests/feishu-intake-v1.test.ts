@@ -175,15 +175,15 @@ describe("飞书材料接入新工作台", () => {
       modelId: "gpt-5.6-luna",
     });
     expect(repeatedQuick.body).toEqual(firstQuick.body);
-    expect(search).toHaveBeenCalledOnce();
+    expect(search).toHaveBeenCalledTimes(researchFocus ? 2 : 1);
     expect(analyze).toHaveBeenCalledOnce();
     expect(analyze.mock.calls[0]?.[0].companyName).toBe('博源科技有限公司');
     expect(analyze.mock.calls[0]?.[0].researchFocus).toBe(researchFocus);
     expect(search.mock.calls[0]?.[0].companyName).toBe('博源科技有限公司');
     if (researchFocus) {
       expect(search.mock.calls[0]?.[0]).toEqual({
-        companyName: '博源科技有限公司', reason: 'user_requested', maxResults: 5,
-        query: '博源科技有限公司 公司 业务 产品 竞品 竞争格局 最新 进展 融资',
+        companyName: '博源科技有限公司', reason: 'user_requested', maxResults: 8,
+        query: '博源科技有限公司 公司简介 主营业务 核心产品 官网 投资者关系 竞品 竞争格局 最新 公开进展 融资 金额 估值 日期',
       });
       expect(JSON.stringify(search.mock.calls[0]?.[0])).not.toContain('松针');
     }
@@ -197,7 +197,7 @@ describe("飞书材料接入新工作台", () => {
       status: "completed",
       companyResearch: { sources: [{ url: "https://example.com/boyuan/new-product" }] },
     });
-    expect(search).toHaveBeenCalledOnce();
+    expect(search).toHaveBeenCalledTimes(researchFocus ? 2 : 1);
     expect(completed.companyResearch?.researchFocus).toBe(researchFocus);
 
     const provisional = await platform.startFeishuCompanyResearch({
@@ -368,7 +368,7 @@ describe("飞书材料接入新工作台", () => {
       recentSignals: ["公开检索重试成功。"],
       sourceCount: 1,
     });
-    expect(search).toHaveBeenCalledTimes(2);
+    expect(search).toHaveBeenCalledTimes(3);
     expect(analyze).toHaveBeenCalledOnce();
   });
 

@@ -193,7 +193,7 @@ describe('飞书公司名研究本地端到端', () => {
         });
       expect(replay).toMatchObject({ reusedResearch: true, conversation: { conversationId: job?.conversationId } });
     }
-    expect(search).toHaveBeenCalledTimes(companyCount);
+    expect(search).toHaveBeenCalledTimes(companyCount > 1 ? companyCount * 2 : companyCount);
     expect(analyze).toHaveBeenCalledTimes(companyCount);
   });
 });

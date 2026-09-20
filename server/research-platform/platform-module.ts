@@ -96,6 +96,7 @@ import { matchFunds } from './fund-matching/fund-matcher.js';
 import type { FundProfile } from './fund-matching/contracts.js';
 import {
   planCompanyPublicQuery,
+  planCompanyFollowUp,
   researchSearchTrigger,
 } from './research/search-policy.js';
 import { validateWorkflowResearchOutput } from './research/workflow-policy.js';
@@ -591,8 +592,8 @@ class SqlitePlatformModule implements PlatformModule {
       WHERE link.company_id = ? AND task.task_id != ?
       ORDER BY section.created_at DESC LIMIT 20
     `).all(input.companyId, input.taskId) as unknown as Array<{ summary: string }>;
-    const webResults = this.#researchWebResults(input.runId);
-    const extraction = await this.#companyQuickCardAnalysis.analyze({
+    let webResults = this.#researchWebResults(input.runId);
+    const analyze = () => this.#companyQuickCardAnalysis!.analyze({
       conversationId: input.conversationId,
       companyName: input.companyName,
       ...(input.researchFocus ? { researchFocus: input.researchFocus } : {}),
@@ -605,6 +606,18 @@ class SqlitePlatformModule implements PlatformModule {
       materialSummaries: materialSummaries.map((item) => item.summary),
       webResults,
     });
+    let extraction = await analyze();
+    const followUpQuery = planCompanyFollowUp(input.companyName, input.researchFocus ?? '', extraction);
+    if (followUpQuery && await this.#supplementCompanySearch(input.runId, input.companyName, followUpQuery)) {
+      webResults = this.#researchWebResults(input.runId);
+      try {
+        extraction = await analyze();
+      } catch {
+        // Preserve the valid first card when supplemental extraction fails.
+        this.#db.prepare('UPDATE company_research_runs SET search_followup_error = ? WHERE run_id = ?')
+          .run('supplemental_extraction_failed', input.runId);
+      }
+    }
     const materialCount = this.#companyMaterials(input.companyId).length;
     const pending = this.#db.prepare(`
       SELECT COUNT(*) AS count FROM knowledge_candidates
@@ -3279,13 +3292,13 @@ class SqlitePlatformModule implements PlatformModule {
     if (input.triggerReason === 'not_needed') return;
     if (!input.publicQuery) throw new Error('research_public_query_missing');
     if (!this.#search) {
-      throw new SearchAdapterError('search_adapter_unavailable', 'Exa search adapter is not configured');
+      throw new SearchAdapterError('search_adapter_unavailable', 'Public search adapter is not configured');
     }
     const results = await this.#search.search({
       companyName: input.companyName,
       reason: input.triggerReason,
       query: input.publicQuery,
-      maxResults: 5,
+      maxResults: 8,
     });
     const now = this.#now().toISOString();
     this.#transaction(() => {
@@ -3294,26 +3307,68 @@ class SqlitePlatformModule implements PlatformModule {
       `).get(input.runId) as { search_executed_at: string | null } | undefined;
       if (!latest) throw new Error('company_research_run_missing');
       if (latest.search_executed_at) return;
-      for (const [index, result] of results.entries()) {
-        const evidenceId = this.#nextId();
-        const quote = result.highlights.join('\n').trim() || result.title;
-        this.#db.prepare(`
-          INSERT INTO evidence (
-            evidence_id, source_type, quote, title, site, url, published_at, retrieved_at, created_at
-          ) VALUES (?, 'web', ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          evidenceId, quote, result.title, result.site, result.url,
-          result.publishedAt ?? null, result.retrievedAt, now,
-        );
-        this.#db.prepare(`
-          INSERT INTO web_search_results (result_id, run_id, evidence_id, rank, access_status)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(this.#nextId(), input.runId, evidenceId, index + 1, result.accessStatus);
-      }
+      this.#storeCompanySearchResults(input.runId, results);
       this.#db.prepare(`
         UPDATE company_research_runs SET search_executed_at = ?, updated_at = ? WHERE run_id = ?
       `).run(now, now, input.runId);
     });
+  }
+
+  async #supplementCompanySearch(runId: string, companyName: string, query: string): Promise<boolean> {
+    if (!this.#search) return false;
+    // Claim before the network call: concurrent card requests and restarts cannot
+    // turn a missing field into an unbounded search loop.
+    const claimed = this.#db.prepare(`
+      UPDATE company_research_runs SET search_followup_at = ?, search_followup_query = ?
+      WHERE run_id = ? AND search_followup_at IS NULL
+        AND search_executed_at IS NOT NULL AND workflow_skill IS NULL
+    `).run(this.#now().toISOString(), query, runId);
+    if (!claimed.changes) return false;
+    try {
+      const results = await this.#search.search({ companyName, query, reason: 'information_missing', maxResults: 8 });
+      let changed = false;
+      this.#transaction(() => { changed = this.#storeCompanySearchResults(runId, results); });
+      return changed;
+    } catch (error) {
+      this.#db.prepare('UPDATE company_research_runs SET search_followup_error = ? WHERE run_id = ?')
+        .run(error instanceof SearchAdapterError ? error.code : 'supplemental_search_failed', runId);
+      return false;
+    }
+  }
+
+  #storeCompanySearchResults(runId: string, results: WebSearchResultItem[]): boolean {
+    const now = this.#now().toISOString();
+    let changed = false;
+    for (const result of results) {
+      const existing = this.#db.prepare(`
+        SELECT e.evidence_id, e.quote, w.access_status FROM web_search_results w
+        JOIN evidence e ON e.evidence_id = w.evidence_id WHERE w.run_id = ? AND e.url = ?
+      `).get(runId, result.url) as { evidence_id: string; quote: string; access_status: string } | undefined;
+      const facts = result.accessStatus === 'accessible' ? result.highlights.filter(text => text.trim()) : [];
+      if (existing) {
+        const previous = existing.access_status === 'accessible' ? existing.quote.split('\n') : [];
+        const merged = [...new Set([...facts, ...previous])];
+        if (facts.length && merged.join('\n') !== existing.quote) {
+          this.#db.prepare('UPDATE evidence SET quote = ?, retrieved_at = ? WHERE evidence_id = ?')
+            .run(merged.join('\n'), result.retrievedAt, existing.evidence_id);
+          this.#db.prepare("UPDATE web_search_results SET access_status = 'accessible' WHERE run_id = ? AND evidence_id = ?")
+            .run(runId, existing.evidence_id);
+          changed = true;
+        }
+        continue;
+      }
+      const evidenceId = this.#nextId();
+      const rank = this.#db.prepare('SELECT COALESCE(MAX(rank), 0) + 1 AS rank FROM web_search_results WHERE run_id = ?')
+        .get(runId) as { rank: number };
+      this.#db.prepare(`
+        INSERT INTO evidence (evidence_id, source_type, quote, title, site, url, published_at, retrieved_at, created_at)
+        VALUES (?, 'web', ?, ?, ?, ?, ?, ?, ?)
+      `).run(evidenceId, facts.join('\n') || result.title, result.title, result.site, result.url, result.publishedAt ?? null, result.retrievedAt, now);
+      this.#db.prepare(`INSERT INTO web_search_results (result_id, run_id, evidence_id, rank, access_status) VALUES (?, ?, ?, ?, ?)`)
+        .run(this.#nextId(), runId, evidenceId, rank.rank, facts.length ? 'accessible' : 'metadata_only');
+      if (facts.length) changed = true;
+    }
+    return changed;
   }
 
   async #analyzeCompany(step: ClaimedStep): Promise<StepOutcome> {
@@ -3569,7 +3624,7 @@ class SqlitePlatformModule implements PlatformModule {
     if (!this.#search) {
       throw new SearchAdapterError(
         'search_adapter_unavailable',
-        'Exa search adapter is not configured',
+        'Public search adapter is not configured',
       );
     }
     const results = await this.#search.search({
@@ -5816,6 +5871,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateCompanyCopilotSchema();
     this.#migrateRelationshipPanoramaSchema();
     this.#migrateCompanyResearchFocusSchema();
+    this.#migrateCompanySearchFollowUpSchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -6804,6 +6860,16 @@ class SqlitePlatformModule implements PlatformModule {
       if (!hasFocus) this.#db.exec('ALTER TABLE company_research_runs ADD COLUMN research_focus TEXT');
       this.#db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (23, ?)')
         .run(this.#now().toISOString());
+    });
+  }
+
+  #migrateCompanySearchFollowUpSchema(): void {
+    const columns = new Set((this.#db.prepare('PRAGMA table_info(company_research_runs)').all() as unknown as Array<{ name: string }>).map(column => column.name));
+    this.#transaction(() => {
+      for (const column of ['search_followup_at', 'search_followup_query', 'search_followup_error']) {
+        if (!columns.has(column)) this.#db.exec(`ALTER TABLE company_research_runs ADD COLUMN ${column} TEXT`);
+      }
+      this.#db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (24, ?)').run(this.#now().toISOString());
     });
   }
 

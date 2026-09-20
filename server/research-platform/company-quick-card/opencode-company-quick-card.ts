@@ -104,11 +104,12 @@ function companyQuickPrompt(input: CompanyQuickCardAnalysisInput): string {
     `提取数组：${COMPANY_QUICK_CARD_LIST_FIELDS.map((field) => `${field.name}（${field.prompt}，最多 ${field.maximum} 项）`).join('、')}。未检索到时返回空数组。`,
     `industryTags 只能从以下标签中选择：${FUND_INDUSTRY_TAGS.join('、')}。`,
     `数值字段：${COMPANY_QUICK_CARD_NUMBER_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。`,
+    '公开检索结果中的来源摘要是检索模型对该网页的归纳，非逐字引文；metadata_only 仅有标题/链接，不足以支持具体事实。遇到冲突优先公司官网、年报、监管披露，区分总部与注册地址；综合各有效来源回答主营业务和用户关注点，不能因为某一个来源缺失就将整个字段写成未知。未披露的当前融资不能用历史轮次、债券、对外投资或行业数据代替。',
     '只输出上述字段。禁止增加公司名、统计、置信度、基金名称、匹配分数、Markdown 或解释；不得把待确认候选写成平台正式知识。',
     jsonOutputPrompt({ textFields: COMPANY_QUICK_CARD_TEXT_FIELDS, listFields: COMPANY_QUICK_CARD_LIST_FIELDS, numberFields: COMPANY_QUICK_CARD_NUMBER_FIELDS, missingText: '暂未检索到' }),
     `平台正式知识：${JSON.stringify(input.existingKnowledge.slice(0, 80))}`,
     `已有材料摘要：${JSON.stringify(input.materialSummaries.slice(0, 20))}`,
-    `公开检索结果：${JSON.stringify(input.webResults.slice(0, 5))}`,
+    `公开检索结果：${JSON.stringify(input.webResults.slice(0, 16))}`,
   ].join('\n\n');
 }
 
