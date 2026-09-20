@@ -21,7 +21,7 @@ describe('Feishu completion card', () => {
     expect(text).toContain('grey-50');
   });
 
-  it('maps the design fields into Card 2.0 and links matched entities to their network pages', () => {
+  it('maps the design fields into Card 2.0 and keeps internal links out of bot replies', () => {
     const card = completionCard(quickCard({
       companyName: '星河科技',
       companyIdentity: '星河科技 · 杭州 · 2021 年成立',
@@ -57,12 +57,12 @@ describe('Feishu completion card', () => {
     expect(text).toContain('基金匹配（确定性规则）');
     expect(text).toContain('成都元屿智算创业投资合伙企业');
     expect(text).toContain('匹配度 100%');
-    expect(text).toContain('https://demo.example/companies/company%2F1?tab=relations');
-    expect(text).toContain('https://demo.example/industry/industry%2F1?tab=chain');
-    expect(text).toContain('"type":"open_url"');
+    expect(text).not.toContain('https://demo.example/companies/company%2F1?tab=relations');
+    expect(text).not.toContain('https://demo.example/industry/industry%2F1?tab=chain');
+    expect(text).not.toContain('"type":"open_url"');
     expect(text).toContain('"background_style":"grey-50"');
     expect(text).toContain('"background_style":"white"');
-    expect(text).toContain('"background_style":"blue-50"');
+    expect(text).not.toContain('"background_style":"blue-50"');
     expect(text).not.toContain('"background_style":"green-50"');
     expect(card.header).toBeUndefined();
     expect(card).toMatchObject({ body: { direction: 'vertical' } });
@@ -72,13 +72,13 @@ describe('Feishu completion card', () => {
     expect(text).not.toContain('blockId');
   });
 
-  it('routes missing entity targets to the continuing deep-analysis conversation', () => {
+  it('keeps unmatched entities inside the bot', () => {
     const deepAnalysisUrl = 'https://demo.example/workbench/conversations/conversation-1';
     const text = JSON.stringify(completionCard(quickCard({ navigation: {} }), { deepAnalysisUrl }));
 
-    expect(text).toContain('未匹配到已有公司');
-    expect(text).toContain('进入深度分析');
-    expect(text.match(new RegExp(deepAnalysisUrl, 'gu'))).toHaveLength(2);
+    expect(text).toContain('BP 自陈 · 待核验');
+    expect(text).not.toContain('进入深度分析');
+    expect(text).not.toContain(deepAnalysisUrl);
     expect(text).not.toContain('?tab=relations');
     expect(text).not.toContain('?tab=chain');
   });
@@ -118,8 +118,8 @@ describe('Feishu completion card', () => {
     expect(completed).toContain('近期公开信号');
     expect(completed).toContain('公开来源 **4** 条');
     expect(completed).toContain('正式知识 **3** 条');
-    expect(completed).toContain('公司网络');
-    expect(completed).toContain('产业链');
+    expect(completed).not.toContain('公司网络');
+    expect(completed).not.toContain('产业链');
     expect(completed).not.toContain('本份 BP');
     expect(completed).toContain('潜在竞对');
     expect(completed).toContain('竞品甲');
@@ -133,7 +133,7 @@ describe('Feishu completion card', () => {
     expect(elements.filter((element) => element.columns?.[0]?.background_style === 'grey-50').length).toBeLessThanOrEqual(5);
   });
 
-  it('routes provisional and ambiguous companies only to the deep research conversation', () => {
+  it('asks for identity clarification inside the bot', () => {
     const deepAnalysisUrl = 'https://demo.example/workbench/conversations/conversation-one';
     const provisional = JSON.stringify(companyResearchCompletionCard(companyQuickCard({
       identityState: 'provisional',
@@ -146,10 +146,11 @@ describe('Feishu completion card', () => {
       navigation: {},
     }), { deepAnalysisUrl }));
 
-    expect(provisional).toContain('本次研究新建了待确认主体');
+    expect(provisional).toContain('公司主体尚待核验');
     expect(provisional).not.toContain('公司网络 →');
     expect(ambiguous).toContain('公司主体需要确认');
     expect(ambiguous).toContain('系统不会自动猜测主体');
-    expect(ambiguous).toContain(deepAnalysisUrl);
+    expect(ambiguous).not.toContain(deepAnalysisUrl);
+    expect(ambiguous).toContain('请补充公司全称或地区');
   });
 });

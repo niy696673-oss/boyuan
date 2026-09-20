@@ -1,3 +1,4 @@
+import { jsonOutputPrompt } from '../opencode/json-output-prompt.js';
 import {
   createOpenCodeClient,
   type OpenCodeConnectionOptions,
@@ -52,8 +53,37 @@ export function createOpenCodeCompanyQuickCardAdapter(
         .map((part) => part.text ?? '')
         .join('\n')
         .trim();
+      let quickCardFields: CompanyQuickCardFields;
+      try {
+        quickCardFields = parseCompanyQuickCardJson(rawText);
+      } catch (error) {
+        try {
+          const obj = JSON.parse(extractJsonObject(rawText)) as Record<string, unknown>;
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            const allowed = new Set<string>([
+              ...COMPANY_QUICK_CARD_TEXT_FIELDS.map((f) => f.name),
+              ...COMPANY_QUICK_CARD_LIST_FIELDS.map((f) => f.name),
+              ...COMPANY_QUICK_CARD_NUMBER_FIELDS.map((f) => f.name),
+            ]);
+            for (const key of Object.keys(obj)) {
+              if (!allowed.has(key)) delete obj[key];
+            }
+            for (const { name } of COMPANY_QUICK_CARD_TEXT_FIELDS) {
+              const val = obj[name];
+              if (typeof val !== 'string' || !val.trim()) {
+                obj[name] = name === 'companyIdentity' ? input.companyName : '暂未检索到';
+              }
+            }
+            quickCardFields = parseCompanyQuickCardJson(JSON.stringify(obj));
+          } else {
+            throw error;
+          }
+        } catch {
+          throw error;
+        }
+      }
       return {
-        ...parseCompanyQuickCardJson(rawText),
+        ...quickCardFields,
         providerId: response.info.providerID,
         modelId: response.info.modelID,
         variant: response.info.variant ?? options.variant,
@@ -72,6 +102,7 @@ function companyQuickPrompt(input: CompanyQuickCardAnalysisInput): string {
     `industryTags 只能从以下标签中选择：${FUND_INDUSTRY_TAGS.join('、')}。`,
     `数值字段：${COMPANY_QUICK_CARD_NUMBER_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。`,
     '只输出上述字段。禁止增加公司名、统计、置信度、基金名称、匹配分数、Markdown 或解释；不得把待确认候选写成平台正式知识。',
+    jsonOutputPrompt({ textFields: COMPANY_QUICK_CARD_TEXT_FIELDS, listFields: COMPANY_QUICK_CARD_LIST_FIELDS, numberFields: COMPANY_QUICK_CARD_NUMBER_FIELDS, missingText: '暂未检索到' }),
     `平台正式知识：${JSON.stringify(input.existingKnowledge.slice(0, 80))}`,
     `已有材料摘要：${JSON.stringify(input.materialSummaries.slice(0, 20))}`,
     `公开检索结果：${JSON.stringify(input.webResults.slice(0, 5))}`,

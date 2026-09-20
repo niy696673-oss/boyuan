@@ -115,3 +115,14 @@ This verifies the callback-independent message pump, official message shape, PDF
 - Quick-card enrichment only reads existing company aliases and industry placements. It never creates a company, industry, node, or relation. A matched company links to its product network; a matched industry links to its chain. Missing targets link to the continuing deep-analysis conversation, which remains responsible for entity resolution and archiving.
 - WeCom follows the same quick/deep split. The first stream reply says the request is processing; the final quick result finishes that same stream. It never creates an intermediate BotMux model turn or adds a separate status narration.
 - WeCom file event metadata and the opaque stream receipt are persisted before download. Once platform acceptance is durable, the receipt is removed and only the durable job remains. A pre-acceptance failure finishes the stream with retry guidance; accepted jobs keep retrying final delivery without restarting quick or deep analysis.
+# 飞书卡片一致性与外部试用
+
+飞书处理、完成、失败和主体待确认卡片由 `src/cards.ts` 统一渲染。完成卡保留主仓库的灰白分区、产品技术、风险与尽调、基金匹配和模拟清单来源；不展示内部工作台跳转，不承诺后台深度研究。微信文本渠道有独立 renderer，不应把飞书卡片变更视为微信文案已同步。
+
+压测和预览使用同一完成卡入口，禁止额外拼卡或在缺少基金结果时补造分数。构建后通过 stdin 传入实际后端结果：
+
+```sh
+node dist/cli/render-card.js < request.json
+```
+
+`request.json` 格式为 `{ "kind": "bp", "result": <完整后端 quick-card 响应> }`，公司研究的 `kind` 为 `company_research`。字段缺失会退出失败。该命令只渲染 JSON，不发送消息，也不能证明真人消息接收链路通过。

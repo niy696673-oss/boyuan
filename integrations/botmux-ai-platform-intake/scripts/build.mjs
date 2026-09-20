@@ -32,6 +32,7 @@ writeFileSync(join(outputRoot, 'package.json'), `${JSON.stringify({ private: tru
 await Promise.all([
   bundle(join(sourceRoot, 'index.ts'), join(outputRoot, 'index.js')),
   bundle(join(sourceRoot, 'cli', 'index.ts'), join(outputRoot, 'cli', 'index.js')),
+  bundle(join(sourceRoot, 'cli', 'render-card.ts'), join(outputRoot, 'cli', 'render-card.js')),
   bundle(join(sourceRoot, 'service', 'index.ts'), join(outputRoot, 'service', 'index.js')),
   bundle(join(sourceRoot, 'service', 'server.ts'), join(outputRoot, 'service', 'server.js')),
   bundle(join(sourceRoot, 'service', 'wecom-server.ts'), join(outputRoot, 'service', 'wecom-server.js')),

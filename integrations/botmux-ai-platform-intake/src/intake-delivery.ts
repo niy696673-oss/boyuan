@@ -11,6 +11,16 @@ import type {
   Messenger,
 } from './types.js';
 
+export type CompletionCardInput =
+  | Pick<Extract<CompletionDeliveryInput, { kind: 'bp' }>, 'kind' | 'result' | 'links'>
+  | Pick<Extract<CompletionDeliveryInput, { kind: 'company_research' }>, 'kind' | 'result' | 'links'>;
+
+export function renderCompletionCard(input: CompletionCardInput) {
+  return input.kind === 'company_research'
+    ? companyResearchCompletionCard(input.result, input.links)
+    : completionCard(input.result, input.links);
+}
+
 export class FeishuIntakeDelivery implements IntakeDelivery {
   readonly #messenger: Messenger;
 
@@ -19,9 +29,7 @@ export class FeishuIntakeDelivery implements IntakeDelivery {
   }
 
   async complete(input: CompletionDeliveryInput): Promise<void> {
-    const card = input.kind === 'company_research'
-      ? companyResearchCompletionCard(input.result, input.links)
-      : completionCard(input.result, input.links);
+    const card = renderCompletionCard(input);
     if (input.statusReceipt && this.#messenger.updateCard) {
       await this.#messenger.updateCard({
         cardMessageId: input.statusReceipt,
