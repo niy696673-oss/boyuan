@@ -7,6 +7,17 @@ import { COMPANY_RESEARCH_FILE_KEY } from '../src/types.js';
 import { companyQuickCard, conversation, quickCard, tempDir } from './helpers.js';
 
 describe('HTTP platform client', () => {
+  it('fetches original BP context using the original message, attachment and sender receipt', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json({ fileName: 'BP.pdf', text: '[第21页]融资5000万', truncated: false }));
+    const client = new HttpPlatformClient('http://platform.test', 'test-key', 1000, fetcher);
+    await expect(client.documentContext('conversation', { messageId: 'om_file', fileKey: 'file', senderId: 'ou_owner' }))
+      .resolves.toMatchObject({ text: expect.stringContaining('5000万') });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('http://platform.test/api/v1/feishu/conversations/conversation/material-context');
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get('x-boyuan-sender-id')).toBe('ou_owner');
+    expect(headers.get('x-boyuan-message-id')).toBe('om_file');
+    expect(headers.get('x-boyuan-file-key')).toBe('file');
+  });
   const servers: ReturnType<typeof createServer>[] = [];
   afterEach(async () => Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
 

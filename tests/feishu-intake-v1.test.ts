@@ -29,6 +29,36 @@ afterEach(async () => {
 });
 
 describe("飞书材料接入新工作台", () => {
+  it('只向原渠道和原收件人返回 BP 原文，并明确截断边界', async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), 'boyuan-material-context-')); roots.push(dataRoot);
+    const platform = createPlatformModule({ dataRoot }); modules.push(platform);
+    const app = express(); app.use('/api/v1/feishu', createFeishuIntakeRouter(platform, 'test-key'));
+    const headers = { 'x-boyuan-intake-key': 'test-key', 'x-boyuan-message-id': 'om_bp',
+      'x-boyuan-file-key': 'file_bp', 'x-boyuan-sender-id': 'ou_owner' };
+    const upload = await request(app).post('/api/v1/feishu/documents').set(headers)
+      .attach('file', Buffer.from('融资计划5000万元，产线60%，厂房20%，运营20%。'), { filename: 'BP.txt', contentType: 'text/plain' });
+    expect(upload.status).toBe(201);
+    const url = `/api/v1/feishu/conversations/${upload.body.conversation.conversationId}/material-context`;
+    const context = await request(app).get(url).set(headers);
+    expect(context.status).toBe(200);
+    expect(context.body).toMatchObject({ fileName: 'BP.txt', text: expect.stringContaining('5000万元'), truncated: false });
+    for (const invalid of [{ 'x-boyuan-sender-id': 'ou_other' }, { 'x-boyuan-file-key': 'other' }, { 'x-boyuan-message-id': 'other' }]) {
+      expect((await request(app).get(url).set({ ...headers, ...invalid })).status).toBe(404);
+    }
+    expect((await request(app).get(url)).status).toBe(401);
+    await expect(platform.getChannelDocumentContext({ conversationId: upload.body.conversation.conversationId,
+      sourceChannel: 'wecom', sourceMessageId: 'om_bp', sourceAttachmentKey: 'file_bp', senderId: 'ou_owner',
+    })).rejects.toThrow('material receipt not found');
+    const longHeaders = { ...headers, 'x-boyuan-message-id': 'om_long' };
+    const longUpload = await request(app).post('/api/v1/feishu/documents').set(longHeaders)
+      .attach('file', Buffer.from('首段材料\n' + '材料\n'.repeat(24000) + '末页融资5000万元'), { filename: 'long.txt', contentType: 'text/plain' });
+    const longResult = await request(app).get(`/api/v1/feishu/conversations/${longUpload.body.conversation.conversationId}/material-context`).set(longHeaders);
+    expect(longResult.body.truncated).toBe(true);
+    expect(longResult.body.text).toContain('首段材料');
+    expect(longResult.body.text).toContain('末页融资5000万元');
+    expect(longResult.body.text).toContain('中间内容未纳入');
+    expect(longResult.body.text.length).toBeLessThan(61_000);
+  });
   it.each([undefined, '请关注最新融资与竞争格局，内部项目代号松针'])("公司研究持久化关注点 %s，按消息幂等且快速与深度共享检索", async (researchFocus) => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-company-"));
     roots.push(dataRoot);

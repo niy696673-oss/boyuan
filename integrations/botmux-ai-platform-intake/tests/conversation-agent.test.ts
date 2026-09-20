@@ -54,6 +54,16 @@ afterEach(() => {
 });
 
 describe('conversation agent request contract', () => {
+  it('reuses a supplied session and checkpoints a new one before sending the prompt', async () => {
+    const { agent, fetcher } = agentWith();
+    let saved: string | undefined;
+    const onCreated = vi.fn((id: string) => { saved = id; });
+    await agent.respond({ text: '你好', session: { onCreated } });
+    expect(saved).toBe('session-1');
+    await agent.respond({ text: '接着聊', session: { id: saved!, onCreated } });
+    expect(fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname.endsWith('/session'))).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname.endsWith('/session/session-1/message'))).toHaveLength(2);
+  });
   it('uses the shared client, explicit model/low variant, JSON schema and no tools', async () => {
     const { agent, fetcher } = agentWith(JSON.stringify(RESEARCH), {
       credentials: { username: 'test-user', password: 'test-secret' },
@@ -265,6 +275,21 @@ describe('conversation agent strict output parsing', () => {
 });
 
 describe('conversation agent cancellation and safe errors', () => {
+  it('does not release a reused session until its failed request has been aborted', async () => {
+    const fetcher = transport();
+    let finishAbort!: (response: Response) => void;
+    fetcher.mockImplementationOnce(async () => new Response('busy', { status: 503 }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishAbort = resolve; }));
+    const agent = createConversationAgent({ ...OPTIONS, fetcher });
+    let settled = false;
+    const result = agent.respond({ text: '继续', session: { id: 'session-existing', onCreated: vi.fn() } })
+      .catch((error: unknown) => { settled = true; return error; });
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(settled).toBe(false);
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain('/session/session-existing/abort');
+    finishAbort(Response.json(true));
+    expect(await result).toBeInstanceOf(ConversationAgentError);
+  });
   it('does not start an already cancelled request or expose its reason', async () => {
     const { agent, fetcher } = agentWith();
     await expect(agent.respond({ text: 'hello', signal: AbortSignal.abort('test-secret') }))

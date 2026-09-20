@@ -89,6 +89,17 @@ function createChannelIntakeRouter(
     },
   );
 
+  router.get('/conversations/:conversationId/material-context', authorize, async (request, response, next) => {
+    try {
+      response.json(await platform.getChannelDocumentContext({
+        conversationId: requiredPathParameter(request.params.conversationId), sourceChannel,
+        sourceMessageId: requiredMetadataHeader(request.header('x-boyuan-message-id'), 'source message', sourceChannel),
+        sourceAttachmentKey: requiredMetadataHeader(request.header('x-boyuan-file-key'), 'file key', sourceChannel),
+        senderId: requiredMetadataHeader(request.header('x-boyuan-sender-id'), 'sender', sourceChannel),
+      }));
+    } catch (error) { handlePlatformError(error, response, next); }
+  });
+
   router.post(
     "/conversations/:conversationId/quick-card",
     authorize,

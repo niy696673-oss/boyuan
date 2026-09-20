@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ConversationAgent, ConversationDecision, ConversationHistoryEntry } from './conversation-agent.js';
-import { parseFeishuTextMessage, type FeishuCompanyResearchMessage, type FeishuTextMessage } from './direct-feishu-intake.js';
+import { parseFeishuFileMessage, parseFeishuTextMessage, type FeishuFileMessage, type FeishuCompanyResearchMessage, type FeishuTextMessage } from './direct-feishu-intake.js';
 
 interface Turn {
   message: FeishuTextMessage;
+  file?: FeishuFileMessage;
   decision?: ConversationDecision;
   research: Record<string, string>;
   status: 'pending' | 'completed' | 'failed';
@@ -16,6 +17,8 @@ interface Turn {
 interface ConversationData {
   schemaVersion: 1;
   turns: Record<string, Turn>;
+  sessions?: Record<string, string>;
+  restoredFiles?: Record<string, boolean>;
 }
 
 export interface FeishuConversationOptions {
@@ -24,6 +27,8 @@ export interface FeishuConversationOptions {
   agent: ConversationAgent;
   reply(message: FeishuTextMessage, text: string, uuid: string): Promise<void>;
   research(message: FeishuCompanyResearchMessage): Promise<string>;
+  file?(message: FeishuFileMessage): Promise<string>;
+  restoreFiles?(message: FeishuTextMessage): Promise<Array<{ file: FeishuFileMessage; content: string }>>;
   onError?(error: unknown): void;
   setTimer?(callback: () => void, delayMs: number): unknown;
 }
@@ -46,10 +51,14 @@ export class FeishuConversationIngress {
   }
 
   async handle(event: unknown): Promise<{ handled: boolean }> {
-    const message = parseFeishuTextMessage(event, new Date(), this.#options.botOpenId);
+    const file = this.#options.file ? parseFeishuFileMessage(event) : null;
+    const message = file && file.senderId && /^ou_[A-Za-z0-9_-]{1,500}$/u.test(file.senderId)
+      ? { chatId: file.chatId, senderId: file.senderId, messageId: file.messageId,
+        receivedAt: file.receivedAt, text: `[上传文件] ${file.fileName}` }
+      : parseFeishuTextMessage(event, new Date(), this.#options.botOpenId);
     if (!message) return { handled: false };
     if (!this.#data.turns[message.messageId]) {
-      this.#data.turns[message.messageId] = { message, research: {}, status: 'pending' };
+      this.#data.turns[message.messageId] = { message, research: {}, status: 'pending', ...(file ? { file } : {}) };
       this.#save();
     }
     await this.#enqueue(message.messageId);
@@ -57,7 +66,8 @@ export class FeishuConversationIngress {
   }
 
   resumePending(): void {
-    for (const [id, turn] of Object.entries(this.#data.turns)) {
+    for (const [id, turn] of Object.entries(this.#data.turns).sort(([, a], [, b]) =>
+      Date.parse(a.message.receivedAt) - Date.parse(b.message.receivedAt))) {
       if (turn.status === 'pending') void this.#enqueue(id).catch((error) => this.#options.onError?.(error));
     }
   }
@@ -69,7 +79,7 @@ export class FeishuConversationIngress {
     if (turn.status !== 'pending') return Promise.resolve();
     const owner = conversationKey(turn.message);
     const previous = this.#queues.get(owner) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(() => this.#process(turn));
+    const next = previous.catch(() => undefined).then(() => this.#processWithRetry(turn));
     this.#active.set(id, next);
     this.#queues.set(owner, next);
     void next.finally(() => {
@@ -78,19 +88,57 @@ export class FeishuConversationIngress {
     }).catch(() => undefined);
     void next.catch((error) => {
       this.#options.onError?.(error);
-      if (turn.status === 'pending' && (turn.attempts ?? 0) < 3) {
-        const schedule = this.#options.setTimer ?? ((callback: () => void, ms: number) => setTimeout(callback, ms).unref());
-        schedule(() => { void this.#enqueue(id).catch(() => undefined); }, 1500 * (turn.attempts ?? 1));
-      }
     });
     return next;
   }
 
+  async #processWithRetry(turn: Turn): Promise<void> {
+    while (true) {
+      try { await this.#process(turn); return; } catch (error) {
+        if ((turn.attempts ?? 0) >= 3) {
+          turn.status = 'failed';
+          turn.response = '这条消息处理失败，请重新发送后再试。';
+          this.#save();
+          await this.#reply(turn.message, turn.response).catch(this.#options.onError ?? (() => undefined));
+          throw error;
+        }
+        // Hold the same conversation lock throughout retries. Later messages cannot overtake it.
+        await new Promise<void>((resolve) => {
+          const schedule = this.#options.setTimer ?? ((callback: () => void, ms: number) => setTimeout(callback, ms));
+          schedule(resolve, 1500 * (turn.attempts ?? 1));
+        });
+      }
+    }
+  }
+
   async #process(turn: Turn): Promise<void> {
     const { message } = turn;
-    const history = this.#history(turn);
     turn.attempts = (turn.attempts ?? 0) + 1;
     this.#save();
+    if (turn.file) {
+      if (!this.#options.file) throw new Error('feishu_file_handler_missing');
+      turn.response = await this.#options.file(turn.file);
+      turn.status = 'completed';
+      this.#save();
+      return;
+    }
+    const owner = conversationKey(message);
+    if (this.#options.restoreFiles && !this.#data.restoredFiles?.[owner]) {
+      for (const restored of await this.#options.restoreFiles(message)) {
+        if (restored.file.chatId !== message.chatId || restored.file.senderId !== message.senderId
+          || this.#data.turns[restored.file.messageId]) continue;
+        this.#data.turns[restored.file.messageId] = {
+          message: { chatId: message.chatId, senderId: message.senderId,
+            messageId: restored.file.messageId, receivedAt: restored.file.receivedAt,
+            text: `[上传文件] ${restored.file.fileName}` },
+          file: restored.file, status: 'completed', response: restored.content, research: {},
+        };
+      }
+      this.#data.restoredFiles ??= {};
+      this.#data.restoredFiles[owner] = true;
+      this.#save();
+    }
+    const history = this.#history(turn);
     let deliveringReply = false;
     try {
       // A size guard protects model capacity; it never silently truncates a user's message.
@@ -98,7 +146,19 @@ export class FeishuConversationIngress {
         turn.decision = { kind: 'reply', text: '这条消息太长了，请分成几条发送，我会逐条处理。' };
       }
       if (!turn.decision) {
-        turn.decision = await this.#options.agent.respond({ text: message.text, history });
+        const sessionId = this.#data.sessions?.[owner];
+        turn.decision = await this.#options.agent.respond({
+          text: message.text, history,
+          materials: this.#materials(turn),
+          session: {
+            ...(sessionId ? { id: sessionId } : {}),
+            onCreated: (id) => {
+              this.#data.sessions ??= {};
+              this.#data.sessions[owner] = id;
+              this.#save();
+            },
+          },
+        });
         this.#save();
       }
       if (turn.decision.kind === 'reply') {
@@ -146,6 +206,22 @@ export class FeishuConversationIngress {
       turn.status = 'failed';
     }
     this.#save();
+  }
+
+  #materials(current: Turn): Array<{ fileName: string; content: string }> {
+    const before = Object.values(this.#data.turns).filter((turn) =>
+      conversationKey(turn.message) === conversationKey(current.message)
+      && turn !== current && turn.file && turn.status === 'completed' && turn.response
+      && Date.parse(turn.message.receivedAt) <= Date.parse(current.message.receivedAt));
+    let budget = 80_000;
+    return before.sort((a, b) => Date.parse(b.message.receivedAt) - Date.parse(a.message.receivedAt))
+      .slice(0, 3).flatMap((turn) => {
+        if (budget <= 0) return [];
+        const content = turn.response!.slice(0, budget);
+        budget -= content.length;
+        return [{ fileName: turn.file!.fileName, content: content.length < turn.response!.length
+          ? `${content}\n[上下文容量有限，后续内容未纳入，不能推断省略部分]` : content }];
+      }).reverse();
   }
 
   #history(current: Turn): ConversationHistoryEntry[] {
