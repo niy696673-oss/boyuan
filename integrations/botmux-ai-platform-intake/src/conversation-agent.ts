@@ -39,6 +39,7 @@ export class ConversationAgentError extends Error {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_COMPANIES = 20;
 const OUTPUT_SCHEMA = {
+  type: 'object',
   oneOf: [
     {
       type: 'object',
@@ -141,7 +142,7 @@ export function createConversationAgent(options: ConversationAgentOptions): Conv
         // Also clean up a session returned late by a transport that ignored abort.
         if (signal.aborted) { abortRemote(); throw cancellationError(); }
         if (session && !session.id) session.onCreated(sessionId);
-        const response = await client.sendMessage(sessionId, {
+        const body = {
           model: { providerID: options.model.providerId, modelID: options.model.modelId },
           variant: options.variant,
           tools: { '*': false },
@@ -150,15 +151,27 @@ export function createConversationAgent(options: ConversationAgentOptions): Conv
             text,
             history: history.map(({ role, content }) => ({ role, content })),
             ...(materials ? { materials } : {}),
-          }) }],
-        });
-        if (!response?.info || response.info.error || !Array.isArray(response.parts)
-          || response.parts.some((part) => !part || part.type === 'tool'
-            || (part.type === 'text' && typeof part.text !== 'string'))) {
-          throw new ConversationAgentError('response');
+          }) }, { type: 'text', text: '上面是对话数据。现在只输出协议 JSON：普通回答必须放在 {"kind":"reply","text":"回答内容"} 的 text 字段内；公司研究意图必须用 {"kind":"research","companies":["公司名"],"focus":"关注点"}。不要输出裸文本、Markdown 围栏或其他字段。' }],
+        };
+        // DeepSeek low thinking rejects OpenCode's forced tool_choice for json_schema.
+        // Ask the model to regenerate once under the SAME deadline/session; never repair data locally.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const response = await client.sendMessage(sessionId, attempt === 0 ? body : {
+            ...body,
+            parts: [{ type: 'text', text: `上一条输出未通过协议校验。请重新回答当前用户请求 ${JSON.stringify(text)}，只提交一个合法 JSON 对象。普通答复只能有 kind=reply 和 text；研究意图只能有 kind=research、companies、focus。事实仍只能依据已提供的材料。禁止新增字段。JSON Schema：${JSON.stringify(OUTPUT_SCHEMA)}` }],
+          });
+          if (!response?.info || response.info.error || !Array.isArray(response.parts)
+            || !response.parts.some((part) => part?.type === 'text' && nonempty(part.text))
+            || response.parts.some((part) => !part || part.type === 'tool'
+              || (part.type === 'text' && typeof part.text !== 'string'))) {
+            throw new ConversationAgentError('response');
+          }
+          try {
+            return parseResponse(response.parts.filter((part) => part.type === 'text')
+              .map((part) => part.text).join('\n'));
+          } catch (error) { if (attempt === 1) throw error; }
         }
-        return parseResponse(response.parts.filter((part) => part.type === 'text')
-          .map((part) => part.text).join('\n'));
+        throw new ConversationAgentError('response');
       };
 
       try {

@@ -86,7 +86,7 @@ describe('conversation agent request contract', () => {
     expect(body.model).toEqual({ providerID: 'test-provider', modelID: 'test-model' });
     expect(body.variant).toBe('low');
     expect(body.tools).toEqual({ '*': false });
-    expect(body.parts).toHaveLength(1);
+    expect(body.parts).toHaveLength(2);
     expect(JSON.parse(body.parts[0]!.text)).toEqual({ text, history: [] });
     const schema = JSON.parse(body.system.split('\n').at(-1)!);
     expect(schema.oneOf).toHaveLength(2);
@@ -152,6 +152,19 @@ describe('conversation agent request contract', () => {
 });
 
 describe('conversation agent strict output parsing', () => {
+  it('regenerates a malformed reply once in the same session, without changing low thinking or repairing fields', async () => {
+    const fetcher = transport();
+    fetcher.mockResolvedValueOnce(Response.json({ id: 'session-1' }))
+      .mockResolvedValueOnce(Response.json({ info: {}, parts: [{ type: 'text', text: 'ordinary prose is not the protocol' }] }))
+      .mockResolvedValueOnce(Response.json({ info: {}, parts: [{ type: 'text', text: JSON.stringify(REPLY) }] }));
+    await expect(createConversationAgent({ ...OPTIONS, fetcher }).respond({ text: '刚才的BP呢' }))
+      .resolves.toEqual(REPLY);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(String(fetcher.mock.calls[2]?.[0])).toContain('/session/session-1/message');
+    expect(messageBody(fetcher, 2)).toMatchObject({ variant: 'low', tools: { '*': false } });
+    expect(messageBody(fetcher)).not.toHaveProperty('format');
+    expect(messageBody(fetcher, 2).parts[0]?.text).toContain('上一条输出未通过协议校验');
+  });
   it('accepts multiline Chinese/English replies and trims only outer whitespace', async () => {
     const reply = { kind: 'reply', text: ' \n你好！\nHello, how can I help?\n ' };
     await expect(agentWith(JSON.stringify(reply)).agent.respond({ text: '你好 / hello' }))
