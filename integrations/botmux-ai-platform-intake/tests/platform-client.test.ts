@@ -33,18 +33,18 @@ describe('HTTP platform client', () => {
     expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('x-boyuan-message-id')).toBe('om_legacy');
   });
 
-  it('derives bounded stable child request IDs and sends focus separately from the company name', async () => {
+  it.each(['feishu', 'wecom'] as const)('derives stable child IDs and carries focus for %s', async (channel) => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       conversation: conversation('conversation-company', 'processing'), reusedResearch: false,
     }), { status: 201 }));
-    const client = new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher);
+    const client = new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher, channel);
     const input = {
       chatId: 'oc_chat', sessionId: 'session', messageId: 'om_multi', companyName: '甲科技',
       researchKey: `${COMPANY_RESEARCH_FILE_KEY}:${'公司甲\n'.repeat(200)}`, researchFocus: '最近一轮融资与竞争格局', senderId: 'ou_sender',
     };
     await client.startCompanyResearch(input);
     await client.startCompanyResearch({ ...input, researchKey: 'company-research:乙' });
-    await new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher).startCompanyResearch(input);
+    await new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher, channel).startCompanyResearch(input);
     await client.startCompanyResearch({ ...input, messageId: 'om_other' });
     const ids = fetcher.mock.calls.map((call) => new Headers(call[1]?.headers).get('x-boyuan-message-id'));
     expect(ids[0]).toMatch(/^company-research:[a-f0-9]{64}$/u);
@@ -58,7 +58,7 @@ describe('HTTP platform client', () => {
     expect(input.messageId).toBe('om_multi');
   });
 
-  it('keeps other channel research requests unchanged', async () => {
+  it('preserves legacy WeCom message IDs while carrying research focus', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       conversation: conversation('conversation-company', 'processing'), reusedResearch: false,
     }), { status: 201 }));
@@ -69,7 +69,7 @@ describe('HTTP platform client', () => {
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe('http://platform.test/api/v1/wecom/company-research');
     expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('x-boyuan-message-id')).toBe('wecom-real-message');
-    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({ companyName: '甲科技' });
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({ companyName: '甲科技', researchFocus: '融资' });
   });
 
   it('streams multipart bytes with authenticated Feishu metadata and parses the platform response', async () => {

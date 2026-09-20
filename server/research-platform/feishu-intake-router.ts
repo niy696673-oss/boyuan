@@ -128,9 +128,7 @@ function createChannelIntakeRouter(
         if (typeof companyName !== "string") {
           throw new PlatformInputError("invalid_company_research", "请提供公司名称");
         }
-        const researchFocus = sourceChannel === "feishu"
-          ? (body as Record<string, unknown>).researchFocus
-          : undefined;
+        const researchFocus = (body as Record<string, unknown>).researchFocus;
         if (researchFocus !== undefined && typeof researchFocus !== "string") {
           throw new PlatformInputError("invalid_research_focus", "研究关注点必须为字符串");
         }

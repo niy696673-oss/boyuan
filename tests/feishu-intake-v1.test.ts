@@ -10,7 +10,7 @@ import { createApp } from "../server/app.js";
 import { createDemoServices } from "../server/platform/runtime.js";
 import { createDeterministicAnalysisAdapter } from "../server/research-platform/analysis/deterministic-analysis.js";
 import type { PlatformModule } from "../server/research-platform/contracts.js";
-import { createFeishuIntakeRouter } from "../server/research-platform/feishu-intake-router.js";
+import { createFeishuIntakeRouter, createWeComIntakeRouter } from "../server/research-platform/feishu-intake-router.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 import type { QuickCardAnalysisPort } from "../server/research-platform/quick-card/contracts.js";
 import type { CompanyQuickCardAnalysisPort } from "../server/research-platform/company-quick-card/contracts.js";
@@ -217,16 +217,16 @@ describe("飞书材料接入新工作台", () => {
     });
   });
 
-  it('校验可选关注点类型、空值和 500 字边界，不把问题写入公司名', async () => {
+  it.each(['feishu', 'wecom'] as const)('%s 校验关注点并持久化，不把问题写入公司名', async (channel) => {
     const dataRoot = await mkdtemp(join(tmpdir(), 'boyuan-feishu-focus-'));
     roots.push(dataRoot);
     const platform = createPlatformModule({ dataRoot });
     modules.push(platform);
     const app = express();
     app.use(express.json());
-    app.use('/api/v1/feishu', createFeishuIntakeRouter(platform, 'test-key'));
+    app.use(`/api/v1/${channel}`, (channel === 'feishu' ? createFeishuIntakeRouter : createWeComIntakeRouter)(platform, 'test-key'));
     for (const researchFocus of [null, 3, {}, [], '', '  \n ', '问'.repeat(501)]) {
-      const result = await request(app).post('/api/v1/feishu/company-research')
+      const result = await request(app).post(`/api/v1/${channel}/company-research`)
         .set('x-boyuan-intake-key', 'test-key').set('x-boyuan-message-id', 'om_boundary')
         .send({ companyName: '边界科技有限公司', researchFocus });
       expect(result.status).toBe(400);
@@ -235,7 +235,7 @@ describe("飞书材料接入新工作台", () => {
     expect(await platform.listCompanies()).toHaveLength(0);
     expect(await platform.listConversations()).toHaveLength(0);
     const focus = '竞'.repeat(500);
-    const accepted = await request(app).post('/api/v1/feishu/company-research')
+    const accepted = await request(app).post(`/api/v1/${channel}/company-research`)
       .set('x-boyuan-intake-key', 'test-key').set('x-boyuan-message-id', 'om_boundary')
       .send({ companyName: '边界科技有限公司', researchFocus: focus });
     expect(accepted.status).toBe(201);

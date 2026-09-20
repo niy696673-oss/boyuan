@@ -42,7 +42,7 @@ interface WechatKfIngressStore {
 export interface DirectWechatKfFileIngressOptions extends WechatKfIngressStore {
   materialize(message: WechatKfFileMessage, fileKey: string): Promise<IntakeAttachment>;
   ingestTurn(turn: IntakeTurn): Promise<IntakeOutcome[]>;
-  delivery: WechatKfTextDelivery;
+  delivery: Pick<WechatKfTextDelivery, 'openProcessing' | 'complete' | 'fail'>;
 }
 
 interface WechatKfReceipt {
@@ -81,7 +81,7 @@ export class WechatKfTextDelivery implements IntakeDelivery {
 
   async complete(input: Parameters<IntakeDelivery['complete']>[0]): Promise<void> {
     const receipt = requiredReceipt(input.statusReceipt);
-    for (const content of splitText(renderWeComCompletion(input))) {
+    for (const content of splitWechatText(renderWeComCompletion(input))) {
       await this.#port.sendText({ ...receipt, content });
     }
   }
@@ -98,7 +98,7 @@ export class WechatKfTextDelivery implements IntakeDelivery {
 }
 
 export interface DirectWechatKfCompanyResearchIngressOptions extends WechatKfIngressStore {
-  delivery: WechatKfTextDelivery;
+  delivery: Pick<WechatKfTextDelivery, 'openProcessing' | 'complete' | 'fail'>;
   researchCompany(turn: CompanyResearchTurn): Promise<IntakeOutcome>;
 }
 
@@ -137,14 +137,21 @@ export class DirectWechatKfCompanyResearchIngress {
     await active;
   }
 
-  async #research(message: WechatKfTextMessage, companyName: string): Promise<void> {
-    const fileKey = COMPANY_RESEARCH_FILE_KEY;
+  async handleResearch(message: Omit<WechatKfTextMessage, 'text'> & {
+    companyName: string; researchKey?: string; researchFocus?: string;
+  }): Promise<void> {
+    await this.#research({ ...message, text: message.companyName }, message.companyName,
+      message.researchKey, message.researchFocus);
+  }
+
+  async #research(message: WechatKfTextMessage, companyName: string, researchKey?: string, researchFocus?: string): Promise<void> {
+    const fileKey = researchKey ?? COMPANY_RESEARCH_FILE_KEY;
     if (this.#options.statusReceiptTerminal(message.messageId, fileKey)) return;
     let receipt = this.#options.statusReceiptId(message.messageId, fileKey);
     if (!receipt) {
       receipt = await this.#options.delivery.openProcessing({ ...message, fileKey, kind: 'company_research', subject: companyName });
       this.#options.rememberStatusReceipt({
-        chatId: message.externalUserId,
+        chatId: message.conversationChatId ?? message.externalUserId,
         messageId: message.messageId,
         fileKey,
         fileName: companyName,
@@ -157,10 +164,12 @@ export class DirectWechatKfCompanyResearchIngress {
     // Keep the durable receipt on failure so callback/poll retries and restart recovery
     // resume the same platform job without sending another processing message.
     await this.#options.researchCompany({
-      chatId: message.externalUserId,
+      chatId: message.conversationChatId ?? message.externalUserId,
       sessionId: `wechat-kf:${message.messageId}`,
       messageId: message.messageId,
       companyName,
+      ...(researchKey ? { researchKey } : {}),
+      ...(researchFocus ? { researchFocus } : {}),
       receivedAt: message.receivedAt,
       senderId: message.externalUserId,
       statusCardMessageId: receipt,
@@ -187,17 +196,13 @@ export class DirectWechatKfFileIngress {
   }
 
   async #ingest(message: WechatKfFileMessage): Promise<void> {
-    const fileKey = createHash('sha256')
-      .update('wechat-kf-file\0')
-      .update(message.messageId)
-      .digest('hex')
-      .slice(0, 48);
+    const fileKey = wechatKfFileKey(message.messageId);
     if (this.#options.statusReceiptTerminal(message.messageId, fileKey)) return;
     let receipt = this.#options.statusReceiptId(message.messageId, fileKey);
     if (!receipt) {
       receipt = await this.#options.delivery.openProcessing({ ...message, fileKey });
       this.#options.rememberStatusReceipt({
-        chatId: message.externalUserId,
+        chatId: message.conversationChatId ?? message.externalUserId,
         messageId: message.messageId,
         fileKey,
         fileName: '微信客服项目材料',
@@ -213,7 +218,7 @@ export class DirectWechatKfFileIngress {
     try {
       const attachment = await this.#options.materialize(message, fileKey);
       const outcomes = await this.#options.ingestTurn({
-        chatId: message.externalUserId,
+        chatId: message.conversationChatId ?? message.externalUserId,
         sessionId: `wechat-kf:${message.messageId}`,
         messageId: message.messageId,
         receivedAt: message.receivedAt,
@@ -227,7 +232,7 @@ export class DirectWechatKfFileIngress {
     } catch (error) {
       await this.#options.delivery.fail({
         kind: 'bp',
-        chatId: message.externalUserId,
+        chatId: message.conversationChatId ?? message.externalUserId,
         sessionId: `wechat-kf:${message.messageId}`,
         messageId: message.messageId,
         fileKey,
@@ -240,11 +245,11 @@ export class DirectWechatKfFileIngress {
   }
 }
 
-function encodeReceipt(receipt: WechatKfReceipt): string {
+export function encodeReceipt(receipt: WechatKfReceipt): string {
   return `${RECEIPT_PREFIX}${Buffer.from(JSON.stringify(receipt), 'utf8').toString('base64url')}`;
 }
 
-function requiredReceipt(value: string | undefined): WechatKfReceipt {
+export function requiredReceipt(value: string | undefined): WechatKfReceipt {
   if (!value?.startsWith(RECEIPT_PREFIX) || value.length > 4_096) throw new Error('wechat_kf_receipt_invalid');
   let parsed: unknown;
   try {
@@ -261,7 +266,7 @@ function requiredReceipt(value: string | undefined): WechatKfReceipt {
   return { externalUserId, openKfid };
 }
 
-function splitText(value: string): string[] {
+export function splitWechatText(value: string): string[] {
   if (Buffer.byteLength(value, 'utf8') <= MAX_TEXT_BYTES) return [value];
   if (Buffer.byteLength(value, 'utf8') > MAX_TEXT_BYTES * MAX_FINAL_MESSAGES) {
     throw new Error('wechat_kf_text_too_large');
@@ -301,4 +306,8 @@ function boundedText(value: unknown, maxLength: number): string | undefined {
   return normalized && normalized.length <= maxLength && !/[\r\n\0]/u.test(normalized)
     ? normalized
     : undefined;
+}
+
+export function wechatKfFileKey(messageId: string): string {
+  return createHash('sha256').update('wechat-kf-file\0').update(messageId).digest('hex').slice(0, 48);
 }

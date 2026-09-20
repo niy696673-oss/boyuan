@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { WechatKfClient } from '../src/wechat-kf-client.js';
 
 describe('WechatKfClient', () => {
+  it('passes stable outgoing message IDs and rejects malformed IDs before network calls', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+      if (String(url).includes('gettoken')) return Response.json({ errcode: 0, access_token: 'token', expires_in: 7200 });
+      expect(JSON.parse(String(init?.body))).toMatchObject({ msgid: 'stable_123', text: { content: 'reply' } });
+      return Response.json({ errcode: 0, msgid: 'stable_123' });
+    });
+    const client = new WechatKfClient({ corpId: 'ww1234567890abcdef', secret: 'secret' }, fetcher);
+    const message = { openKfid: 'kf-account', externalUserId: 'customer', content: 'reply' };
+    await expect(client.sendText({ ...message, msgid: '../invalid' })).rejects.toThrow('wechat_kf_msgid_invalid');
+    expect(fetcher).not.toHaveBeenCalled();
+    await client.sendText({ ...message, msgid: 'stable_123' });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it('uses the callback token and persisted cursor to pull an inbound PDF message', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input));

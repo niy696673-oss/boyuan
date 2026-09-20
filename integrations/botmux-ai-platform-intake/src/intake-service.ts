@@ -154,8 +154,8 @@ export class IntakeService {
     return active;
   }
 
-  resumePending(): void {
-    for (const job of this.#store.listPending()) this.#schedule(job.key, 0);
+  resumePending(accept: (job: IntakeJob) => boolean = () => true): void {
+    for (const job of this.#store.listPending().filter(accept)) this.#schedule(job.key, 0);
     for (const job of this.#store.listCleanupPending()) this.#scheduleCleanup(job.key, 0);
   }
 

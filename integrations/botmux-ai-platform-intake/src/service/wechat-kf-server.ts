@@ -2,21 +2,16 @@ import { readFileSync } from 'node:fs';
 import { createServer, type ServerResponse } from 'node:http';
 import { dirname } from 'node:path';
 import { parseWechatKfIntakeConfig, prepareRuntimeDirectories } from '../config.js';
-import {
-  DirectWechatKfFileIngress,
-  DirectWechatKfCompanyResearchIngress,
-  WechatKfTextDelivery,
-} from '../direct-wechat-kf-intake.js';
-import { IntakeService } from '../intake-service.js';
-import { JsonJobStore } from '../job-store.js';
 import { HttpPlatformClient } from '../platform-client.js';
+import { createRuntimeConversationAgent } from '../conversation-agent.js';
+import { createWechatConversationRuntime } from '../wechat-conversation-runtime.js';
 import type { JsonObject, StatusCardReceipt } from '../types.js';
 import { COMPANY_RESEARCH_FILE_KEY } from '../types.js';
 import { createWechatKfCallbackHandler } from '../wechat-kf-callback.js';
 import { WechatKfClient } from '../wechat-kf-client.js';
 import { JsonWechatKfCursorStore, WechatKfMessagePump } from '../wechat-kf-pump.js';
-import { loadWechatKfCredentials, WechatKfFileMaterializer } from '../wechat-kf-runtime.js';
-import { createCompanyListExtractor, isCompanyListText } from '../company-list-extractor.js';
+import { loadWechatKfCredentials } from '../wechat-kf-runtime.js';
+import { createCompanyListExtractor } from '../company-list-extractor.js';
 import { WechatKfCompanyBatch } from '../wechat-kf-company-batch.js';
 
 const configPath = process.env.BOYUAN_WECHAT_KF_INTAKE_CONFIG_PATH;
@@ -38,80 +33,26 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('wecha
 
 const credentials = loadWechatKfCredentials();
 const client = new WechatKfClient(credentials);
-const materializer = new WechatKfFileMaterializer(config, client);
-const delivery = new WechatKfTextDelivery(client);
-const service = new IntakeService({
-  config,
-  platform: new HttpPlatformClient(
-    config.platformBaseUrl,
-    config.platformIntakeKey,
-    config.timeoutMs,
-    fetch,
-    'wecom',
-  ),
-  delivery,
-  store: new JsonJobStore(config.statePath),
-  releaseAttachment: (attachment) => materializer.release(attachment),
-});
-
-const receiptStore = {
-  statusReceiptId: (messageId: string, fileKey: string) => service.statusCardId(messageId, fileKey),
-  statusReceiptTerminal: (messageId: string, fileKey: string) => (
-    service.isStatusCardTerminal(messageId, fileKey)
-  ),
-  rememberStatusReceipt: (input: {
-    chatId: string;
-    messageId: string;
-    fileKey: string;
-    fileName: string;
-    receipt: string;
-    createdAt: string;
-    senderId: string;
-    metadata?: Record<string, string>;
-  }) => service.rememberStatusCard({
-    chatId: input.chatId,
-    messageId: input.messageId,
-    fileKey: input.fileKey,
-    fileName: input.fileName,
-    cardMessageId: input.receipt,
-    createdAt: input.createdAt,
-    senderId: input.senderId,
-    ...(input.metadata ? { metadata: input.metadata } : {}),
-  }),
-  markStatusReceiptTerminal: (messageId: string, fileKey: string) => {
-    service.markStatusCardTerminal(messageId, fileKey);
-  },
+const reportIngressError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : 'unknown_error';
+  process.stderr.write(`[wechat-kf-intake] ingress error: ${message.slice(0, 300)}\n`);
 };
-
-const ingress = new DirectWechatKfFileIngress({
-  delivery,
-  materialize: (message, fileKey) => materializer.materialize(message, fileKey),
-  ingestTurn: (turn) => service.ingestTurn(turn),
-  ...receiptStore,
+const { service, ingress, companyIngress, delivery, conversation } = createWechatConversationRuntime({
+  config, client, agent: createRuntimeConversationAgent(process.env), onError: reportIngressError,
 });
 const pump = new WechatKfMessagePump({
   client,
   ingress: {
     handle: (message) => {
-      if ('imageMediaId' in message || ('text' in message && isCompanyListText(message.text))) return companyBatch.handle(message);
-      return 'text' in message ? companyIngress.handle(message) : ingress.handle(message);
+      if ('imageMediaId' in message) return companyBatch.handle(message);
+      return conversation.handle(message);
     },
   },
   cursorStore: new JsonWechatKfCursorStore(config.cursorStatePath),
 });
-const companyIngress = new DirectWechatKfCompanyResearchIngress({
-  delivery,
-  researchCompany: (turn) => service.researchCompany(turn),
-  ...receiptStore,
-});
 const recoveryPollIntervalMs = parseRecoveryPollInterval(
   process.env.WECHAT_KF_RECOVERY_POLL_INTERVAL_MS,
 );
-
-const reportIngressError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : 'unknown_error';
-  process.stderr.write(`[wechat-kf-intake] ingress error: ${message.slice(0, 300)}\n`);
-};
 
 const extractionUrl = process.env.BOYUAN_OPENCODE_BASE_URL;
 const extractionPassword = process.env.BOYUAN_OPENCODE_PASSWORD;
@@ -141,9 +82,12 @@ const callbackHandler = createWechatKfCallbackHandler({
   onError: reportIngressError,
 });
 
-service.resumePending();
+service.resumePending((job) => !conversation.has(job.messageId));
+conversation.resumePending();
 companyBatch.resumePending();
-for (const receipt of service.listOrphanStatusCards()) resumeOrphan(receipt);
+for (const receipt of service.listOrphanStatusCards()) {
+  if (!conversation.has(receipt.messageId)) resumeOrphan(receipt);
+}
 void pump.pollKnownAccounts().catch(reportIngressError);
 const recoveryPollTimer = setInterval(() => {
   void pump.pollKnownAccounts().catch(reportIngressError);
@@ -153,7 +97,7 @@ recoveryPollTimer.unref();
 
 const server = createServer((request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
-    respond(response, 200, { ok: true, channel: 'wechat-kf' });
+    respond(response, 200, { ok: true, channel: 'wechat-kf', conversationMode: 'natural', conversationEngine: 'shared' });
     return;
   }
   callbackHandler(request, response);
