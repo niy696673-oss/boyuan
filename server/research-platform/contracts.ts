@@ -428,6 +428,7 @@ export interface CompanyResearchRecord {
   runId: string;
   companyId?: string;
   intent: string;
+  researchFocus?: string;
   explicitWebSearch: boolean;
   triggerReason?: 'user_requested' | 'information_missing' | 'possibly_outdated' | 'internal_conflict' | 'not_needed';
   publicQuery?: string;
@@ -592,12 +593,14 @@ export interface StartCompanyResearchInput {
   companyId?: string;
   companyName?: string;
   intent: string;
+  researchFocus?: string;
   explicitWebSearch: boolean;
   workflow?: CompanyResearchWorkflowRequest;
 }
 
 export interface StartFeishuCompanyResearchInput {
   companyName: string;
+  researchFocus?: string;
   sourceMessageId: string;
   senderId?: string;
 }

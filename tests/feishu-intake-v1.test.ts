@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 describe("飞书材料接入新工作台", () => {
-  it("公司名研究按消息幂等创建深度会话，并让快速与深度链路共享一次公开检索", async () => {
+  it.each([undefined, '请关注最新融资与竞争格局，内部项目代号松针'])("公司研究持久化关注点 %s，按消息幂等且快速与深度共享检索", async (researchFocus) => {
     const dataRoot = await mkdtemp(join(tmpdir(), "boyuan-feishu-company-"));
     roots.push(dataRoot);
     const search = vi.fn<WebSearchPort['search']>(async (input) => [{
@@ -63,7 +63,7 @@ describe("飞书材料接入新工作台", () => {
       variant: "none",
       sessionId: "company-quick-session",
     }));
-    const platform = createPlatformModule({
+    let platform = createPlatformModule({
       dataRoot,
       companyQuickCardAnalysis: { analyze },
       research: createDeterministicResearchAdapter(),
@@ -77,7 +77,7 @@ describe("飞书材料接入新工作台", () => {
     });
     await platform.cancelTask(seededCompany.task.taskId);
     const store = new Store({ initialData: initialStoreData(), persistToDisk: false });
-    const app = createApp(store, createDemoServices(store), {
+    let app = createApp(store, createDemoServices(store), {
       researchPlatform: platform,
       feishuIntakeKey: "test-feishu-intake-key-123",
     });
@@ -87,7 +87,7 @@ describe("飞书材料接入新工作台", () => {
       .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
       .set("x-boyuan-message-id", "om_company_research")
       .set("x-boyuan-sender-id", "ou_sender")
-      .send({ companyName: "博源科技有限公司" });
+      .send({ companyName: "博源科技有限公司", ...(researchFocus ? { researchFocus: `  ${researchFocus}  ` } : {}) });
     const replayed = await request(app)
       .post("/api/v1/feishu/company-research")
       .set("x-boyuan-intake-key", "test-feishu-intake-key-123")
@@ -109,6 +109,17 @@ describe("飞书材料接入新工作台", () => {
       conversation: { conversationId: started.body.conversation.conversationId },
     });
     expect(await platform.listCompanies()).toHaveLength(1);
+    expect(started.body.conversation.companyResearch.researchFocus).toBe(researchFocus);
+
+    platform.close();
+    modules.pop();
+    platform = createPlatformModule({
+      dataRoot, companyQuickCardAnalysis: { analyze }, research: createDeterministicResearchAdapter(), search: { search },
+    });
+    modules.push(platform);
+    app = createApp(store, createDemoServices(store), {
+      researchPlatform: platform, feishuIntakeKey: "test-feishu-intake-key-123",
+    });
 
     const conversationId = started.body.conversation.conversationId as string;
     const firstQuick = await request(app)
@@ -136,6 +147,16 @@ describe("飞书材料接入新工作台", () => {
     expect(repeatedQuick.body).toEqual(firstQuick.body);
     expect(search).toHaveBeenCalledOnce();
     expect(analyze).toHaveBeenCalledOnce();
+    expect(analyze.mock.calls[0]?.[0].companyName).toBe('博源科技有限公司');
+    expect(analyze.mock.calls[0]?.[0].researchFocus).toBe(researchFocus);
+    expect(search.mock.calls[0]?.[0].companyName).toBe('博源科技有限公司');
+    if (researchFocus) {
+      expect(search.mock.calls[0]?.[0]).toEqual({
+        companyName: '博源科技有限公司', reason: 'user_requested', maxResults: 5,
+        query: '博源科技有限公司 公司 业务 产品 竞品 竞争格局 最新 进展 融资',
+      });
+      expect(JSON.stringify(search.mock.calls[0]?.[0])).not.toContain('松针');
+    }
 
     for (let index = 0; index < 20; index += 1) {
       if ((await platform.runPendingSteps()) === 0) break;
@@ -147,6 +168,7 @@ describe("飞书材料接入新工作台", () => {
       companyResearch: { sources: [{ url: "https://example.com/boyuan/new-product" }] },
     });
     expect(search).toHaveBeenCalledOnce();
+    expect(completed.companyResearch?.researchFocus).toBe(researchFocus);
 
     const provisional = await platform.startFeishuCompanyResearch({
       companyName: "新研科技有限公司",
@@ -162,6 +184,34 @@ describe("飞书材料接入新工作台", () => {
     )).resolves.toMatchObject({
       identityState: "provisional",
       navigation: {},
+    });
+  });
+
+  it('校验可选关注点类型、空值和 500 字边界，不把问题写入公司名', async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), 'boyuan-feishu-focus-'));
+    roots.push(dataRoot);
+    const platform = createPlatformModule({ dataRoot });
+    modules.push(platform);
+    const app = express();
+    app.use(express.json());
+    app.use('/api/v1/feishu', createFeishuIntakeRouter(platform, 'test-key'));
+    for (const researchFocus of [null, 3, {}, [], '', '  \n ', '问'.repeat(501)]) {
+      const result = await request(app).post('/api/v1/feishu/company-research')
+        .set('x-boyuan-intake-key', 'test-key').set('x-boyuan-message-id', 'om_boundary')
+        .send({ companyName: '边界科技有限公司', researchFocus });
+      expect(result.status).toBe(400);
+      expect(result.body.error).toBe('invalid_research_focus');
+    }
+    expect(await platform.listCompanies()).toHaveLength(0);
+    expect(await platform.listConversations()).toHaveLength(0);
+    const focus = '竞'.repeat(500);
+    const accepted = await request(app).post('/api/v1/feishu/company-research')
+      .set('x-boyuan-intake-key', 'test-key').set('x-boyuan-message-id', 'om_boundary')
+      .send({ companyName: '边界科技有限公司', researchFocus: focus });
+    expect(accepted.status).toBe(201);
+    expect(accepted.body.conversation).toMatchObject({
+      company: { canonicalName: '边界科技有限公司' },
+      companyResearch: { researchFocus: focus, intent: focus },
     });
   });
 

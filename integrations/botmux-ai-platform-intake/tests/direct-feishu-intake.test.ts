@@ -3,7 +3,7 @@ import {
   DirectFeishuCompanyResearchIngress,
   DirectFeishuFileIngress,
   FeishuCardMessenger,
-  parseFeishuCompanyResearchMessage,
+  parseFeishuTextMessage,
   parseFeishuFileMessage,
 } from '../src/direct-feishu-intake.js';
 import type { IntakeAttachment } from '../src/types.js';
@@ -353,28 +353,21 @@ describe('direct Feishu file intake', () => {
 });
 
 describe('direct Feishu company research intake', () => {
-  it('only accepts explicit company research commands in a private chat', () => {
-    expect(parseFeishuCompanyResearchMessage(textEvent('研究 白杨智能'))).toMatchObject({
-      companyName: '白杨智能',
-      messageId: 'om_company',
-      senderId: 'ou_sender',
-    });
-    expect(parseFeishuCompanyResearchMessage(textEvent('分析一下：白杨智能'))).toMatchObject({
-      companyName: '白杨智能',
-    });
-    expect(parseFeishuCompanyResearchMessage(textEvent('白杨智能'))).toBeNull();
-    expect(parseFeishuCompanyResearchMessage(textEvent('你好，研究一下白杨智能'))).toBeNull();
+  it('accepts all addressed text without a command grammar', () => {
+    for (const input of ['白杨智能', '你好，研究一下白杨智能', '你好', 'Could you look into CATL?', '帮我看看\n白杨智能']) {
+      expect(parseFeishuTextMessage(textEvent(input))).toMatchObject({ text: input, messageId: 'om_company', senderId: 'ou_sender' });
+    }
   });
 
   it('requires an @ mention in a group and removes the mention token before parsing', () => {
-    expect(parseFeishuCompanyResearchMessage(textEvent('研究 白杨智能', {
+    expect(parseFeishuTextMessage(textEvent('研究 白杨智能', {
       chat_type: 'group',
     }), new Date(), 'ou_bot')).toBeNull();
-    expect(parseFeishuCompanyResearchMessage(textEvent('@_user_1 研究 白杨智能', {
+    expect(parseFeishuTextMessage(textEvent('@_user_1 研究 白杨智能', {
       chat_type: 'group',
       mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' } }],
-    }), new Date(), 'ou_bot')).toMatchObject({ companyName: '白杨智能' });
-    expect(parseFeishuCompanyResearchMessage(textEvent('@_user_1 研究 白杨智能', {
+    }), new Date(), 'ou_bot')).toMatchObject({ text: '研究 白杨智能' });
+    expect(parseFeishuTextMessage(textEvent('@_user_1 研究 白杨智能', {
       chat_type: 'group',
       mentions: [{ key: '@_user_1', id: { open_id: 'ou_someone_else' } }],
     }), new Date(), 'ou_bot')).toBeNull();
@@ -388,7 +381,6 @@ describe('direct Feishu company research intake', () => {
       return { fileKey: 'company-research', fileName: '白杨智能', status: 'completed' as const };
     });
     const ingress = new DirectFeishuCompanyResearchIngress({
-      botOpenId: 'ou_bot',
       researchCompany,
       messenger: {
         sendCard: vi.fn(async () => { order.push('loading'); return { messageId: 'om_status' }; }),
@@ -399,7 +391,7 @@ describe('direct Feishu company research intake', () => {
       markStatusCardTerminal: vi.fn(),
     });
 
-    await expect(ingress.handle(textEvent('研究 白杨智能'))).resolves.toEqual({ handled: true });
+    await ingress.resume({ chatId: 'oc_chat', messageId: 'om_company', companyName: '白杨智能', receivedAt: new Date().toISOString() });
 
     expect(order).toEqual(['loading', 'persist', 'research']);
     expect(researchCompany).toHaveBeenCalledWith(expect.objectContaining({
@@ -414,7 +406,6 @@ describe('direct Feishu company research intake', () => {
       fileKey: 'company-research', fileName: '白杨智能', status: 'completed' as const,
     }));
     const ingress = new DirectFeishuCompanyResearchIngress({
-      botOpenId: 'ou_bot',
       researchCompany,
       messenger: { sendCard, updateCard: vi.fn(async () => undefined) },
       statusCardId: () => 'om_status',
@@ -422,8 +413,8 @@ describe('direct Feishu company research intake', () => {
       markStatusCardTerminal: vi.fn(),
     });
 
-    await ingress.handle(textEvent('研究 白杨智能'));
-    await ingress.handle(textEvent('研究 白杨智能'));
+    await ingress.resume({ chatId: 'oc_chat', messageId: 'om_company', companyName: '白杨智能', receivedAt: new Date().toISOString() });
+    await ingress.resume({ chatId: 'oc_chat', messageId: 'om_company', companyName: '白杨智能', receivedAt: new Date().toISOString() });
 
     expect(sendCard).not.toHaveBeenCalled();
     expect(researchCompany).toHaveBeenCalledTimes(2);

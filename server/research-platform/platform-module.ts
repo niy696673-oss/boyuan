@@ -181,6 +181,7 @@ interface ResearchFinalizeInput {
   companyName: string;
   ambiguousOptions: string[];
   intent: string;
+  researchFocus?: string;
   explicitWebSearch: boolean;
   workflow?: NonNullable<StartCompanyResearchInput['workflow']>;
 }
@@ -485,7 +486,7 @@ class SqlitePlatformModule implements PlatformModule {
   async quickAnalyzeCompanyResearch(conversationId: string): Promise<CompanyQuickCardResult> {
     this.#assertOpen();
     const target = this.#db.prepare(`
-      SELECT r.run_id, r.task_id, r.company_id, m.proposed_name,
+      SELECT r.run_id, r.task_id, r.company_id, r.research_focus, m.proposed_name,
         c.canonical_name, c.status AS company_status
       FROM company_research_runs r
       JOIN analysis_tasks t ON t.task_id = r.task_id
@@ -496,6 +497,7 @@ class SqlitePlatformModule implements PlatformModule {
       run_id: string;
       task_id: string;
       company_id: string | null;
+      research_focus: string | null;
       proposed_name: string | null;
       canonical_name: string | null;
       company_status: string | null;
@@ -521,6 +523,7 @@ class SqlitePlatformModule implements PlatformModule {
         taskId: target.task_id,
         companyId: target.company_id,
         companyName: target.canonical_name,
+        ...(target.research_focus ? { researchFocus: target.research_focus } : {}),
         identityState: target.company_status === 'active' ? 'existing' : 'provisional',
       });
       this.#companyQuickAnalyses.set(target.run_id, active);
@@ -535,6 +538,7 @@ class SqlitePlatformModule implements PlatformModule {
     taskId: string;
     companyId: string;
     companyName: string;
+    researchFocus?: string;
     identityState: 'existing' | 'provisional';
   }): Promise<CompanyQuickCardResult> {
     if (!this.#companyQuickCardAnalysis) {
@@ -561,6 +565,7 @@ class SqlitePlatformModule implements PlatformModule {
     const extraction = await this.#companyQuickCardAnalysis.analyze({
       conversationId: input.conversationId,
       companyName: input.companyName,
+      ...(input.researchFocus ? { researchFocus: input.researchFocus } : {}),
       identityState: input.identityState,
       existingKnowledge: existingKnowledge.map((item) => ({
         knowledgeType: item.knowledge_type,
@@ -1768,9 +1773,13 @@ class SqlitePlatformModule implements PlatformModule {
     }
     const companyName = canonicalCompanyName(input.companyName);
     assertCompanyListName(companyName);
+    const researchFocus = input.sourceChannel === 'feishu'
+      ? normalizeResearchFocus(input.researchFocus)
+      : undefined;
     return this.#startCompanyResearchWithSource({
       companyName,
-      intent: `研究 ${companyName} 的公司概况、行业赛道、融资、团队、核心亮点与近期公开信号`,
+      intent: researchFocus ?? `研究 ${companyName} 的公司概况、行业赛道、融资、团队、核心亮点与近期公开信号`,
+      ...(researchFocus ? { researchFocus } : {}),
       explicitWebSearch: true,
     }, {
       sourceChannel: input.sourceChannel,
@@ -1785,6 +1794,7 @@ class SqlitePlatformModule implements PlatformModule {
     source: Pick<IngestDocumentInput, 'sourceChannel' | 'sourceMessageId' | 'sourceAttachmentKey' | 'senderId'>,
   ): Promise<StartFeishuCompanyResearchResult> {
     this.#assertOpen();
+    const researchFocus = normalizeResearchFocus(input.researchFocus);
     if (source.sourceMessageId) {
       const sourceReplay = await this.#idempotentIngestResult({
         fileName: '公司研究请求.json',
@@ -1833,6 +1843,7 @@ class SqlitePlatformModule implements PlatformModule {
     const payload = Buffer.from(JSON.stringify({
       companyName,
       intent,
+      ...(researchFocus ? { researchFocus } : {}),
       explicitWebSearch: input.explicitWebSearch,
       ...(workflow ? { workflow } : {}),
     }), 'utf8');
@@ -1855,6 +1866,7 @@ class SqlitePlatformModule implements PlatformModule {
           companyName,
           ambiguousOptions,
           intent,
+          ...(researchFocus ? { researchFocus } : {}),
           explicitWebSearch: input.explicitWebSearch,
           ...(workflow ? { workflow } : {}),
         },
@@ -2490,11 +2502,12 @@ class SqlitePlatformModule implements PlatformModule {
           }
           this.#db.prepare(`
             INSERT INTO company_research_runs (
-              run_id, task_id, company_id, intent, explicit_search,
+              run_id, task_id, company_id, intent, research_focus, explicit_search,
               workflow_skill, workflow_context_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             this.#nextId(), taskId, research.companyId ?? null, research.intent,
+            research.researchFocus ?? null,
             research.explicitWebSearch ? 1 : 0,
             research.workflow?.skill ?? null,
             research.workflow ? JSON.stringify(research.workflow) : null,
@@ -4872,11 +4885,12 @@ class SqlitePlatformModule implements PlatformModule {
 
   #companyResearchByTask(taskId: string): CompanyResearchRecord | undefined {
     const run = this.#db.prepare(`
-      SELECT run_id, company_id, intent, explicit_search, trigger_reason, public_query,
+      SELECT run_id, company_id, intent, research_focus, explicit_search, trigger_reason, public_query,
         summary, workflow_skill, workflow_context_json, created_at, updated_at
       FROM company_research_runs WHERE task_id = ?
     `).get(taskId) as {
       run_id: string; company_id: string | null; intent: string; explicit_search: number;
+      research_focus: string | null;
       trigger_reason: string | null; public_query: string | null; summary: string | null;
       workflow_skill: string | null; workflow_context_json: string | null;
       created_at: string; updated_at: string;
@@ -4886,6 +4900,7 @@ class SqlitePlatformModule implements PlatformModule {
       runId: run.run_id,
       ...(run.company_id ? { companyId: run.company_id } : {}),
       intent: run.intent,
+      ...(run.research_focus ? { researchFocus: run.research_focus } : {}),
       explicitWebSearch: Boolean(run.explicit_search),
       ...(run.trigger_reason ? { triggerReason: run.trigger_reason as CompanyResearchRecord['triggerReason'] } : {}),
       ...(run.public_query ? { publicQuery: run.public_query } : {}),
@@ -5772,6 +5787,7 @@ class SqlitePlatformModule implements PlatformModule {
     this.#migrateAnalysisEntitySchema();
     this.#migrateCompanyCopilotSchema();
     this.#migrateRelationshipPanoramaSchema();
+    this.#migrateCompanyResearchFocusSchema();
   }
 
   #migrateKnowledgeSchema(): void {
@@ -6748,6 +6764,18 @@ class SqlitePlatformModule implements PlatformModule {
       this.#db.prepare(
         'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (22, ?)',
       ).run(this.#now().toISOString());
+    });
+  }
+
+  #migrateCompanyResearchFocusSchema(): void {
+    const applied = this.#db.prepare('SELECT 1 AS applied FROM schema_migrations WHERE version = 23').get();
+    const hasFocus = (this.#db.prepare('PRAGMA table_info(company_research_runs)').all() as unknown as Array<{ name: string }>)
+      .some((column) => column.name === 'research_focus');
+    if (applied && hasFocus) return;
+    this.#transaction(() => {
+      if (!hasFocus) this.#db.exec('ALTER TABLE company_research_runs ADD COLUMN research_focus TEXT');
+      this.#db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (23, ?)')
+        .run(this.#now().toISOString());
     });
   }
 
@@ -7991,6 +8019,14 @@ function extractDeclaredAliases(blocks: ParsedBlock[]): string[] {
     }
   }
   return [...aliases];
+}
+
+function normalizeResearchFocus(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 500) {
+    throw new PlatformInputError('invalid_research_focus', '研究关注点不能为空且不能超过 500 字');
+  }
+  return value.trim();
 }
 
 function normalizeComparable(value: string): string {

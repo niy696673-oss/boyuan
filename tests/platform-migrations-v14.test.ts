@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 22;
+const CURRENT_SCHEMA_VERSION = 23;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -21,6 +21,30 @@ afterEach(async () => {
 });
 
 describe("research-platform SQLite schema reconciliation", () => {
+  it('adds nullable focus to v22 research records without losing legacy research idempotency', async () => {
+    const dataRoot = await createDataRoot();
+    const original = openPlatform(dataRoot);
+    const started = await original.startFeishuCompanyResearch({
+      companyName: '迁移研究科技有限公司', sourceMessageId: 'om_legacy_research',
+    });
+    closeModule(original);
+    withDatabase(dataRoot, (database) => {
+      database.exec(`
+        ALTER TABLE company_research_runs DROP COLUMN research_focus;
+        DELETE FROM schema_migrations WHERE version = 23;
+      `);
+    });
+    const upgraded = openPlatform(dataRoot);
+    const replay = await upgraded.startFeishuCompanyResearch({
+      companyName: '迁移研究科技有限公司', sourceMessageId: 'om_legacy_research',
+    });
+    expect(replay.reusedResearch).toBe(true);
+    expect(replay.conversation.conversationId).toBe(started.conversation.conversationId);
+    expect(replay.conversation.companyResearch?.researchFocus).toBeUndefined();
+    expect(replay.conversation.companyResearch?.intent).toBe(started.conversation.companyResearch?.intent);
+    expectCurrentSchema(dataRoot);
+  });
+
   it("creates the current schema for a fresh database", async () => {
     const dataRoot = await createDataRoot();
     const platform = openPlatform(dataRoot);
@@ -448,6 +472,7 @@ function convertCurrentDatabaseToFeatureV13(dataRoot: string): void {
 
 function expectCurrentSchema(dataRoot: string): void {
   expectSchemaHistory(dataRoot, CURRENT_SCHEMA_VERSION);
+  expect(columnNames(dataRoot, 'company_research_runs')).toContain('research_focus');
   expect(tableExists(dataRoot, "intake_idempotency")).toBe(true);
   expect(columnNames(dataRoot, "intake_idempotency")).toContain(
     "source_attachment_key",

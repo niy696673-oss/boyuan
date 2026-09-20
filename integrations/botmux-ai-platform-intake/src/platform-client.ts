@@ -1,7 +1,8 @@
 import { createReadStream } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
 import {
+  COMPANY_RESEARCH_FILE_KEY,
   COMMON_COMPANY_QUICK_CARD_LIST_FIELDS,
   COMMON_COMPANY_QUICK_CARD_NUMBER_FIELDS,
   COMMON_COMPANY_QUICK_CARD_TEXT_FIELDS,
@@ -87,16 +88,25 @@ export class HttpPlatformClient implements PlatformClient {
   }
 
   async startCompanyResearch(input: CompanyResearchTurn): Promise<PlatformCompanyResearchResult> {
+    // Legacy receipts use the default file key and must replay the original request ID.
+    const requestId = this.#channel === 'feishu' && input.researchKey?.startsWith(`${COMPANY_RESEARCH_FILE_KEY}:`)
+      ? `company-research:${createHash('sha256').update(JSON.stringify([input.messageId, input.researchKey])).digest('hex')}`
+      : input.messageId;
     const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/company-research`, {
       method: 'POST',
       headers: {
         accept: 'application/json',
         'content-type': 'application/json',
         'x-boyuan-intake-key': this.#intakeKey,
-        'x-boyuan-message-id': input.messageId,
+        'x-boyuan-message-id': requestId,
         ...(input.senderId ? { 'x-boyuan-sender-id': input.senderId } : {}),
       },
-      body: JSON.stringify({ companyName: input.companyName }),
+      body: JSON.stringify({
+        companyName: input.companyName,
+        ...(this.#channel === 'feishu' && input.researchFocus !== undefined
+          ? { researchFocus: input.researchFocus }
+          : {}),
+      }),
       signal: AbortSignal.timeout(this.#timeoutMs),
     });
     const source = record(await readResponse(response));
