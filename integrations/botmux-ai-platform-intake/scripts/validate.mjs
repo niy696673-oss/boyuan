@@ -17,6 +17,7 @@ if (pkg.botmux?.service?.mode !== 'auto') fail('service mode must be auto');
 for (const file of [
   'package.json', 'index.js', 'cli/index.js', 'cli/commands.json', 'service/index.js', 'service/server.js',
   'service/wecom-server.js',
+  'cli/render-card.js',
   'service/wechat-kf-server.js',
   'wecom.config.example.json',
   'wechat-kf.config.example.json',

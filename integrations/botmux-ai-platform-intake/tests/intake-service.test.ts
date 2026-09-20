@@ -62,7 +62,7 @@ describe('intake service', () => {
     } finally { temp.cleanup(); }
   });
 
-  it('keeps the deep research link when company quick analysis fails', async () => {
+  it('keeps company failure replies inside the bot', async () => {
     const temp = tempDir();
     const platform = platformFixture();
     vi.mocked(platform.companyQuickCard).mockRejectedValue(new Error('luna_failed'));
@@ -88,7 +88,7 @@ describe('intake service', () => {
 
       const rendered = JSON.stringify(updateCard.mock.calls[0]);
       expect(rendered).toContain('快速分析未完成');
-      expect(rendered).toContain('/workbench/conversations/conversation-company');
+      expect(rendered).not.toContain('/workbench/conversations/conversation-company');
       expect(platform.startCompanyResearch).toHaveBeenCalledOnce();
     } finally { temp.cleanup(); }
   });
@@ -218,7 +218,7 @@ describe('intake service', () => {
       expect(sent.map((item) => item.responseKind)).toEqual(['final', 'final']);
       expect(sent.map((item) => item.fileKey)).toEqual(['one', 'two']);
       expect(sent[0]?.timeoutMs).toBeUndefined();
-      expect(JSON.stringify(sent[0]?.card)).toContain('深度分析继续运行');
+      expect(JSON.stringify(sent[0]?.card)).not.toContain('深度分析继续运行');
     } finally { temp.cleanup(); }
   });
 
@@ -378,11 +378,11 @@ describe('intake service', () => {
       const outcomes = await service.ingestTurn(turn(attachment('one')));
       expect(outcomes[0]).toMatchObject({ status: 'completed', completionCardMs: 31_000 });
       expect(JSON.stringify(sent[0]?.card)).toContain('BP 导入 · 事实核验');
-      expect(JSON.stringify(sent[0]?.card)).not.toContain('快速提取失败');
+      expect(JSON.stringify(sent[0]?.card)).not.toContain('快速提取未完成');
     } finally { temp.cleanup(); }
   });
 
-  it('uses product entity links when quick analysis finds existing company and industry records', async () => {
+  it('keeps matched entity replies inside the bot', async () => {
     const temp = tempDir();
     const platform = platformFixture();
     vi.mocked(platform.quickCard).mockResolvedValue(quickCard({
@@ -396,8 +396,8 @@ describe('intake service', () => {
       });
       await service.ingestTurn(turn(attachment('one')));
       const card = JSON.stringify(sent[0]?.card);
-      expect(card).toContain('https://demo.example.com/companies/company%2Fone?tab=relations');
-      expect(card).toContain('https://demo.example.com/industry/industry%2Fone?tab=chain');
+      expect(card).not.toContain('https://demo.example.com/companies/company%2Fone?tab=relations');
+      expect(card).not.toContain('https://demo.example.com/industry/industry%2Fone?tab=chain');
       expect(card).not.toContain('/workbench/companies/');
     } finally { temp.cleanup(); }
   });
@@ -450,8 +450,8 @@ describe('intake service', () => {
       await expect(service.ingestTurn(turn(attachment('one')))).resolves.toMatchObject([{ status: 'completed' }]);
       expect(platform.upload).toHaveBeenCalledTimes(1);
       expect(sent).toHaveLength(1);
-      expect(JSON.stringify(sent[0]?.card)).toContain('快速提取失败');
-      expect(JSON.stringify(sent[0]?.card)).toContain('深度分析任务已创建并继续运行');
+      expect(JSON.stringify(sent[0]?.card)).toContain('快速提取未完成');
+      expect(JSON.stringify(sent[0]?.card)).toContain('请稍后重试');
     } finally { temp.cleanup(); }
   });
 

@@ -171,7 +171,7 @@ function parseConversation(value: unknown): PlatformConversation {
   };
 }
 
-function parseQuickCard(value: unknown): QuickCardResult {
+export function parseQuickCard(value: unknown): QuickCardResult {
   const source = record(value);
   const commonFields = parseCommonCompanyQuickCardFields(source);
   const relationFields = Object.fromEntries(
@@ -204,7 +204,7 @@ function parseQuickCard(value: unknown): QuickCardResult {
   };
 }
 
-function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
+export function parseCompanyQuickCard(value: unknown): CompanyQuickCardResult {
   const source = record(value);
   if (source.kind !== 'company_research') throw new Error('platform_invalid_response');
   if (!['completed', 'pending_confirmation'].includes(String(source.status))) {

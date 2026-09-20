@@ -119,7 +119,9 @@ function httpUrl(value: unknown, name: string): string {
   const url = new URL(raw);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`invalid_${name}`);
   if (url.protocol === 'http:' && !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
-    throw new Error(`insecure_${name}`);
+    if (process.env.BOYUAN_ALLOW_INSECURE_PUBLIC_URL !== '1') {
+      throw new Error(`insecure_${name}`);
+    }
   }
   if (url.username || url.password) throw new Error(`invalid_${name}`);
   return url.toString().replace(/\/$/u, '');

@@ -1,3 +1,4 @@
+import { jsonOutputPrompt } from '../opencode/json-output-prompt.js';
 import {
   createOpenCodeClient,
   type OpenCodeConnectionOptions,
@@ -33,8 +34,37 @@ export function createOpenCodeQuickCardAdapter(options: OpenCodeQuickCardOptions
       });
       if (response.info.error) throw new QuickCardAdapterError('quick_card_opencode_message_error', 'OpenCode quick-card message failed');
       const rawText = response.parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim();
+      let quickCardFields: QuickCardFields;
+      try {
+        quickCardFields = parseQuickCardJson(rawText);
+      } catch (error) {
+        try {
+          const obj = JSON.parse(extractJsonObject(rawText)) as Record<string, unknown>;
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            const allowed = new Set<string>([
+              ...QUICK_CARD_TEXT_FIELDS.map((f) => f.name),
+              ...QUICK_CARD_LIST_FIELDS.map((f) => f.name),
+              ...QUICK_CARD_NUMBER_FIELDS.map((f) => f.name),
+            ]);
+            for (const key of Object.keys(obj)) {
+              if (!allowed.has(key)) delete obj[key];
+            }
+            for (const { name } of QUICK_CARD_TEXT_FIELDS) {
+              const val = obj[name];
+              if (typeof val !== 'string' || !val.trim()) {
+                obj[name] = '材料未披露';
+              }
+            }
+            quickCardFields = parseQuickCardJson(JSON.stringify(obj));
+          } else {
+            throw error;
+          }
+        } catch {
+          throw error;
+        }
+      }
       return {
-        ...parseQuickCardJson(rawText),
+        ...quickCardFields,
         providerId: response.info.providerID,
         modelId: response.info.modelID,
         variant: response.info.variant ?? options.variant,
@@ -61,6 +91,7 @@ function quickPrompt(fileName: string, blocks: QuickCardAnalysisInputBlocks): st
     `industryTags 只能从以下标签中选择：${FUND_INDUSTRY_TAGS.join('、')}。`,
     `数值字段：${QUICK_CARD_NUMBER_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。`,
     '字符串信息未出现时写“材料未披露”，不得推测。只输出上述字段，禁止增加字段、Markdown、置信度、基金名称、匹配分数或解释。',
+    jsonOutputPrompt({ textFields: QUICK_CARD_TEXT_FIELDS, listFields: QUICK_CARD_LIST_FIELDS, numberFields: QUICK_CARD_NUMBER_FIELDS, missingText: '材料未披露' }),
     `材料块：${JSON.stringify(selected)}`,
   ].join('\n\n');
 }
