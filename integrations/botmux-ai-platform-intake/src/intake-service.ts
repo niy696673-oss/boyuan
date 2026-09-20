@@ -33,6 +33,7 @@ export class IntakeService {
   readonly #scheduled = new Set<string>();
   readonly #cleanupScheduled = new Set<string>();
   readonly #active = new Map<string, Promise<IntakeOutcome>>();
+  readonly #finishing = new Map<string, Promise<void>>();
 
   constructor(options: IntakeServiceOptions) {
     this.#config = options.config;
@@ -143,7 +144,7 @@ export class IntakeService {
   }
 
   async researchCompany(turn: CompanyResearchTurn): Promise<IntakeOutcome> {
-    const key = jobKey(turn.messageId, COMPANY_RESEARCH_FILE_KEY);
+    const key = jobKey(turn.messageId, turn.researchKey ?? COMPANY_RESEARCH_FILE_KEY);
     let active = this.#active.get(key);
     if (!active) {
       active = this.#acceptCompanyResearch(turn);
@@ -224,13 +225,14 @@ export class IntakeService {
   }
 
   async #acceptCompanyResearch(turn: CompanyResearchTurn): Promise<IntakeOutcome> {
-    const key = jobKey(turn.messageId, COMPANY_RESEARCH_FILE_KEY);
+    const fileKey = turn.researchKey ?? COMPANY_RESEARCH_FILE_KEY;
+    const key = jobKey(turn.messageId, fileKey);
     const existing = this.#store.get(key);
     if (existing) {
       if (!existing.completionCardSent) await this.#finish(key);
       const saved = this.#store.get(key) ?? existing;
       return {
-        fileKey: COMPANY_RESEARCH_FILE_KEY,
+        fileKey,
         fileName: turn.companyName,
         status: saved.completionCardSent ? 'completed' : 'resumed',
         conversationId: saved.conversationId,
@@ -252,7 +254,7 @@ export class IntakeService {
       chatId: turn.chatId,
       sessionId: turn.sessionId,
       messageId: turn.messageId,
-      fileKey: COMPANY_RESEARCH_FILE_KEY,
+      fileKey,
       companyName: turn.companyName,
       conversationId: accepted.conversation.conversationId,
       ...(statusCardMessageId ? { statusCardMessageId } : {}),
@@ -266,7 +268,7 @@ export class IntakeService {
     await this.#finish(key);
     const saved = this.#store.get(key) ?? job;
     return {
-      fileKey: COMPANY_RESEARCH_FILE_KEY,
+      fileKey,
       fileName: turn.companyName,
       status: saved.completionCardSent ? 'completed' : 'accepted',
       conversationId: job.conversationId,
@@ -328,7 +330,18 @@ export class IntakeService {
     }
   }
 
-  async #finish(key: string): Promise<void> {
+  #finish(key: string): Promise<void> {
+    let active = this.#finishing.get(key);
+    if (!active) {
+      // Install the lock before starting work, including timer and ingress recovery.
+      active = Promise.resolve().then(() => this.#finishOnce(key));
+      this.#finishing.set(key, active);
+      void active.finally(() => this.#finishing.delete(key)).catch(() => undefined);
+    }
+    return active;
+  }
+
+  async #finishOnce(key: string): Promise<void> {
     const job = this.#store.get(key);
     if (!job || job.completionCardSent) return;
     if (job.kind === 'company_research') {

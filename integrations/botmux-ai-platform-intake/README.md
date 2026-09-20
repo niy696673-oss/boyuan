@@ -1,6 +1,6 @@
 # Boyuan AI Platform Intake
 
-Channel adapters for routing Feishu or WeCom BP files and explicit company-research commands to the Boyuan AI platform. Each channel immediately acknowledges the request, returns the independent quick result through the same reply, and starts the durable workbench deep-analysis task in parallel. Thirty seconds is a performance target, not a delivery deadline.
+Channel adapters for Feishu conversations, company research, and Feishu/WeCom BP intake on the Boyuan AI platform. Each channel immediately acknowledges the request, returns the independent quick result through the same reply, and starts the durable workbench deep-analysis task in parallel. Thirty seconds is a performance target, not a delivery deadline.
 
 ## Feishu configuration
 
@@ -97,8 +97,8 @@ This verifies the callback-independent message pump, official message shape, PDF
 
 ## Runtime behavior
 
-- Private-chat commands `分析 <公司名>` and `研究 <公司名>` start company research. Group-chat commands are accepted only when the bot is explicitly mentioned; ordinary chat text never enters the research path.
-- A company command creates a durable platform conversation and starts the Sol deep-research task before requesting the independent Luna quick card. The quick card combines existing formal knowledge and material summaries with the same persisted public-search snapshot consumed by deep research, so a research run does not search twice.
+- Feishu private chats accept natural text and rich-text messages without command prefixes. In groups, mention the bot. The conversation model answers ordinary questions, extracts company-research intent from natural language (including bare names and multiple companies), and asks for clarification when the target is ambiguous. Only a research decision enters the existing card pipeline.
+- A company-research decision creates a durable platform conversation and requests the independently configured quick card; background processing follows the platform adapter configuration. The quick card combines existing formal knowledge and material summaries with the same persisted public-search snapshot consumed by deep research, so a research run does not search twice.
 - Company quick cards reuse the BP card's common identity, product/technology, industry, market, financing, people, highlight, risk, diligence-question, fund-match, confidence, and navigation skeleton. Their relation section only shows signals explicitly supported by public sources or existing materials and never labels them as BP-mentioned facts.
 - Active matched companies may link to existing company-network and confirmed industry-chain pages. New provisional companies and ambiguous matches link only to the deep conversation. Ambiguous matches pause without calling search or Luna and require identity confirmation in the workbench.
 - Every Feishu file creates an independent receipt and conversation. Byte-identical files may reuse the stored document. Conversation reuse is a non-blocking platform relevance proposal followed by user confirmation; no fixed time window is used, and the concise Feishu result does not wait for that decision.
@@ -126,3 +126,22 @@ node dist/cli/render-card.js < request.json
 ```
 
 `request.json` 格式为 `{ "kind": "bp", "result": <完整后端 quick-card 响应> }`，公司研究的 `kind` 为 `company_research`。字段缺失会退出失败。该命令只渲染 JSON，不发送消息，也不能证明真人消息接收链路通过。
+
+## Feishu natural conversation runtime
+
+The Feishu **receiver process** needs OpenCode connection/model configuration, in addition to the API process. For the ECS deployment:
+
+```env
+BOYUAN_OPENCODE_BASE_URL=http://127.0.0.1:4096
+BOYUAN_OPENCODE_DIRECTORY=/opt/boyuan/app
+BOYUAN_QUICK_CARD_PROVIDER_ID=deepseek
+BOYUAN_QUICK_CARD_MODEL_ID=deepseek-flash
+BOYUAN_QUICK_CARD_VARIANT=low
+BOYUAN_CHAT_TIMEOUT_MS=60000
+```
+
+`BOYUAN_CHAT_PROVIDER_ID`, `BOYUAN_CHAT_MODEL_ID`, `BOYUAN_CHAT_VARIANT`, `BOYUAN_CHAT_BASE_URL`, and `BOYUAN_CHAT_DIRECTORY` can override these values. API credentials stay in the OpenCode provider configuration; do not copy them into chat messages or logs. The chat model has no tools: it answers normal questions from available context or returns a research intent. Fresh company information is obtained by the existing server-side search and quick-card pipeline. General questions needing live information must not be presented as verified live results.
+
+Conversation history is isolated by chat and sender and persisted alongside `statePath` in `.conversations.json`. The last six turns provide follow-up context. Requests by one sender in one chat are ordered; different users can run concurrently. Each multi-company request has a stable per-company research key and uses the original Feishu message as its reply target. Restart recovery reuses stored decisions, cards and completed members. Inputs over 16,000 characters receive a request to split the message rather than being silently truncated; one research request can contain up to 20 companies with two active company jobs at a time. These are capacity bounds, not a command grammar.
+
+Only the designated server should run the dedicated bot receiver. An old Mac receiver with the same app credentials will split events across machines and invalidate server-only capacity measurements. Stop it and save the supervisor state before acceptance testing; keep the Feishu client available as a real user test client.

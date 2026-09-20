@@ -94,6 +94,9 @@ export interface CompanyResearchTurn {
   sessionId: string;
   messageId: string;
   companyName: string;
+  /** Service-local subtask/file key; never replaces the real reply message ID. */
+  researchKey?: string;
+  researchFocus?: string;
   receivedAt?: string;
   senderId?: string;
   statusCardMessageId?: string;

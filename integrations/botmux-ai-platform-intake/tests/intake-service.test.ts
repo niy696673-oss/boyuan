@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FeishuCardMessenger } from '../src/direct-feishu-intake.js';
 import { IntakeService, jobKey } from '../src/intake-service.js';
-import { MemoryJobStore } from '../src/job-store.js';
+import { JsonJobStore, MemoryJobStore } from '../src/job-store.js';
 import type { IntakeAttachment, IntakeTurn, Messenger, PlatformClient, SendCardInput } from '../src/types.js';
 import { companyQuickCard, conversation, quickCard, tempDir, testConfig } from './helpers.js';
 
@@ -22,6 +22,126 @@ function platformFixture(): PlatformClient {
 }
 
 describe('intake service', () => {
+  it.each([
+    ['company_research', 'timer-first'], ['company_research', 'replay-first'],
+    ['bp', 'timer-first'], ['bp', 'replay-first'],
+  ] as const)('coalesces %s recovery (%s) so a late failure cannot overwrite success', async (kind, order) => {
+    const temp = tempDir();
+    const config = testConfig(temp.path);
+    const seedStore = new JsonJobStore(config.statePath);
+    const fileKey = kind === 'company_research' ? 'company-research:甲' : 'one';
+    const key = jobKey('om_message', fileKey);
+    seedStore.put({
+      key, chatId: 'oc_chat', sessionId: 'session', messageId: 'om_message', fileKey,
+      conversationId: 'conversation-pending', statusCardMessageId: 'om_status',
+      platformAcceptedAt: '2026-09-21T00:00:00.000Z', createdAt: '2026-09-21T00:00:00.000Z',
+      completionCardMs: 0, completionCardSent: false,
+      ...(kind === 'company_research' ? { kind, companyName: '甲科技' } : { kind, fileName: 'one.pdf' }),
+    });
+    const store = new JsonJobStore(config.statePath);
+    const platform = platformFixture();
+    let releaseSuccess!: () => void;
+    const successGate = new Promise<void>((resolve) => { releaseSuccess = resolve; });
+    let rejectLateFailure!: (error: Error) => void;
+    const lateFailure = new Promise<never>((_resolve, reject) => { rejectLateFailure = reject; });
+    // The second request must never happen after the fix; still handle its unused promise.
+    void lateFailure.catch(() => undefined);
+    vi.mocked(platform.companyQuickCard)
+      .mockImplementationOnce(async () => { await successGate; return companyQuickCard(); })
+      .mockImplementationOnce(() => lateFailure);
+    vi.mocked(platform.quickCard)
+      .mockImplementationOnce(async () => { await successGate; return quickCard(); })
+      .mockImplementationOnce(() => lateFailure);
+    const complete = vi.fn(async () => undefined);
+    const timers: Array<() => void> = [];
+    const service = new IntakeService({
+      config, platform, store, delivery: { complete, fail: vi.fn(async () => undefined) },
+      setTimer: (callback) => { timers.push(callback); },
+    });
+    try {
+      service.resumePending();
+      const scheduledFinish = timers.shift()!;
+      if (order === 'timer-first') scheduledFinish();
+      const replay = kind === 'company_research'
+        ? service.researchCompany({
+          chatId: 'oc_chat', sessionId: 'session', messageId: 'om_message',
+          companyName: '甲科技', researchKey: fileKey,
+        })
+        : service.ingestTurn(turn(attachment(fileKey)));
+      if (order === 'replay-first') scheduledFinish();
+      releaseSuccess();
+      await vi.waitFor(() => expect(store.get(key)?.completionCardSent).toBe(true), { interval: 1 });
+      rejectLateFailure(new Error('late_quick_card_failure'));
+      await replay;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      const resultField = kind === 'company_research' ? 'companyQuickCard' : 'quickCard';
+      expect(new JsonJobStore(config.statePath).get(key)).toMatchObject({
+        completionCardSent: true, [resultField]: { status: 'completed' },
+      });
+      expect(kind === 'company_research' ? platform.companyQuickCard : platform.quickCard).toHaveBeenCalledOnce();
+      expect(complete).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        messageId: 'om_message', fileKey, result: expect.objectContaining({ status: 'completed' }),
+      }));
+      expect(platform.startCompanyResearch).not.toHaveBeenCalled();
+      expect(platform.upload).not.toHaveBeenCalled();
+      expect(timers).toHaveLength(0);
+    } finally { temp.cleanup(); }
+  });
+
+  it.each([false, true])('isolates company subtasks and replays without repeating research (status cards: %s)', async (withStatusCards) => {
+    const temp = tempDir();
+    const platform = platformFixture();
+    vi.mocked(platform.startCompanyResearch).mockImplementation(async (input) => ({
+      conversation: conversation(`conversation-${input.researchKey}`, 'processing'),
+      reusedResearch: false,
+    }));
+    const config = testConfig(temp.path);
+    const store = new JsonJobStore(config.statePath);
+    const messenger: Messenger = { sendCard: vi.fn(async () => undefined), updateCard: vi.fn(async () => undefined) };
+    const options = { config, platform, messenger, store };
+    const service = new IntakeService(options);
+    const inputs = ['甲科技', '乙科技'].map((companyName, index) => ({
+      chatId: 'oc_chat', sessionId: 'feishu:om_multi', messageId: 'om_multi',
+      companyName, researchKey: `company-research:${index}`, researchFocus: '近期融资及竞争格局',
+    }));
+    try {
+      if (withStatusCards) {
+        inputs.forEach((input, index) => service.rememberStatusCard({
+          chatId: input.chatId, messageId: input.messageId, fileKey: input.researchKey,
+          fileName: input.companyName, cardMessageId: `om_card_${index}`, createdAt: new Date().toISOString(),
+        }));
+      }
+      const results = await Promise.all([
+        service.researchCompany(inputs[0]!),
+        service.researchCompany(inputs[1]!),
+        service.researchCompany(inputs[0]!),
+      ]);
+      expect(results[0]).toEqual(results[2]);
+      expect(results[0]?.conversationId).not.toBe(results[1]?.conversationId);
+      for (const [index, input] of inputs.entries()) {
+        expect(platform.startCompanyResearch).toHaveBeenCalledWith(input);
+        expect(store.get(jobKey(input.messageId, input.researchKey))).toMatchObject({
+          messageId: 'om_multi', fileKey: input.researchKey, companyName: input.companyName,
+          conversationId: `conversation-${input.researchKey}`, completionCardSent: true,
+        });
+        if (withStatusCards) {
+          expect(service.statusCardId(input.messageId, input.researchKey)).toBe(`om_card_${index}`);
+          expect(store.getStatusCard(jobKey(input.messageId, input.researchKey))).toBeUndefined();
+          expect(messenger.updateCard).toHaveBeenCalledWith(expect.objectContaining({ cardMessageId: `om_card_${index}` }));
+        } else {
+          expect(messenger.sendCard).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'om_multi', fileKey: input.researchKey }));
+        }
+      }
+      const resumed = new IntakeService({ ...options, store: new JsonJobStore(config.statePath) });
+      await Promise.all(inputs.map((input) => resumed.researchCompany(input)));
+      expect(platform.startCompanyResearch).toHaveBeenCalledTimes(2);
+      expect(platform.companyQuickCard).toHaveBeenCalledTimes(2);
+      expect(messenger.sendCard).toHaveBeenCalledTimes(withStatusCards ? 0 : 2);
+      expect(messenger.updateCard).toHaveBeenCalledTimes(withStatusCards ? 2 : 0);
+    } finally { temp.cleanup(); }
+  });
+
   it('starts company deep research and updates the same card with the independent quick result', async () => {
     const temp = tempDir();
     const platform = platformFixture();
@@ -51,7 +171,7 @@ describe('intake service', () => {
 
       expect(platform.startCompanyResearch).toHaveBeenCalledOnce();
       expect(platform.companyQuickCard).toHaveBeenCalledOnce();
-      expect(first).toMatchObject({ status: 'completed', conversationId: 'conversation-company' });
+      expect(first).toMatchObject({ fileKey: 'company-research', status: 'completed', conversationId: 'conversation-company' });
       expect(replay).toMatchObject({ status: 'completed', conversationId: 'conversation-company' });
       expect(messenger.sendCard).not.toHaveBeenCalled();
       expect(messenger.updateCard).toHaveBeenCalledOnce();

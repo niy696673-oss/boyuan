@@ -39,7 +39,7 @@ afterEach(async () => {
 });
 
 describe('飞书公司名研究本地端到端', () => {
-  it('从文本事件到同卡快速结果和后台深度完成只使用一次搜索', async () => {
+  it.each([1, 2])('已识别消息内 %s 家公司各有独立状态卡与研究，重试复用结果', async (companyCount) => {
     const dataRoot = await mkdtemp(join(tmpdir(), 'boyuan-company-e2e-'));
     roots.push(dataRoot);
     const search = vi.fn<WebSearchPort['search']>(async () => [{
@@ -108,8 +108,9 @@ describe('飞书公司名研究本地端到端', () => {
     };
     const jobStore = new MemoryJobStore();
     const updates: Array<{ cardMessageId: string; card: JsonObject }> = [];
+    let cardIndex = 0;
     const messenger = {
-      sendCard: vi.fn(async () => ({ messageId: 'om_processing_card' })),
+      sendCard: vi.fn(async () => ({ messageId: `om_processing_card_${cardIndex++}` })),
       updateCard: vi.fn(async (input: { cardMessageId: string; card: JsonObject }) => { updates.push(input); }),
     };
     const service = new IntakeService({
@@ -119,14 +120,13 @@ describe('飞书公司名研究本地端到端', () => {
       store: jobStore,
     });
     const ingress = new DirectFeishuCompanyResearchIngress({
-      botOpenId: 'ou_bot',
       researchCompany: (turn) => service.researchCompany(turn),
       messenger,
-      statusCardId: (message) => service.statusCardId(message.messageId, COMPANY_RESEARCH_FILE_KEY),
+      statusCardId: (message) => service.statusCardId(message.messageId, message.researchKey ?? COMPANY_RESEARCH_FILE_KEY),
       rememberStatusCard: (message, cardMessageId) => service.rememberStatusCard({
         chatId: message.chatId,
         messageId: message.messageId,
-        fileKey: COMPANY_RESEARCH_FILE_KEY,
+        fileKey: message.researchKey ?? COMPANY_RESEARCH_FILE_KEY,
         fileName: message.companyName,
         cardMessageId,
         createdAt: message.receivedAt,
@@ -134,37 +134,37 @@ describe('飞书公司名研究本地端到端', () => {
       }),
       markStatusCardTerminal: (message) => service.markStatusCardTerminal(
         message.messageId,
-        COMPANY_RESEARCH_FILE_KEY,
+        message.researchKey ?? COMPANY_RESEARCH_FILE_KEY,
       ),
     });
 
-    await expect(ingress.handle({
-      sender: { sender_id: { open_id: 'ou_sender' }, sender_type: 'user' },
-      message: {
-        message_id: 'om_e2e_company',
-        chat_id: 'oc_e2e_chat',
-        chat_type: 'p2p',
-        message_type: 'text',
-        create_time: '1787932800000',
-        content: JSON.stringify({ text: '研究 新研科技有限公司' }),
-      },
-    })).resolves.toEqual({ handled: true });
+    const messages = ['新研科技有限公司', '白杨智能有限公司'].slice(0, companyCount).map((companyName, index) => ({
+      chatId: 'oc_e2e_chat', messageId: 'om_e2e_company', companyName,
+      receivedAt: '2026-08-29T00:00:00.000Z', senderId: 'ou_sender',
+      ...(companyCount > 1 ? { researchKey: `company-research:${index}`, researchFocus: '最新融资与竞争格局' } : {}),
+    }));
+    await Promise.all(messages.map((message) => expect(ingress.resume(message)).resolves.toBeUndefined()));
+    await Promise.all(messages.map((message) => ingress.resume(message)));
 
-    expect(messenger.sendCard).toHaveBeenCalledOnce();
+    expect(messenger.sendCard).toHaveBeenCalledTimes(companyCount);
     expect(messenger.sendCard.mock.invocationCallOrder[0]).toBeLessThan(
       analyze.mock.invocationCallOrder[0]!,
     );
-    expect(updates).toHaveLength(1);
-    expect(updates[0]?.cardMessageId).toBe('om_processing_card');
+    expect(updates).toHaveLength(companyCount);
+    expect(new Set(updates.map((update) => update.cardMessageId)).size).toBe(companyCount);
+    expect(updates.map((update) => update.cardMessageId)).toContain('om_processing_card_0');
     const rendered = JSON.stringify(updates[0]?.card);
     expect(rendered).toContain('公司研究 · 快速分析');
     expect(rendered).toContain('新研科技发布企业研究产品');
     expect(rendered).toContain('基金匹配（确定性规则）');
     expect(rendered).toContain('成都元屿智算创业投资合伙企业');
-    expect(rendered).toContain('/workbench/conversations/');
+    expect(rendered).not.toContain('/workbench/conversations/');
     expect(rendered).not.toContain('公司网络 →');
 
-    const [conversation] = await platform.listConversations();
+    const conversations = await Promise.all((await platform.listConversations())
+      .map((item) => platform.getConversation(item.conversationId)));
+    expect(conversations).toHaveLength(companyCount);
+    const conversation = conversations.find((item) => item.company?.canonicalName === '新研科技有限公司');
     expect(conversation).toMatchObject({
       sourceChannel: 'feishu',
       type: 'company',
@@ -178,7 +178,22 @@ describe('飞书公司名研究本地端到端', () => {
       company: { canonicalName: '新研科技有限公司', status: 'provisional' },
       companyResearch: { sources: [{ url: 'https://example.com/xinyan/update' }] },
     });
-    expect(search).toHaveBeenCalledOnce();
-    expect(analyze).toHaveBeenCalledOnce();
+    for (const message of messages) {
+      const job = [...jobStore.jobs.values()].find((item) => item.fileKey === (message.researchKey ?? COMPANY_RESEARCH_FILE_KEY));
+      expect(job).toMatchObject({ messageId: 'om_e2e_company', companyName: message.companyName });
+      expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
+        companyName: message.companyName,
+        ...(message.researchFocus ? { researchFocus: message.researchFocus } : {}),
+      }));
+      // A fresh client replay also exercises backend idempotency, bypassing the job cache.
+      const replay = await new HttpPlatformClient(config.platformBaseUrl, config.platformIntakeKey, config.timeoutMs)
+        .startCompanyResearch({
+          ...message, sessionId: 'feishu:om_e2e_company',
+          researchKey: message.researchKey ?? COMPANY_RESEARCH_FILE_KEY,
+        });
+      expect(replay).toMatchObject({ reusedResearch: true, conversation: { conversationId: job?.conversationId } });
+    }
+    expect(search).toHaveBeenCalledTimes(companyCount);
+    expect(analyze).toHaveBeenCalledTimes(companyCount);
   });
 });

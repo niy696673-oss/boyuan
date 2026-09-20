@@ -4,6 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { planCompanyPublicQuery } from '../server/research-platform/research/search-policy.js';
 
 describe('公司公开检索查询规划', () => {
+  it('500 字关注点中的内部代号、联系方式和私有链接不进入公网查询', () => {
+    const focus = '关注融资和竞争；内部代号松针，联系人 private@example.com，资料 https://private.example.com/secret。'.padEnd(500, '密');
+    expect(planCompanyPublicQuery('白杨智能有限公司', focus))
+      .toBe('白杨智能有限公司 公司 业务 产品 竞品 竞争格局 最新 进展 融资');
+  });
+
   it('将用户要求映射为受控研究维度而不发送原始意图', () => {
     const query = planCompanyPublicQuery(
       '白杨智能有限公司',

@@ -1,13 +1,65 @@
 import { createServer } from 'node:http';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpPlatformClient } from '../src/platform-client.js';
+import { COMPANY_RESEARCH_FILE_KEY } from '../src/types.js';
 import { companyQuickCard, conversation, quickCard, tempDir } from './helpers.js';
 
 describe('HTTP platform client', () => {
   const servers: ReturnType<typeof createServer>[] = [];
   afterEach(async () => Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
+
+  it.each([undefined, COMPANY_RESEARCH_FILE_KEY, 'legacy-key'])('preserves the real message ID for legacy research key %s', async (researchKey) => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      conversation: conversation('conversation-legacy', 'processing'), reusedResearch: true,
+    }), { status: 201 }));
+    const client = new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher);
+    await client.startCompanyResearch({
+      chatId: 'oc_chat', sessionId: 'session', messageId: 'om_legacy', companyName: '甲科技',
+      ...(researchKey !== undefined ? { researchKey } : {}),
+    });
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('x-boyuan-message-id')).toBe('om_legacy');
+  });
+
+  it('derives bounded stable child request IDs and sends focus separately from the company name', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      conversation: conversation('conversation-company', 'processing'), reusedResearch: false,
+    }), { status: 201 }));
+    const client = new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher);
+    const input = {
+      chatId: 'oc_chat', sessionId: 'session', messageId: 'om_multi', companyName: '甲科技',
+      researchKey: `${COMPANY_RESEARCH_FILE_KEY}:${'公司甲\n'.repeat(200)}`, researchFocus: '最近一轮融资与竞争格局', senderId: 'ou_sender',
+    };
+    await client.startCompanyResearch(input);
+    await client.startCompanyResearch({ ...input, researchKey: 'company-research:乙' });
+    await new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher).startCompanyResearch(input);
+    await client.startCompanyResearch({ ...input, messageId: 'om_other' });
+    const ids = fetcher.mock.calls.map((call) => new Headers(call[1]?.headers).get('x-boyuan-message-id'));
+    expect(ids[0]).toMatch(/^company-research:[a-f0-9]{64}$/u);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids[0]).toBe(ids[2]);
+    expect(ids[0]).not.toBe(ids[3]);
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({
+      companyName: '甲科技', researchFocus: input.researchFocus,
+    });
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('x-boyuan-sender-id')).toBe('ou_sender');
+    expect(input.messageId).toBe('om_multi');
+  });
+
+  it('keeps other channel research requests unchanged', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      conversation: conversation('conversation-company', 'processing'), reusedResearch: false,
+    }), { status: 201 }));
+    const client = new HttpPlatformClient('http://platform.test', 'test-key', 10_000, fetcher, 'wecom');
+    await client.startCompanyResearch({
+      chatId: 'chat', sessionId: 'session', messageId: 'wecom-real-message', companyName: '甲科技',
+      researchKey: 'child-key', researchFocus: '融资',
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('http://platform.test/api/v1/wecom/company-research');
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('x-boyuan-message-id')).toBe('wecom-real-message');
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({ companyName: '甲科技' });
+  });
 
   it('streams multipart bytes with authenticated Feishu metadata and parses the platform response', async () => {
     const temp = tempDir();

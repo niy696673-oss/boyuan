@@ -18,6 +18,7 @@ export interface CompanyQuickCardKnowledge {
 export interface CompanyQuickCardAnalysisInput {
   conversationId: string;
   companyName: string;
+  researchFocus?: string;
   identityState: Exclude<CompanyIdentityState, 'ambiguous'>;
   existingKnowledge: CompanyQuickCardKnowledge[];
   materialSummaries: string[];

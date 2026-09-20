@@ -41,12 +41,13 @@ export interface FeishuCompanyResearchMessage {
   chatId: string;
   messageId: string;
   companyName: string;
+  researchKey?: string;
+  researchFocus?: string;
   receivedAt: string;
   senderId?: string;
 }
 
 export interface DirectFeishuCompanyResearchIngressOptions {
-  botOpenId: string;
   researchCompany(turn: CompanyResearchTurn): Promise<IntakeOutcome>;
   messenger: Messenger;
   statusCardId(message: FeishuCompanyResearchMessage): string | undefined;
@@ -57,7 +58,7 @@ export interface DirectFeishuCompanyResearchIngressOptions {
 export interface FeishuCardReplyPort {
   reply(input: {
     messageId: string;
-    messageType: 'interactive';
+    messageType: 'interactive' | 'text';
     content: string;
     uuid: string;
   }): Promise<{ messageId: string }>;
@@ -157,7 +158,6 @@ export class DirectFeishuFileIngress {
 }
 
 export class DirectFeishuCompanyResearchIngress {
-  readonly #botOpenId: string;
   readonly #researchCompany: DirectFeishuCompanyResearchIngressOptions['researchCompany'];
   readonly #messenger: Messenger;
   readonly #statusCardId: DirectFeishuCompanyResearchIngressOptions['statusCardId'];
@@ -166,10 +166,6 @@ export class DirectFeishuCompanyResearchIngress {
   readonly #active = new Map<string, Promise<void>>();
 
   constructor(options: DirectFeishuCompanyResearchIngressOptions) {
-    if (!/^ou_[A-Za-z0-9_-]{1,500}$/u.test(options.botOpenId)) {
-      throw new Error('lark_bot_open_id_invalid');
-    }
-    this.#botOpenId = options.botOpenId;
     this.#researchCompany = options.researchCompany;
     this.#messenger = options.messenger;
     this.#statusCardId = options.statusCardId;
@@ -177,23 +173,17 @@ export class DirectFeishuCompanyResearchIngress {
     this.#markStatusCardTerminal = options.markStatusCardTerminal;
   }
 
-  async handle(data: unknown): Promise<{ handled: boolean }> {
-    const message = parseFeishuCompanyResearchMessage(data, new Date(), this.#botOpenId);
-    if (!message) return { handled: false };
-    await this.#enqueue(message);
-    return { handled: true };
-  }
-
   async resume(message: FeishuCompanyResearchMessage): Promise<void> {
     await this.#enqueue(message);
   }
 
   async #enqueue(message: FeishuCompanyResearchMessage): Promise<void> {
-    let active = this.#active.get(message.messageId);
+    const key = `${message.messageId}\0${message.researchKey ?? COMPANY_RESEARCH_FILE_KEY}`;
+    let active = this.#active.get(key);
     if (!active) {
       active = this.#research(message);
-      this.#active.set(message.messageId, active);
-      void active.finally(() => this.#active.delete(message.messageId)).catch(() => undefined);
+      this.#active.set(key, active);
+      void active.finally(() => this.#active.delete(key)).catch(() => undefined);
     }
     await active;
   }
@@ -206,7 +196,7 @@ export class DirectFeishuCompanyResearchIngress {
         chatId: message.chatId,
         sessionId,
         messageId: message.messageId,
-        fileKey: COMPANY_RESEARCH_FILE_KEY,
+        fileKey: message.researchKey ?? COMPANY_RESEARCH_FILE_KEY,
         responseKind: 'loading',
         cardKind: 'loading',
         card: companyResearchProcessingCard(message.companyName),
@@ -221,6 +211,8 @@ export class DirectFeishuCompanyResearchIngress {
         sessionId,
         messageId: message.messageId,
         companyName: message.companyName,
+        ...(message.researchKey ? { researchKey: message.researchKey } : {}),
+        ...(message.researchFocus ? { researchFocus: message.researchFocus } : {}),
         receivedAt: message.receivedAt,
         ...(message.senderId ? { senderId: message.senderId } : {}),
         statusCardMessageId,
@@ -300,50 +292,59 @@ export function parseFeishuFileMessage(data: unknown, now = new Date()): FeishuF
   };
 }
 
-export function parseFeishuCompanyResearchMessage(
+export interface FeishuTextMessage {
+  chatId: string;
+  messageId: string;
+  senderId: string;
+  text: string;
+  receivedAt: string;
+}
+
+// This parses the transport envelope only. Intent is decided by the conversation agent.
+export function parseFeishuTextMessage(
   data: unknown,
   now = new Date(),
   botOpenId?: string,
-): FeishuCompanyResearchMessage | null {
+): FeishuTextMessage | null {
   const event = record(data);
   const sender = record(event?.sender);
-  if (sender?.sender_type === 'app' || sender?.sender_type === 'bot') return null;
+  if (sender?.sender_type !== 'user') return null;
   const message = record(event?.message);
-  if (!message || message.message_type !== 'text') return null;
+  if (!message || !['text', 'post'].includes(String(message.message_type))) return null;
   const messageId = text(message.message_id);
   const chatId = text(message.chat_id);
+  const senderId = text(record(sender.sender_id)?.open_id);
   const rawContent = text(message.content);
   if (!messageId || !/^om_[A-Za-z0-9_-]{1,500}$/u.test(messageId)
-    || !chatId || !/^oc_[A-Za-z0-9_-]{1,500}$/u.test(chatId) || !rawContent) return null;
+    || !chatId || !/^oc_[A-Za-z0-9_-]{1,500}$/u.test(chatId)
+    || !senderId || !/^ou_[A-Za-z0-9_-]{1,500}$/u.test(senderId) || !rawContent) return null;
   let content: Record<string, unknown> | null;
   try { content = record(JSON.parse(rawContent) as unknown); } catch { return null; }
-  let command = text(content?.text);
-  if (!command || /[\r\n]/u.test(command)) return null;
-  const chatType = text(message.chat_type);
-  const mentions = Array.isArray(message.mentions)
-    ? message.mentions.flatMap((value) => {
-        const mention = record(value);
-        const key = text(mention?.key);
-        const openId = text(record(mention?.id)?.open_id);
-        return key ? [{ key, openId }] : [];
-      })
-    : [];
-  if (chatType === 'group' && (
-    !botOpenId || !mentions.some((mention) => mention.openId === botOpenId)
-  )) return null;
-  for (const mention of mentions) command = command.split(mention.key).join(' ');
-  command = command.replace(/\s+/gu, ' ').trim();
-  const match = /^(?:分析|研究)(?:一下|下)?\s*[：:]?\s*(.{2,80})$/u.exec(command);
-  const companyName = match?.[1]?.trim();
-  if (!companyName || /[\r\n]/u.test(companyName)) return null;
-  const senderId = text(record(sender?.sender_id)?.open_id);
-  return {
-    chatId,
-    messageId,
-    companyName,
-    receivedAt: feishuTimestamp(message.create_time, now),
-    ...(senderId ? { senderId } : {}),
-  };
+  const mentions = Array.isArray(message.mentions) ? message.mentions.flatMap((value) => {
+    const mention = record(value);
+    const key = text(mention?.key);
+    return key ? [{ key, openId: text(record(mention?.id)?.open_id) }] : [];
+  }) : [];
+  if (message.chat_type !== 'p2p' && (message.chat_type !== 'group'
+    || !botOpenId || !mentions.some((mention) => mention.openId === botOpenId))) return null;
+  let body = message.message_type === 'text' ? text(content?.text) : postText(content);
+  if (!body) return null;
+  for (const mention of mentions) {
+    body = body.split(mention.key).join(mention.openId === botOpenId ? '' : (mention.openId ?? ''));
+  }
+  body = body.trim();
+  if (!body) return null;
+  return { chatId, messageId, senderId, text: body, receivedAt: feishuTimestamp(message.create_time, now) };
+}
+
+function postText(content: Record<string, unknown> | null): string | undefined {
+  const post = content && (Array.isArray(content.content) ? content : record(content.zh_cn) ?? record(content.en_us));
+  if (!post || !Array.isArray(post.content)) return undefined;
+  return [text(post.title) ?? '', ...post.content.map((line) => Array.isArray(line)
+    ? line.map((value) => {
+      const part = record(value);
+      return part?.tag === 'text' || part?.tag === 'a' ? text(part.text) ?? '' : '';
+    }).join('') : '')].join('\n');
 }
 
 function feishuTimestamp(value: unknown, fallback: Date): string {
