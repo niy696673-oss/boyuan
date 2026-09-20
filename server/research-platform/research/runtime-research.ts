@@ -5,6 +5,7 @@ import {
   type RuntimeEnvironment,
 } from "../opencode/runtime-options.js";
 import type { WebSearchPort } from "../search/contracts.js";
+import { createDeepSeekSearchAdapter } from "../search/deepseek-search.js";
 import { createDeterministicSearchAdapter } from "../search/deterministic-search.js";
 import { createExaSearchAdapter } from "../search/exa-search.js";
 import type { CompanyResearchPort } from "./contracts.js";
@@ -18,6 +19,7 @@ export interface RuntimeResearchOptions {
   directory: string;
   fetcher?: typeof fetch;
   exaBaseUrl?: URL;
+  deepseekBaseUrl?: URL;
   now?: () => Date;
 }
 
@@ -66,10 +68,31 @@ export function createRuntimeResearchAdapters(
             ...(options.fetcher ? { fetcher: options.fetcher } : {}),
             ...(options.now ? { now: options.now } : {}),
           })
-        : undefined;
+        : searchMode === "deepseek"
+          ? createDeepSeekSearchAdapter({
+              apiKey:
+                optional(environment, "DEEPSEEK_SEARCH_API_KEY") ??
+                optional(environment, "DEEPSEEK_API_KEY") ??
+                required(environment, "EXTERNAL_MODEL_API_KEY"),
+              ...(options.deepseekBaseUrl
+                ? { baseUrl: options.deepseekBaseUrl }
+                : optional(environment, "DEEPSEEK_SEARCH_BASE_URL")
+                  ? { baseUrl: new URL(optional(environment, "DEEPSEEK_SEARCH_BASE_URL")!) }
+                  : optional(environment, "EXTERNAL_MODEL_BASE_URL")
+                    ? { baseUrl: new URL(optional(environment, "EXTERNAL_MODEL_BASE_URL")!) }
+                    : {}),
+              ...(optional(environment, "DEEPSEEK_SEARCH_MODEL")
+                ? { model: optional(environment, "DEEPSEEK_SEARCH_MODEL") }
+                : optional(environment, "EXTERNAL_MODEL_NAME")
+                  ? { model: optional(environment, "EXTERNAL_MODEL_NAME") }
+                  : {}),
+              ...(options.fetcher ? { fetcher: options.fetcher } : {}),
+              ...(options.now ? { now: options.now } : {}),
+            })
+          : undefined;
   if (!search) {
     throw new Error(
-      `BOYUAN_SEARCH_ADAPTER must be "deterministic" or "exa", received "${searchMode}"`,
+      `BOYUAN_SEARCH_ADAPTER must be "deterministic", "exa", or "deepseek", received "${searchMode}"`,
     );
   }
 

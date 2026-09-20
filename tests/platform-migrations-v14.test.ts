@@ -9,7 +9,7 @@ import { createDeterministicAnalysisAdapter } from "../server/research-platform/
 import type { PlatformModule } from "../server/research-platform/contracts.js";
 import { createPlatformModule } from "../server/research-platform/platform-module.js";
 
-const CURRENT_SCHEMA_VERSION = 23;
+const CURRENT_SCHEMA_VERSION = 24;
 const roots: string[] = [];
 const modules: PlatformModule[] = [];
 
@@ -42,6 +42,23 @@ describe("research-platform SQLite schema reconciliation", () => {
     expect(replay.conversation.conversationId).toBe(started.conversation.conversationId);
     expect(replay.conversation.companyResearch?.researchFocus).toBeUndefined();
     expect(replay.conversation.companyResearch?.intent).toBe(started.conversation.companyResearch?.intent);
+    expectCurrentSchema(dataRoot);
+  });
+
+  it('upgrades v23 with persistent bounded-search state without rewriting research history', async () => {
+    const dataRoot = await createDataRoot();
+    const original = openPlatform(dataRoot);
+    const started = await original.startFeishuCompanyResearch({ companyName: '旧研究科技有限公司', sourceMessageId: 'v23-research' });
+    closeModule(original);
+    withDatabase(dataRoot, database => database.exec(`
+      ALTER TABLE company_research_runs DROP COLUMN search_followup_at;
+      ALTER TABLE company_research_runs DROP COLUMN search_followup_query;
+      ALTER TABLE company_research_runs DROP COLUMN search_followup_error;
+      DELETE FROM schema_migrations WHERE version = 24;
+    `));
+    const upgraded = openPlatform(dataRoot);
+    const replay = await upgraded.startFeishuCompanyResearch({ companyName: '旧研究科技有限公司', sourceMessageId: 'v23-research' });
+    expect(replay.conversation.conversationId).toBe(started.conversation.conversationId);
     expectCurrentSchema(dataRoot);
   });
 
@@ -472,7 +489,7 @@ function convertCurrentDatabaseToFeatureV13(dataRoot: string): void {
 
 function expectCurrentSchema(dataRoot: string): void {
   expectSchemaHistory(dataRoot, CURRENT_SCHEMA_VERSION);
-  expect(columnNames(dataRoot, 'company_research_runs')).toContain('research_focus');
+  expect(columnNames(dataRoot, 'company_research_runs')).toEqual(expect.arrayContaining(['research_focus', 'search_followup_at', 'search_followup_query', 'search_followup_error']));
   expect(tableExists(dataRoot, "intake_idempotency")).toBe(true);
   expect(columnNames(dataRoot, "intake_idempotency")).toContain(
     "source_attachment_key",
