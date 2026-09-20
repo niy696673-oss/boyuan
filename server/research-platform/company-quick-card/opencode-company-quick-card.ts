@@ -25,7 +25,7 @@ export function createOpenCodeCompanyQuickCardAdapter(
   options: OpenCodeCompanyQuickCardOptions,
 ): CompanyQuickCardAnalysisPort {
   const client = createOpenCodeClient(
-    { ...options, timeoutMs: false },
+    { ...options, timeoutMs: Math.min(typeof options.timeoutMs === 'number' ? options.timeoutMs : 60_000, 60_000) },
     (status) => new CompanyQuickCardAdapterError(
       'company_quick_card_opencode_http_error',
       `OpenCode returned HTTP ${status}`,
@@ -35,60 +35,35 @@ export function createOpenCodeCompanyQuickCardAdapter(
   return {
     async analyze(input) {
       const sessionId = await client.createSession(`博源公司快速研究：${input.companyName}`);
-      const response = await client.sendMessage(sessionId, {
-        model: { providerID: options.model.providerId, modelID: options.model.modelId },
-        variant: options.variant,
-        system: '你是博源 AI 平台的公司快速研究器。只依据给定的平台正式知识、材料摘要和公开检索结果。缺失信息统一写“暂未检索到”。不要调用任何工具。只输出 JSON 对象。',
-        tools: { '*': false },
-        parts: [{ type: 'text', text: companyQuickPrompt(input) }],
-      });
-      if (response.info.error) {
-        throw new CompanyQuickCardAdapterError(
-          'company_quick_card_opencode_message_error',
-          'OpenCode company quick-card message failed',
-        );
-      }
-      const rawText = response.parts
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text ?? '')
-        .join('\n')
-        .trim();
-      let quickCardFields: CompanyQuickCardFields;
-      try {
-        quickCardFields = parseCompanyQuickCardJson(rawText);
-      } catch (error) {
+      const prompt = companyQuickPrompt(input);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await client.sendMessage(sessionId, {
+          model: { providerID: options.model.providerId, modelID: options.model.modelId },
+          variant: options.variant,
+          system: '你是博源 AI 平台的公司快速研究器。只依据给定的平台正式知识、材料摘要和公开检索结果。缺失信息统一写“暂未检索到”。不要调用任何工具。只输出 JSON 对象。',
+          tools: { '*': false },
+          parts: [{ type: 'text', text: attempt === 0 ? prompt : [
+            '上一条输出未通过 JSON/字段校验。请从头输出一个完整 JSON 对象，包含全部指定字段且不增加字段；确保字符串与括号闭合。不要续写残片，不新增证据或事实。',
+            prompt,
+          ].join('\n\n') }],
+        });
+        if (response.info.error) {
+          throw new CompanyQuickCardAdapterError('company_quick_card_opencode_message_error', 'OpenCode company quick-card message failed');
+        }
+        const rawText = response.parts.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n').trim();
         try {
-          const obj = JSON.parse(extractJsonObject(rawText)) as Record<string, unknown>;
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-            const allowed = new Set<string>([
-              ...COMPANY_QUICK_CARD_TEXT_FIELDS.map((f) => f.name),
-              ...COMPANY_QUICK_CARD_LIST_FIELDS.map((f) => f.name),
-              ...COMPANY_QUICK_CARD_NUMBER_FIELDS.map((f) => f.name),
-            ]);
-            for (const key of Object.keys(obj)) {
-              if (!allowed.has(key)) delete obj[key];
-            }
-            for (const { name } of COMPANY_QUICK_CARD_TEXT_FIELDS) {
-              const val = obj[name];
-              if (typeof val !== 'string' || !val.trim()) {
-                obj[name] = name === 'companyIdentity' ? input.companyName : '暂未检索到';
-              }
-            }
-            quickCardFields = parseCompanyQuickCardJson(JSON.stringify(obj));
-          } else {
-            throw error;
-          }
-        } catch {
-          throw error;
+          return {
+            ...parseCompanyQuickCardJson(rawText),
+            providerId: response.info.providerID,
+            modelId: response.info.modelID,
+            variant: response.info.variant ?? options.variant,
+            sessionId,
+          };
+        } catch (error) {
+          if (attempt === 1) throw error;
         }
       }
-      return {
-        ...quickCardFields,
-        providerId: response.info.providerID,
-        modelId: response.info.modelID,
-        variant: response.info.variant ?? options.variant,
-        sessionId,
-      };
+      throw new CompanyQuickCardAdapterError('company_quick_card_schema_invalid', 'Company quick-card regeneration exhausted');
     },
   };
 }
@@ -105,6 +80,7 @@ function companyQuickPrompt(input: CompanyQuickCardAnalysisInput): string {
     `industryTags 只能从以下标签中选择：${FUND_INDUSTRY_TAGS.join('、')}。`,
     `数值字段：${COMPANY_QUICK_CARD_NUMBER_FIELDS.map((field) => `${field.name}（${field.prompt}）`).join('、')}。`,
     '公开检索结果中的来源摘要是检索模型对该网页的归纳，非逐字引文；metadata_only 仅有标题/链接，不足以支持具体事实。遇到冲突优先公司官网、年报、监管披露，区分总部与注册地址；综合各有效来源回答主营业务和用户关注点，不能因为某一个来源缺失就将整个字段写成未知。未披露的当前融资不能用历史轮次、债券、对外投资或行业数据代替。',
+    '缺少未披露融资只是信息缺口，不自动视为经营风险；已上市且用户未关注融资时，不反复提出新一轮融资问题。recentSignals 仅保留带明确日期、距来源检索日期约180天内的事件，更早事实放入其他相关字段，不冒充近期动态。',
     '只输出上述字段。禁止增加公司名、统计、置信度、基金名称、匹配分数、Markdown 或解释；不得把待确认候选写成平台正式知识。',
     jsonOutputPrompt({ textFields: COMPANY_QUICK_CARD_TEXT_FIELDS, listFields: COMPANY_QUICK_CARD_LIST_FIELDS, numberFields: COMPANY_QUICK_CARD_NUMBER_FIELDS, missingText: '暂未检索到' }),
     `平台正式知识：${JSON.stringify(input.existingKnowledge.slice(0, 80))}`,

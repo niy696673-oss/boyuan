@@ -92,7 +92,26 @@ describe('OpenCode 公司快速卡适配器', () => {
     } else {
       expect(body.parts[0]?.text).not.toContain('用户研究关注点');
     }
-    expect(fetcher.mock.calls.every((call) => call[1]?.signal === undefined)).toBe(true);
+    expect(fetcher.mock.calls.every((call) => call[1]?.signal !== undefined)).toBe(true);
+  });
+
+  it('模型返回未闭合 JSON 时仅重新生成一次，不把残片补成事实', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 'truncated-session' }))
+      .mockResolvedValueOnce(jsonResponse({ info: { providerID: 'deepseek', modelID: 'deepseek-flash', variant: 'low', finish: 'stop' }, parts: [{ type: 'text', text: '{"companyIdentity":"宇树科技","industryTrack":"机器人—服务机器人（科创板机械设' }] }))
+      .mockResolvedValueOnce(jsonResponse({ info: { providerID: 'deepseek', modelID: 'deepseek-flash', variant: 'low' }, parts: [{ type: 'text', text: JSON.stringify(fields) }] }));
+    const adapter = createOpenCodeCompanyQuickCardAdapter({ baseUrl: new URL('http://localhost:4096'), directory: '/workspace', model: { providerId: 'deepseek', modelId: 'deepseek-flash' }, variant: 'low', fetcher });
+    await expect(adapter.analyze({ conversationId: 'test', companyName: '宇树科技', identityState: 'provisional', existingKnowledge: [], materialSummaries: [], webResults: [] })).resolves.toMatchObject({ productTechnology: fields.productTechnology, variant: 'low' });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body)).parts[0].text).toContain('完整 JSON');
+  });
+
+  it('两次输出仍错误则失败，不无限重试、不静默删掉未知字段', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ id: 'invalid-session' }))
+      .mockImplementation(async () => jsonResponse({ info: { providerID: 'deepseek', modelID: 'deepseek-flash' }, parts: [{ type: 'text', text: JSON.stringify({ ...fields, invented: '伪造字段' }) }] }));
+    const adapter = createOpenCodeCompanyQuickCardAdapter({ baseUrl: new URL('http://localhost:4096'), directory: '/workspace', model: { providerId: 'deepseek', modelId: 'deepseek-flash' }, variant: 'low', fetcher });
+    await expect(adapter.analyze({ conversationId: 'test', companyName: '测试', identityState: 'provisional', existingKnowledge: [], materialSummaries: [], webResults: [] })).rejects.toThrow('unknown fields');
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it('拒绝未知字段、缺失字段与类型错误', () => {
