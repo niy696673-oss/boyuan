@@ -57,6 +57,11 @@ export class JsonJobStore implements JobStore {
     return Object.values(this.#data.jobs).filter((job) => !job.completionCardSent).map((job) => structuredClone(job));
   }
 
+  listByChat(chatId: string): IntakeJob[] {
+    return Object.values(this.#data.jobs).filter((job) => job.chatId === chatId)
+      .map((job) => structuredClone(job));
+  }
+
   listCleanupPending(): IntakeJob[] {
     return Object.values(this.#data.jobs)
       .filter((job) => job.cleanupPending && job.cleanupAttachment)

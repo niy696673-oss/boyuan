@@ -426,6 +426,36 @@ class SqlitePlatformModule implements PlatformModule {
     }
   }
 
+  async getChannelDocumentContext(input: Parameters<PlatformModule['getChannelDocumentContext']>[0]) {
+    this.#assertOpen();
+    // Require the original channel/message/file receipt AND sender, not a guessable document ID.
+    const target = this.#db.prepare(`
+      SELECT d.document_id, d.file_name, d.mime_type, d.storage_path
+      FROM intake_idempotency i
+      JOIN conversations c ON c.conversation_id = i.conversation_id
+      JOIN documents d ON d.document_id = c.primary_document_id
+      WHERE i.conversation_id = ? AND i.source_channel = ?
+        AND i.source_message_id = ? AND i.source_attachment_key = ?
+        AND EXISTS (SELECT 1 FROM receipt_events r WHERE r.document_id = d.document_id
+          AND r.source_channel = i.source_channel AND r.source_message_id = i.source_message_id
+          AND r.sender_id = ?)
+    `).get(input.conversationId, input.sourceChannel, input.sourceMessageId,
+      input.sourceAttachmentKey, input.senderId) as {
+        document_id: string; file_name: string; mime_type: string | null; storage_path: string;
+      } | undefined;
+    if (!target) throw new PlatformNotFoundError('material receipt not found');
+    let blocks = this.#loadParsedBlocks(target.document_id);
+    if (!blocks.length) blocks = (await this.#parser.parse({
+      fileName: target.file_name,
+      ...(target.mime_type ? { mimeType: target.mime_type } : {}),
+      path: this.#resolveStoragePath(target.storage_path),
+    })).blocks;
+    const full = blocks.map((block) => `[${parsedBlockLocator(block) ?? block.blockId}]\n${block.text}`).join('\n\n');
+    const truncated = full.length > 60_000;
+    return { fileName: target.file_name, truncated,
+      text: truncated ? `${full.slice(0, 30_000)}\n[原文过长，中间内容未纳入本次上下文，不能推断省略部分]\n${full.slice(-30_000)}` : full };
+  }
+
   async quickAnalyzeConversation(conversationId: string): Promise<QuickCardAnalysisResult> {
     this.#assertOpen();
     if (!this.#quickCardAnalysis) {

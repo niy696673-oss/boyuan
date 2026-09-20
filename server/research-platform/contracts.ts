@@ -661,6 +661,10 @@ export interface IndustryReclassificationResult {
 }
 
 export interface PlatformModule {
+  getChannelDocumentContext(input: {
+    conversationId: string; sourceChannel: BotSourceChannel;
+    sourceMessageId: string; sourceAttachmentKey: string; senderId: string;
+  }): Promise<{ fileName: string; text: string; truncated: boolean }>;
   ingestDocument(input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestCompanyDocument(companyId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;
   ingestIndustryDocument(industryId: string, input: IngestDocumentInput): Promise<IngestDocumentResult>;

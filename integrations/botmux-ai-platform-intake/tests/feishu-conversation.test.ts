@@ -20,11 +20,60 @@ function setup(agent: ConversationAgent, statePath?: string) {
   }
   const reply = vi.fn(async () => undefined);
   const research = vi.fn(async ({ companyName }: { companyName: string }) => `${companyName}研究结果`);
-  const options = { botOpenId: 'ou_bot', statePath, agent, reply, research, onError: vi.fn(), setTimer: vi.fn() };
+  const options = { botOpenId: 'ou_bot', statePath, agent, reply, research, onError: vi.fn(), setTimer: vi.fn((callback: () => void) => queueMicrotask(callback)) };
   return { ingress: new FeishuConversationIngress(options), options, reply, research };
 }
 
 describe('natural Feishu conversations', () => {
+  it('queues a BP and its immediate follow-up together and persists the material context', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '5000万元' });
+    const { options, reply } = setup({ respond });
+    const file = vi.fn(async () => { await gate; return 'BP第21页：计划融资5000万元；产线60%、厂房20%、运营20%。'; });
+    const ingress = new FeishuConversationIngress({ ...options, file });
+    const upload = event('', 'om_pdf'); upload.message.message_type = 'file';
+    upload.message.content = JSON.stringify({ file_key: 'file_pdf', file_name: '国碳BP.pdf' });
+    const pending = ingress.handle(upload);
+    const followup = ingress.handle(event('刚才这份BP融资多少钱？', 'om_followup'));
+    await vi.waitFor(() => expect(file).toHaveBeenCalledOnce());
+    expect(respond).not.toHaveBeenCalled();
+    release(); await Promise.all([pending, followup]);
+    expect(JSON.stringify(respond.mock.calls[0]?.[0])).toContain('5000万元');
+    expect(reply).toHaveBeenCalledOnce();
+    const restarted = new FeishuConversationIngress({ ...options, file });
+    await restarted.handle(upload); // Event replay must not upload or send a second card.
+    expect(file).toHaveBeenCalledOnce();
+    await restarted.handle(event('资金如何分配？', 'om_after_restart'));
+    expect(JSON.stringify(respond.mock.calls.at(-1)?.[0])).toContain('产线60%');
+  });
+
+  it('persists one model session per private chat, isolated from other users', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>().mockImplementation(async (input) => {
+      if (!input.session?.id) input.session?.onCreated('ses_one');
+      return { kind: 'reply', text: '收到' };
+    });
+    const { ingress, options } = setup({ respond });
+    await ingress.handle(event());
+    await new FeishuConversationIngress(options).handle(event('继续', 'om_2'));
+    expect(respond.mock.calls[1]?.[0].session?.id).toBe('ses_one');
+    await ingress.handle(event('别人', 'om_3', 'ou_other'));
+    expect(respond.mock.calls[2]?.[0].session?.id).toBeUndefined();
+  });
+
+  it('restores existing uploaded material once and retains it beyond six text turns', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '收到' });
+    const { options } = setup({ respond });
+    const restoreFiles = vi.fn(async () => [{ file: { chatId: 'oc_test', senderId: 'ou_user',
+      messageId: 'om_previous_pdf', fileKey: 'file', fileName: 'BP.pdf', receivedAt: '2026-01-01T00:00:00Z' }, content: '原文融资5000万元' }]);
+    const ingress = new FeishuConversationIngress({ ...options, restoreFiles });
+    for (let i = 0; i < 8; i++) await ingress.handle(event('融资用途呢', `om_${i}`));
+    expect(restoreFiles).toHaveBeenCalledOnce();
+    expect(respond.mock.calls.at(-1)?.[0].materials).toEqual([{ fileName: 'BP.pdf', content: '原文融资5000万元' }]);
+    await new FeishuConversationIngress({ ...options, restoreFiles }).handle(event('继续', 'om_restarted'));
+    expect(restoreFiles).toHaveBeenCalledOnce();
+    expect(respond.mock.calls.at(-1)?.[0].materials?.[0]?.content).toContain('5000万元');
+  });
   it('answers ordinary chat, and remembers it for the next turn', async () => {
     const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '你好，有什么可以帮你？' });
     const { ingress, reply, research } = setup({ respond });
@@ -118,7 +167,7 @@ describe('natural Feishu conversations', () => {
     const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '原始回答' });
     const { ingress, options, reply } = setup({ respond });
     reply.mockRejectedValueOnce(new Error('network_failure'));
-    await expect(ingress.handle(event())).rejects.toThrow('network_failure');
+    await ingress.handle(event());
     await new FeishuConversationIngress(options).handle(event());
     expect(respond).toHaveBeenCalledOnce();
     expect(reply.mock.calls[0]).toEqual(reply.mock.calls[1]);
@@ -143,25 +192,87 @@ describe('natural Feishu conversations', () => {
     const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'research', companies: ['宁德时代'], focus: '' });
     const { ingress, options, research } = setup({ respond });
     research.mockRejectedValueOnce(new Error('loading_delivery_failed'));
-    await expect(ingress.handle(event('宁德时代'))).rejects.toThrow('company_research_retry_pending');
+    await ingress.handle(event('宁德时代'));
     await new FeishuConversationIngress(options).handle(event('宁德时代'));
     expect(research).toHaveBeenCalledTimes(2);
     expect(respond).toHaveBeenCalledOnce();
     expect(options.setTimer).toHaveBeenCalled();
   });
 
-  it('keeps original history order when an older reply is retried after a newer turn', async () => {
+  it('keeps original history order across delivery retry and restart', async () => {
     const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '收到' });
     const { ingress, options, reply } = setup({ respond });
     const first = event('关心腾讯', 'om_old'); first.message.create_time = String(Date.now() - 3000);
     const second = event('改看比亚迪', 'om_new'); second.message.create_time = String(Date.now() - 2000);
     reply.mockRejectedValueOnce(new Error('network_failure'));
-    await expect(ingress.handle(first)).rejects.toThrow('network_failure');
+    await ingress.handle(first);
     await ingress.handle(second);
     const restarted = new FeishuConversationIngress(options);
     await restarted.handle(first);
     await restarted.handle(event('它的融资呢', 'om_followup'));
     const history = respond.mock.calls.at(-1)?.[0].history;
     expect(history?.filter((entry) => entry.role === 'user').map((entry) => entry.content)).toEqual(['关心腾讯', '改看比亚迪']);
+  });
+
+  it('holds later messages behind a retry, while another private chat proceeds', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '收到' });
+    const { options, reply } = setup({ respond });
+    let retry!: () => void;
+    const timer = vi.fn((cb: () => void) => { retry = cb; });
+    const ingress = new FeishuConversationIngress({ ...options, setTimer: timer });
+    reply.mockRejectedValueOnce(new Error('network_failure'));
+    const first = ingress.handle(event('first'));
+    const second = ingress.handle(event('second', 'om_2'));
+    await vi.waitFor(() => expect(timer).toHaveBeenCalledOnce());
+    expect(respond).toHaveBeenCalledOnce();
+    await ingress.handle(event('other', 'om_3', 'ou_other'));
+    expect(respond.mock.calls.map(([input]) => input.text)).toEqual(['first', 'other']);
+    retry(); await Promise.all([first, second]);
+    expect(respond.mock.calls.at(-1)?.[0].text).toBe('second');
+    expect(respond.mock.calls.at(-1)?.[0].history).toEqual([
+      { role: 'user', content: 'first' }, { role: 'assistant', content: '收到' },
+    ]);
+  });
+
+  it('persists queued files and text before work and drains them in order after restart', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '5000万元' });
+    const { options } = setup({ respond });
+    const a = parseFeishuTextMessage(event('后问', 'om_later'))!;
+    const b = { ...a, messageId: 'om_file', text: '[上传文件] BP.pdf', receivedAt: new Date(Date.parse(a.receivedAt) - 1000).toISOString() };
+    writeFileSync(options.statePath, JSON.stringify({ schemaVersion: 1, sessions: { 'oc_test:ou_user': 'ses_saved' }, turns: {
+      om_later: { message: a, status: 'pending', research: {} },
+      om_file: { message: b, file: { ...b, fileKey: 'file', fileName: 'BP.pdf' }, status: 'pending', research: {} },
+    } }));
+    const file = vi.fn(async () => '计划融资5000万元');
+    new FeishuConversationIngress({ ...options, file }).resumePending();
+    await vi.waitFor(() => expect(respond).toHaveBeenCalledOnce());
+    expect(respond.mock.calls[0]?.[0].session?.id).toBe('ses_saved');
+    expect(JSON.stringify(respond.mock.calls[0]?.[0].materials)).toContain('5000万元');
+  });
+
+  it('does not expose a previous BP to another user in the same chat', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '你好' });
+    const { options } = setup({ respond });
+    const ingress = new FeishuConversationIngress({ ...options, file: async () => 'secret BP 5000万' });
+    const upload = event('', 'om_pdf'); upload.message.message_type = 'file';
+    upload.message.content = JSON.stringify({ file_key: 'file_pdf', file_name: 'BP.pdf' });
+    await ingress.handle(upload);
+    await ingress.handle(event('给我看刚才的BP', 'om_other', 'ou_other'));
+    expect(respond.mock.calls[0]?.[0].materials).toEqual([]);
+  });
+
+  it('terminates a repeatedly failing file without starving later messages', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>().mockResolvedValue({ kind: 'reply', text: '下一条' });
+    const { options } = setup({ respond });
+    const file = vi.fn(async () => { throw new Error('file_failure'); });
+    const ingress = new FeishuConversationIngress({ ...options, file });
+    const upload = event('', 'om_pdf'); upload.message.message_type = 'file';
+    upload.message.content = JSON.stringify({ file_key: 'file_pdf', file_name: 'BP.pdf' });
+    const failed = expect(ingress.handle(upload)).rejects.toThrow('file_failure');
+    await ingress.handle(event('继续聊天', 'om_next'));
+    await failed;
+    expect(file).toHaveBeenCalledTimes(3);
+    expect(respond).toHaveBeenCalledOnce();
+    expect(respond.mock.calls[0]?.[0].materials).toEqual([]);
   });
 });

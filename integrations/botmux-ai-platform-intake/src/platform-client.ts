@@ -79,6 +79,19 @@ export class HttpPlatformClient implements PlatformClient {
     return parseUpload(await readResponse(response));
   }
 
+  async documentContext(conversationId: string, receipt: { messageId: string; fileKey: string; senderId: string }): Promise<{ fileName: string; text: string; truncated: boolean }> {
+    const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/conversations/${encodeURIComponent(conversationId)}/material-context`, {
+      headers: { accept: 'application/json', 'x-boyuan-intake-key': this.#intakeKey,
+        'x-boyuan-message-id': receipt.messageId, 'x-boyuan-file-key': receipt.fileKey,
+        'x-boyuan-sender-id': receipt.senderId },
+      signal: AbortSignal.timeout(this.#timeoutMs),
+    });
+    const result = record(await readResponse(response));
+    if (typeof result.fileName !== 'string' || typeof result.text !== 'string'
+      || typeof result.truncated !== 'boolean') throw new Error('platform_invalid_response');
+    return { fileName: result.fileName, text: result.text, truncated: result.truncated };
+  }
+
   async quickCard(conversationId: string): Promise<QuickCardResult> {
     const response = await this.#fetch(`${this.#baseUrl}/api/v1/${this.#channel}/conversations/${encodeURIComponent(conversationId)}/quick-card`, {
       method: 'POST',
