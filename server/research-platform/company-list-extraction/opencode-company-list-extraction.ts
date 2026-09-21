@@ -14,10 +14,10 @@ export function createOpenCodeCompanyListExtractionAdapter(options: OpenCodeAnal
   );
   return {
     async extract(input) {
-      const sessionId = await client.createSession(`博源公司名单识别：${input.fileName}`);
+      const sessionId = await client.createSession(`通约助手公司名单识别：${input.fileName}`);
       const body = {
         ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
-        system: '你是博源 AI 平台的公司名单识别器。只从给定文本块提取公司或具备独立主体可能的机构名称，不补造。只输出 JSON。',
+        system: '你是通约助手的公司名单识别器。只从给定文本块提取公司或具备独立主体可能的机构名称，不补造。只输出 JSON。',
         tools: { bash: false, edit: false, write: false, webfetch: false, websearch: false },
         parts: [{ type: 'text', text: JSON.stringify({
           task: '输入可能是排行榜、自然语言、表格或文档段落。提取其中每个公司名称，保留来源 blockId。品牌或项目名若不能确认是独立主体也可输出，但名称必须忠实来自原文，后续会人工确认。',

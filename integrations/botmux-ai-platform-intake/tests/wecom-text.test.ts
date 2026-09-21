@@ -18,7 +18,7 @@ describe('WeCom text rendering', () => {
       },
     });
 
-    expect(rendered).toContain('【博源AI｜BP事实核验】');
+    expect(rendered).toContain('【通约助手｜BP事实核验】');
     expect(rendered).toContain('▍主体概况\n公司｜博源科技');
     expect(rendered).toContain('产品/技术｜AI 推理基础设施研究工作台');
     expect(rendered).toContain('\n\n▍风险与待验证\n• 客户集中度待核验');
@@ -42,7 +42,7 @@ describe('WeCom text rendering', () => {
       links: { deepAnalysisUrl: 'https://demo.example.com/workbench/conversations/c2' },
     });
 
-    expect(rendered).toContain('【博源AI｜公司快速研究】');
+    expect(rendered).toContain('【通约助手｜公司快速研究】');
     expect(rendered).toContain('主体状态｜已有正式主体');
     expect(rendered).toContain('\n\n▍近期信号\n• 发布新一代研究工作台');
     expect(rendered).toContain('▍基金匹配（确定性规则）');

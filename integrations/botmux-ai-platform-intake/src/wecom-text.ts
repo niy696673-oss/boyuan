@@ -11,9 +11,9 @@ export function wecomProcessingText(
   subject?: string,
 ): string {
   if (kind === 'company_research') {
-    return `【博源AI】已收到${subject ? `“${subject}”` : ''}的研究请求，正在启动快速分析和后台深度研究。`;
+    return `【通约助手】已收到${subject ? `“${subject}”` : ''}的研究请求，正在检索公开资料并进行分析。`;
   }
-  return '【博源AI】已收到项目材料，正在接入并进行快速分析。';
+  return '【通约助手】已收到项目材料，正在接入并进行快速分析。';
 }
 
 export function wecomFailureText(
@@ -21,9 +21,9 @@ export function wecomFailureText(
   subject: string,
 ): string {
   if (kind === 'company_research') {
-    return `【博源AI】“${subject}”研究请求接入失败，请稍后重试。`;
+    return `【通约助手】“${subject}”研究请求接入失败，请稍后重试。`;
   }
-  return `【博源AI】“${subject}”接入失败，请确认文件可正常打开且格式为 PDF、DOCX、XLSX 或 CSV 后重试。`;
+  return `【通约助手】“${subject}”接入失败，请确认文件可正常打开且格式为 PDF、DOCX、XLSX 或 CSV 后重试。`;
 }
 
 export function renderWeComCompletion(input: CompletionDeliveryInput, options: { includeNavigation?: boolean } = {}): string {
@@ -38,12 +38,12 @@ function renderBp(
 ): string {
   if (result.status === 'fallback') {
     return fitWithFooter(
-      ['【博源AI｜BP事实核验】', links ? '快速分析未完成，深度分析仍在后台运行。' : '这次分析未完成，请稍后重试。'],
+      ['【通约助手｜BP事实核验】', '这次分析未完成，请稍后重试。'],
       linkFooter(links, '查看深度分析'),
     );
   }
   const body = [
-    '【博源AI｜BP事实核验】',
+    '【通约助手｜BP事实核验】',
     '',
     '▍主体概况',
     fieldLine('公司', result.companyName),
@@ -72,7 +72,7 @@ function renderCompanyResearch(
 ): string {
   if (result.status === 'fallback') {
     return fitWithFooter(
-      ['【博源AI｜公司快速研究】', `公司：${result.companyName}`, links ? '快速分析未完成，深度研究仍在后台运行。' : '这次研究未完成，请稍后重试。'],
+      ['【通约助手｜公司快速研究】', `公司：${result.companyName}`, '这次研究未完成，请稍后重试。'],
       linkFooter(links, '查看深度研究'),
     );
   }
@@ -82,7 +82,7 @@ function renderCompanyResearch(
       ? '存在同名或相似主体，待确认'
       : '新主体，待确认';
   const body = [
-    '【博源AI｜公司快速研究】',
+    '【通约助手｜公司快速研究】',
     '',
     '▍主体概况',
     fieldLine('公司', result.companyName),

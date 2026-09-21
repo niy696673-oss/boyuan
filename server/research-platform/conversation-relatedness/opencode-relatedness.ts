@@ -14,10 +14,10 @@ export function createOpenCodeConversationRelatednessAdapter(options: OpenCodeAn
   return {
     async suggest(input) {
       if (input.candidates.length === 0) return { providerId: 'opencode', modelId: 'not_called', score: 0, reason: '没有历史候选对话' };
-      const sessionId = await client.createSession(`博源对话相关性：${input.title}`);
+      const sessionId = await client.createSession(`通约助手对话相关性：${input.title}`);
       const body = {
         ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
-        system: '你是博源 AI 平台的对话归并判断器。只判断材料是否围绕同一公司主体、项目、研究主题或业务内容；时间间隔不是硬规则。只输出 JSON。',
+        system: '你是通约助手的对话归并判断器。只判断材料是否围绕同一公司主体、项目、研究主题或业务内容；时间间隔不是硬规则。只输出 JSON。',
         tools: { bash: false, edit: false, write: false, webfetch: false, websearch: false },
         parts: [{ type: 'text', text: JSON.stringify({
           task: '如存在明显相关的历史对话，选择唯一 targetConversationId；否则省略。score 为 0 到 1。不得选择候选列表外的 id。',

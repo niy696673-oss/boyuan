@@ -86,7 +86,7 @@ export class WechatKfCompanyBatch {
     if (!active) {
       active = this.#options.client.sendText({
         externalUserId: batch.input.externalUserId, openKfid: batch.input.openKfid,
-        content: '【博源AI】已收到，正在识别公司名单并逐家分析。完成后将汇总回复。',
+        content: '【通约助手】已收到，正在识别公司名单并逐家分析。完成后将汇总回复。',
       }).then(() => { batch.processingSent = true; this.#save(); });
       this.#acknowledging.set(batch, active);
     }
@@ -105,16 +105,16 @@ export class WechatKfCompanyBatch {
           ? { text: input.text }
           : { image: (await this.#options.client.downloadMedia(input.imageMediaId)).buffer });
         if (extracted.companies.length > MAX_BATCH_COMPANIES) {
-          batch.pages = [`【博源AI】识别到超过 ${MAX_BATCH_COMPANIES} 家公司，本次尚未启动分析。请按每批不超过 ${MAX_BATCH_COMPANIES} 家拆分发送。`];
+          batch.pages = [`【通约助手】识别到超过 ${MAX_BATCH_COMPANIES} 家公司，本次尚未启动分析。请按每批不超过 ${MAX_BATCH_COMPANIES} 家拆分发送。`];
         } else if (!extracted.companies.length) {
-          batch.pages = ['【博源AI】未识别到清晰的公司名称，本次未启动分析。请发送公司名单文字或更清晰的图片。'];
+          batch.pages = ['【通约助手】未识别到清晰的公司名称，本次未启动分析。请发送公司名单文字或更清晰的图片。'];
         } else {
           batch.items = extracted.companies.map((name) => ({ name }));
           batch.uncertain = extracted.uncertain;
         }
       } catch (error) {
         this.#options.onError(error);
-        batch.pages = ['【博源AI】本次公司名单识别失败，尚未启动分析。请稍后重发文字名单或清晰的 PNG/JPEG/WebP 图片（不超过 2MB）。'];
+        batch.pages = ['【通约助手】本次公司名单识别失败，尚未启动分析。请稍后重发文字名单或清晰的 PNG/JPEG/WebP 图片（不超过 2MB）。'];
       }
       this.#save();
     }
@@ -182,7 +182,7 @@ export function renderBatch(items: CompanyItem[], uncertain: string[], _publicPr
     const chars = [...value.replace(/[\r\n]/gu, ' ')];
     return chars.length > limit ? `${chars.slice(0, limit).join('')}…` : chars.join('');
   };
-  const blocks = [`【博源AI｜公司批量研究】\n识别 ${items.length} 家，快速分析完成 ${items.filter((i) => !i.failed).length} 家。`];
+  const blocks = [`【通约助手｜公司批量研究】\n识别 ${items.length} 家，快速分析完成 ${items.filter((i) => !i.failed).length} 家。`];
   for (const [index, item] of items.entries()) {
     blocks.push([
       `${index + 1}）${short(item.name, 20)}`,

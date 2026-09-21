@@ -57,7 +57,7 @@ export function createOpenCodeAnalysisAdapter(options: OpenCodeAnalysisOptions):
     async analyze(input): Promise<MaterialAnalysisResult> {
       await assertRequiredCapabilities();
       const required = options.requiredCapabilities;
-      const sessionId = input.sessionId ?? await client.createSession(`博源 BP 分析：${input.companyName}`);
+      const sessionId = input.sessionId ?? await client.createSession(`通约助手 BP 分析：${input.companyName}`);
       const body = {
         ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
         ...(options.variant ? { variant: options.variant } : {}),
@@ -202,7 +202,7 @@ async function delay(durationMs: number, deadline: number): Promise<void> {
 }
 
 function systemInstruction(): string {
-  return '你是博源 AI 平台的材料分析器。事实结论只使用用户提供的带 blockId 材料，不补写材料中没有的事实。可以使用指定 Skill 和 Sequential Thinking 做流程约束与自检，但工具输出不能作为材料证据；禁止外部搜索。只输出一个 JSON 对象，不要 Markdown 围栏或额外解释。';
+  return '你是通约助手的材料分析器。事实结论只使用用户提供的带 blockId 材料，不补写材料中没有的事实。可以使用指定 Skill 和 Sequential Thinking 做流程约束与自检，但工具输出不能作为材料证据；禁止外部搜索。只输出一个 JSON 对象，不要 Markdown 围栏或额外解释。';
 }
 
 function analysisPrompt(

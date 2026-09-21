@@ -30,7 +30,7 @@ export function createOpenCodeIndustryResearchAdapter(
   return {
     async analyze(input): Promise<IndustryResearchResult> {
       const sessionId = input.sessionId
-        ?? await client.createSession(`博源行业研究：${input.industryName}`);
+        ?? await client.createSession(`通约助手行业研究：${input.industryName}`);
       let response: OpenCodeAssistantResponse;
       try {
         response = await client.sendMessage(sessionId, {
@@ -38,7 +38,7 @@ export function createOpenCodeIndustryResearchAdapter(
             ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } }
             : {}),
           ...(options.variant ? { variant: options.variant } : {}),
-          system: '你是博源 AI 平台的行业研究分析器。只能使用输入中的行业材料、正式行业结构和带 URL 的公开来源；不得调用工具，不得把未知信息补成事实。只输出 JSON。',
+          system: '你是通约助手的行业研究分析器。只能使用输入中的行业材料、正式行业结构和带 URL 的公开来源；不得调用工具，不得把未知信息补成事实。只输出 JSON。',
           tools: { '*': false },
           parts: [{ type: 'text', text: industryResearchPrompt(input) }],
         });

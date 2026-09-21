@@ -29,7 +29,7 @@ export class WechatConversationDelivery implements IntakeDelivery {
     if (!entry.acknowledged) {
       let active = this.#acknowledging.get(input.messageId);
       if (!active) {
-        active = this.#send(input.messageId, entry, 'ack', '【博源AI】已收到，正在分析，完成后会在此回复。')
+        active = this.#send(input.messageId, entry, 'ack', '【通约助手】已收到，正在分析，完成后会在此回复。')
           .then(() => { entry.acknowledged = true; this.#save(); });
         this.#acknowledging.set(input.messageId, active);
       }
@@ -47,7 +47,7 @@ export class WechatConversationDelivery implements IntakeDelivery {
 
   async fail(input: FailureDeliveryInput): Promise<void> {
     const entry = this.#entry(input.messageId, requiredReceipt(input.statusReceipt));
-    entry.results[input.fileKey] = `【博源AI】“${input.subject}”处理失败，请稍后再试。`;
+    entry.results[input.fileKey] = `【通约助手】“${input.subject}”处理失败，请稍后再试。`;
     this.#save();
     if (!input.messageId.startsWith('wechat-kf:')) await this.flush(input.messageId);
   }

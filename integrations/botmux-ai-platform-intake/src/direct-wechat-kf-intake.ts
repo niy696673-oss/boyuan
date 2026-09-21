@@ -91,7 +91,7 @@ export class WechatKfTextDelivery implements IntakeDelivery {
     await this.#port.sendText({
       ...receipt,
       content: input.kind === 'bp'
-        ? `【博源AI】“${input.subject}”接入失败，请确认文件可正常打开且为不超过 20MB 的 PDF 后重试。`
+        ? `【通约助手】“${input.subject}”接入失败，请确认文件可正常打开且为不超过 20MB 的 PDF 后重试。`
         : wecomFailureText(input.kind, input.subject),
     });
   }

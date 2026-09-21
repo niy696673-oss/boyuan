@@ -38,7 +38,7 @@ export function createOpenCodeResearchAdapter(options: OpenCodeResearchOptions):
           );
         }
       }
-      const sessionId = input.sessionId ?? await client.createSession(`博源公司研究：${input.companyName}`);
+      const sessionId = input.sessionId ?? await client.createSession(`通约助手公司研究：${input.companyName}`);
       let response: OpenCodeAssistantResponse;
       try {
         response = await client.sendMessage(sessionId, {
@@ -163,9 +163,9 @@ function workflowRequest(input: CompanyResearchInput): WorkflowRequest | undefin
 
 function systemInstruction(hasWorkflow: boolean): string {
   if (!hasWorkflow) {
-    return '你是博源 AI 平台的公司研究分析器。只使用输入的已确认知识和带 URL 公开来源；不使用工具，不把未确认内容写成事实。只输出 JSON。';
+    return '你是通约助手的公司研究分析器。只使用输入的已确认知识和带 URL 公开来源；不使用工具，不把未确认内容写成事实。只输出 JSON。';
   }
-  return '你是博源 AI 平台的内部投研分析器。必须先调用指定 Skill，并遵守它的证据状态、人类审批和停止条件。你只提供内部决策支持，不能替投资负责人作决定、形成机构审批或执行外部发布。除 skill 外不得调用任何工具。只输出 JSON。';
+  return '你是通约助手的内部投研分析器。必须先调用指定 Skill，并遵守它的证据状态、人类审批和停止条件。你只提供内部决策支持，不能替投资负责人作决定、形成机构审批或执行外部发布。除 skill 外不得调用任何工具。只输出 JSON。';
 }
 
 function researchPrompt(

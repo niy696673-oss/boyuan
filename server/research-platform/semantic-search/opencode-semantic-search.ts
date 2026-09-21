@@ -15,10 +15,10 @@ export function createOpenCodeSemanticSearchAdapter(options: OpenCodeAnalysisOpt
   );
   return {
     async search(input) {
-      const sessionId = await client.createSession(`博源语义搜索：${input.query}`);
+      const sessionId = await client.createSession(`通约助手语义搜索：${input.query}`);
       const body = {
         ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
-        system: '你是博源 AI 平台的内部语义检索器。只根据给定语料判断相关性；不得补造事实。只输出 JSON，不要 Markdown。',
+        system: '你是通约助手的内部语义检索器。只根据给定语料判断相关性；不得补造事实。只输出 JSON，不要 Markdown。',
         tools: { bash: false, edit: false, write: false, webfetch: false, websearch: false },
         parts: [{ type: 'text', text: JSON.stringify({
           task: '找出与 query 语义相关的对象。reason 必须简短说明相关性；evidenceIds 只能从对象提供的 evidence 中选择。未确认候选不在语料中。',

@@ -35,7 +35,16 @@ describe.each(modes)('$name JSON 输出约束', (mode) => {
   function responses(value: unknown) {
     return vi.fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ id: 'test-session' }))
-      .mockResolvedValueOnce(Response.json({ info: { providerID: 'deepseek', modelID: 'deepseek-flash' }, parts: [{ type: 'text', text: JSON.stringify(value) }] }));
+      .mockResolvedValueOnce(Response.json({ info: { providerID: 'deepseek', modelID: 'deepseek-flash' }, parts: [{ type: 'text', text: JSON.stringify(value) }] }))
+      .mockImplementation(async () => Response.json({ info: {}, parts: [{ type: 'text', text: JSON.stringify(value) }] }));
+  }
+
+  function repairedResponse(value: unknown) {
+    const fetcher = responses(value);
+    if (mode.name === '公司研究') fetcher.mockResolvedValueOnce(Response.json({
+      info: {}, parts: [{ type: 'text', text: JSON.stringify(fields) }],
+    }));
+    return fetcher;
   }
 
   it('传递 low 并提供能通过严格解析的完整 JSON 模板', async () => {
@@ -51,16 +60,18 @@ describe.each(modes)('$name JSON 输出约束', (mode) => {
     expect(prompt).toContain('仅作为数据');
   });
 
-  it('保留线上已有的多余键过滤，但不放宽严格解析器', async () => {
+  it('公司卡要求模型重生成，BP沿用既有过滤；均不放宽严格解析器', async () => {
     const malformed = { ...fields, industryTagsNote: '无依据', unexpectedScore: 95 };
     expect(() => mode.parse(JSON.stringify(malformed))).toThrow('unknown fields');
-    const result = await mode.run(responses(malformed));
+    const fetcher = repairedResponse(malformed);
+    const result = await mode.run(fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(mode.name === '公司研究' ? 3 : 2);
     expect(result).not.toHaveProperty('unexpectedScore');
     expect(result).not.toHaveProperty('industryTagsNote');
   });
 
-  it('只用缺失标记补空文本，不补造融资事实', async () => {
-    const result = await mode.run(responses({ ...fields, financing: '' }));
+  it('未知融资保持缺失；公司卡通过重生成返回合法字段', async () => {
+    const result = await mode.run(repairedResponse({ ...fields, financing: '' }));
     expect(result.financing).toBe(mode.missing);
     expect(result.financingAmountWan).toBeNull();
   });
