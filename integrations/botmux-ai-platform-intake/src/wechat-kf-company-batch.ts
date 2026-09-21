@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { MAX_BATCH_COMPANIES, type CompanyListExtractor } from './company-list-extractor.js';
 import type { WechatKfClient, WechatKfImageMessage, WechatKfTextMessage } from './wechat-kf-client.js';
 import type { PlatformClient } from './types.js';
+import type { UsageCollector } from './telemetry/usage-collector.js';
 
 type Input = WechatKfTextMessage | WechatKfImageMessage;
 interface CompanyItem {
@@ -31,6 +32,7 @@ export interface CompanyBatchOptions {
   platform: Pick<PlatformClient, 'startCompanyResearch' | 'companyQuickCard'>;
   publicProductUrl: string;
   onError(error: unknown): void;
+  telemetry?: UsageCollector;
 }
 
 // Durable parent jobs own results and delivery progress; the platform owns each company's research.
@@ -58,6 +60,14 @@ export class WechatKfCompanyBatch {
     if (!this.#jobs[key]) {
       this.#jobs[key] = { input, sent: 0, done: false };
       this.#save();
+      this.#options.telemetry?.onTurnStart({
+        recordId: input.messageId,
+        channel: '微信客服',
+        userId: input.externalUserId,
+        text: 'text' in input ? input.text : '[图片名单]',
+        fileName: 'imageMediaId' in input ? '公司名单图片.png' : undefined,
+        receivedAt: input.receivedAt,
+      });
     }
     if (!this.#jobs[key]!.done) await this.#acknowledge(this.#jobs[key]!);
     this.resumePending();
@@ -76,7 +86,12 @@ export class WechatKfCompanyBatch {
     let batch: Batch | undefined;
     while ((batch = Object.values(this.#jobs).find((job) => !job.done && !attempted.has(job)))) {
       attempted.add(batch);
-      try { await this.#run(batch); } catch (error) { this.#options.onError(error); }
+      try {
+        await this.#run(batch);
+      } catch (error) {
+        this.#options.telemetry?.onTurnFail({ recordId: batch.input.messageId, error });
+        this.#options.onError(error);
+      }
     }
   }
 
@@ -165,6 +180,11 @@ export class WechatKfCompanyBatch {
     }
     batch.done = true;
     this.#save();
+    this.#options.telemetry?.onTurnComplete({
+      recordId: batch.input.messageId,
+      feature: '批量公司研究',
+      status: '成功',
+    });
   }
 
   #key(input: Input): string {

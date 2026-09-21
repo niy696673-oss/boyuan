@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ConversationAgent, ConversationDecision, ConversationHistoryEntry } from './conversation-agent.js';
+import type { UsageCollector } from './telemetry/usage-collector.js';
+import type { BotChannel } from './telemetry/types.js';
 export interface ConversationMessage {
   chatId: string; senderId: string; messageId: string; receivedAt: string; text: string;
   context?: Record<string, string>;
@@ -42,6 +44,8 @@ export interface ChannelConversationOptions {
   restoreFiles?(message: ConversationMessage): Promise<Array<{ file: ConversationFile; content: string }>>;
   onError?(error: unknown): void;
   setTimer?(callback: () => void, delayMs: number): unknown;
+  telemetry?: UsageCollector;
+  channel?: BotChannel;
 }
 
 /** One persisted inbox per service; histories and queues are isolated by chat AND sender. */
@@ -72,6 +76,16 @@ export class ChannelConversation {
         ...(decision ? { decision } : {}),
       };
       try { this.#save(); } catch (error) { delete this.#data.turns[message.messageId]; throw error; }
+
+      const channel: BotChannel = this.#options.channel ?? (message.messageId.startsWith('wechat-kf:') ? '微信客服' : '飞书');
+      this.#options.telemetry?.onTurnStart({
+        recordId: message.messageId,
+        channel,
+        userId: message.senderId,
+        text: message.text,
+        fileName: file?.fileName,
+        receivedAt: message.receivedAt,
+      });
     }
     return this.#enqueue(message.messageId);
   }
@@ -116,6 +130,7 @@ export class ChannelConversation {
           turn.status = 'failed';
           turn.response = '这条消息处理失败，请重新发送后再试。';
           this.#save();
+          this.#options.telemetry?.onTurnFail({ recordId: turn.message.messageId, error });
           await this.#reply(turn.message, turn.response).catch(this.#options.onError ?? (() => undefined));
           throw error;
         }
@@ -168,6 +183,7 @@ export class ChannelConversation {
       await this.#options.finish?.(message);
       turn.status = 'completed';
       this.#save();
+      this.#options.telemetry?.onTurnComplete({ recordId: message.messageId, status: '成功' });
       return;
     }
     const owner = conversationKey(message);
@@ -242,9 +258,11 @@ export class ChannelConversation {
       deliveringReply = true;
       await this.#options.finish?.(message);
       turn.status = 'completed';
+      this.#options.telemetry?.onTurnComplete({ recordId: message.messageId, status: '成功' });
     } catch (error) {
       this.#options.onError?.(error);
       if (deliveringReply || turn.decision?.kind === 'research') {
+        this.#options.telemetry?.onTurnFail({ recordId: message.messageId, error });
         this.#save();
         throw error;
       }
@@ -254,6 +272,7 @@ export class ChannelConversation {
       this.#save();
       await this.#reply(message, turn.response);
       turn.status = 'failed';
+      this.#options.telemetry?.onTurnFail({ recordId: message.messageId, error });
     }
     this.#save();
   }
