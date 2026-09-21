@@ -53,20 +53,25 @@ describe('WeChat Customer Service runtime boundary', () => {
     }
   });
 
-  it('rejects non-PDF content even if the download filename ends with pdf', async () => {
+  it('accepts and materializes non-PDF content such as presentations and text', async () => {
     const temp = tempDir();
     const config = testConfig(temp.path);
     const materializer = new WechatKfFileMaterializer(config, {
-      downloadMedia: vi.fn(async () => ({ buffer: Buffer.from('not-a-pdf'), filename: 'fake.pdf' })),
+      downloadMedia: vi.fn(async () => ({ buffer: Buffer.from('PK\x03\x04presentation'), filename: '路演材料.pptx' })),
     });
     try {
-      await expect(materializer.materialize({
+      const attachment = await materializer.materialize({
         messageId: 'message-2',
         openKfid: 'wkAJ2GCAAAexample',
         externalUserId: 'wmAJ2GCAAAcustomer',
         receivedAt: '2026-09-03T00:00:00.000Z',
         mediaId: 'media-2',
-      }, 'file-key-2')).rejects.toThrow('attachment_type_unsupported');
+      }, 'file-key-2');
+      expect(attachment.name).toBe('路演材料.pptx');
+      expect(attachment.path.endsWith('.pptx')).toBe(true);
+      expect(existsSync(attachment.path)).toBe(true);
+      await materializer.release(attachment);
+      expect(existsSync(attachment.path)).toBe(false);
     } finally {
       temp.cleanup();
     }

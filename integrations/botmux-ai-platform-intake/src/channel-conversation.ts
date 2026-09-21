@@ -9,6 +9,7 @@ export interface ConversationMessage {
 export interface ConversationFile {
   chatId: string; senderId?: string; messageId: string; receivedAt: string;
   fileKey: string; fileName: string; context?: Record<string, string>;
+  initialResponse?: string;
 }
 export interface ConversationResearch extends Omit<ConversationFile, 'fileKey' | 'fileName'> {
   companyName: string; researchKey?: string; researchFocus?: string;
@@ -132,8 +133,38 @@ export class ChannelConversation {
     turn.attempts = (turn.attempts ?? 0) + 1;
     this.#save();
     if (turn.file) {
-      if (!this.#options.file) throw new Error('conversation_file_handler_missing');
-      turn.response = await this.#options.file(turn.file);
+      if (turn.file.initialResponse !== undefined) {
+        turn.response = turn.file.initialResponse;
+      } else {
+        if (!this.#options.file) throw new Error('conversation_file_handler_missing');
+        turn.response = await this.#options.file(turn.file);
+      }
+      if (turn.decision?.kind === 'reply') {
+        await this.#reply(message, turn.decision.text);
+      } else if (turn.decision?.kind === 'research') {
+        const decision = turn.decision;
+        const failures: unknown[] = [];
+        let cursor = 0;
+        await Promise.all(Array.from({ length: Math.min(2, decision.companies.length) }, async () => {
+          while (cursor < decision.companies.length) {
+            const companyName = decision.companies[cursor++]!;
+            const researchKey = companyResearchKey(companyName);
+            if (Object.hasOwn(turn.research, researchKey)) continue;
+            try {
+              turn.research[researchKey] = await this.#options.research({
+                ...message,
+                receivedAt: message.receivedAt, companyName, researchKey,
+                ...(decision.focus ? { researchFocus: decision.focus } : {}),
+              });
+            } catch (error) {
+              this.#options.onError?.(error);
+              failures.push(error);
+            }
+            this.#save();
+          }
+        }));
+        if (failures.length) throw new Error('company_research_retry_pending');
+      }
       await this.#options.finish?.(message);
       turn.status = 'completed';
       this.#save();

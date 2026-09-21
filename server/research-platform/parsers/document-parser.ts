@@ -117,8 +117,25 @@ export async function parseDocument(
       ".gif",
     ].includes(extension) ||
     (mimeType && IMAGE_MIME_TYPES.has(mimeType))
-  )
-    return (options.imageOcr ?? unavailableImageOcr)(input);
+  ) {
+    if (options.imageOcr) {
+      try {
+        return await options.imageOcr(input);
+      } catch {
+        // Fall back to image receipt block if OCR fails
+      }
+    }
+    return {
+      format: 'image',
+      blocks: [{
+        blockId: "image-receipt-1",
+        kind: "paragraph",
+        text: `【已接收图片文件：${input.fileName}】图片文件已接收并归档。`,
+        page: 1,
+        paragraph: 1,
+      }],
+    };
+  }
 
   try {
     const fd = await readFile(input.path);

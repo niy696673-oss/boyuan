@@ -13,6 +13,9 @@ import { createRuntimeQuickCardAdapter } from "./research-platform/quick-card/ru
 import { createRuntimeCompanyQuickCardAdapter } from "./research-platform/company-quick-card/runtime-company-quick-card.js";
 import { createRuntimeResearchAdapters } from "./research-platform/research/runtime-research.js";
 import { createRuntimeCompanyCopilotAdapter } from "./research-platform/copilot/runtime-copilot.js";
+import { createDocumentParser } from "./research-platform/parsers/document-parser.js";
+import { createOpenCodeImageOcr } from "./research-platform/parsers/image-ocr-parser.js";
+import { runtimeOpenCodeOptions } from "./research-platform/opencode/runtime-options.js";
 import { mountSpa } from "./spa-static.js";
 
 const config = loadConfig();
@@ -26,10 +29,23 @@ const researchAdapters = createRuntimeResearchAdapters(process.env, {
 const companyCopilot = process.env.BOYUAN_OPENCODE_BASE_URL?.trim()
   ? createRuntimeCompanyCopilotAdapter(process.env, { directory: root })
   : undefined;
+const imageOcr = process.env.BOYUAN_OPENCODE_BASE_URL?.trim()
+  ? createOpenCodeImageOcr({
+      ...runtimeOpenCodeOptions(process.env, { directory: root }),
+      model: {
+        providerId: process.env.BOYUAN_QUICK_CARD_PROVIDER_ID ?? "openai",
+        modelId: process.env.BOYUAN_QUICK_CARD_MODEL_ID ?? "gpt-5.6-luna",
+      },
+    })
+  : undefined;
+const documentParser = createDocumentParser({
+  ...(imageOcr ? { imageOcr } : {}),
+});
 const researchPlatform = createPlatformModule({
   dataRoot:
     process.env.BOYUAN_RESEARCH_DATA_ROOT ??
     path.join(root, "data", "research-platform"),
+  parser: documentParser,
   analysis: createRuntimeAnalysisAdapter(process.env, { directory: root }),
   quickCardAnalysis: createRuntimeQuickCardAdapter(process.env, {
     directory: root,

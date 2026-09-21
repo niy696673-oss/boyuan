@@ -61,4 +61,32 @@ describe('WeCom runtime boundary', () => {
       temp.cleanup();
     }
   });
+
+  it('materializes arbitrary files such as PPTX and text without restriction', async () => {
+    const temp = tempDir();
+    const config = testConfig(temp.path);
+    const downloadFile = vi.fn(async () => ({
+      buffer: Buffer.from('PK\x03\x04presentation'),
+      filename: '商业计划书.pptx',
+    }));
+    const materializer = new WeComFileMaterializer(config, { downloadFile });
+    try {
+      const attachment = await materializer.materialize({
+        reqId: 'req-3',
+        chatId: 'user-3',
+        messageId: 'message-3',
+        fileKey: 'file-key-3',
+        receivedAt: new Date().toISOString(),
+        senderId: 'user-3',
+        downloadUrl: 'https://files.example.com/pptx',
+      });
+      expect(attachment.name).toBe('商业计划书.pptx');
+      expect(attachment.path.endsWith('.pptx')).toBe(true);
+      expect(existsSync(attachment.path)).toBe(true);
+      await materializer.release(attachment);
+      expect(existsSync(attachment.path)).toBe(false);
+    } finally {
+      temp.cleanup();
+    }
+  });
 });
