@@ -106,15 +106,18 @@ export class WechatKfCompanyBatch {
           : { image: (await this.#options.client.downloadMedia(input.imageMediaId)).buffer });
         if (extracted.companies.length > MAX_BATCH_COMPANIES) {
           batch.pages = [`【通约助手】识别到超过 ${MAX_BATCH_COMPANIES} 家公司，本次尚未启动分析。请按每批不超过 ${MAX_BATCH_COMPANIES} 家拆分发送。`];
-        } else if (!extracted.companies.length) {
-          batch.pages = ['【通约助手】未识别到清晰的公司名称，本次未启动分析。请发送公司名单文字或更清晰的图片。'];
-        } else {
+        } else if (extracted.companies.length > 0) {
           batch.items = extracted.companies.map((name) => ({ name }));
           batch.uncertain = extracted.uncertain;
+        } else if (extracted.isCompanyList === false || extracted.summary) {
+          const summary = extracted.summary || '图片已完成视觉识别与解析。';
+          batch.pages = [`【通约助手】已接收并解析图片内容：\n\n${summary}\n\n你可以就图片中的业务、数据或内容发送文字继续提问。`];
+        } else {
+          batch.pages = ['【通约助手】未识别到清晰的公司名称，本次未启动分析。请发送公司名单文字或更清晰的图片。'];
         }
       } catch (error) {
         this.#options.onError(error);
-        batch.pages = ['【通约助手】本次公司名单识别失败，尚未启动分析。请稍后重发文字名单或清晰的 PNG/JPEG/WebP 图片（不超过 2MB）。'];
+        batch.pages = ['【通约助手】本次图片或名单识别遇到异常，尚未启动分析。请稍后重发文字名单或清晰的图片（不超过 20MB）。'];
       }
       this.#save();
     }

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -24,8 +25,6 @@ export interface WeComEventRuntime extends WeComBotPort {
   connectionState(): string;
   close(): void;
 }
-
-const SUPPORTED_EXTENSIONS = new Set(['.csv', '.docx', '.pdf', '.xlsx']);
 
 export function loadWeComCredentials(
   env: NodeJS.ProcessEnv = process.env,
@@ -130,8 +129,7 @@ export class WeComFileMaterializer {
 
     const downloaded = await this.#transport.downloadFile(message.downloadUrl, message.aesKey);
     const fileName = safeDownloadedName(downloaded.filename, downloaded.buffer);
-    const extension = extname(fileName).toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.has(extension)) throw new Error('attachment_type_unsupported');
+    const extension = extname(fileName).toLowerCase() || '.bin';
     const path = join(directory, `${stem}${extension}`);
     const temporary = join(directory, `.${stem}.${randomUUID()}.part`);
     try {
@@ -170,13 +168,21 @@ function safeDownloadedName(filename: string | undefined, buffer: Buffer): strin
   const candidate = filename ? basename(filename.replace(/\\/gu, '/')).trim() : '';
   if (candidate && candidate.length <= 500 && !/[\r\n\0]/u.test(candidate)) return candidate;
   if (buffer.subarray(0, 5).toString('ascii') === '%PDF-') return '企业微信项目材料.pdf';
-  throw new Error('attachment_name_missing');
+  if (buffer.subarray(0, 4).toString('ascii') === 'PK\x03\x04') return '企业微信项目材料.zip';
+  return '企业微信项目材料.bin';
 }
 
 function findCachedPath(directory: string, stem: string): string | undefined {
-  for (const extension of SUPPORTED_EXTENSIONS) {
-    const candidate = join(directory, `${stem}${extension}`);
-    if (existsSync(candidate)) return candidate;
+  if (!existsSync(directory)) return undefined;
+  try {
+    const files = readdirSync(directory);
+    for (const file of files) {
+      if (file.startsWith(`${stem}.`) && !file.endsWith('.part')) {
+        return join(directory, file);
+      }
+    }
+  } catch {
+    // If listing fails, fall through
   }
   return undefined;
 }

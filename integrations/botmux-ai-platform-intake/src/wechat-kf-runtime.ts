@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -51,15 +52,18 @@ export class WechatKfFileMaterializer {
     );
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stem = createHash('sha256').update(fileKey).digest('hex');
-    const path = join(directory, `${stem}.pdf`);
-    if (existsSync(path)) {
-      return validateAttachmentPath({ fileKey, name: '微信客服项目材料.pdf', path }, this.#attachmentRoot);
+    const cached = findCachedPath(directory, stem);
+    if (cached) {
+      return validateAttachmentPath({
+        fileKey,
+        name: `微信客服项目材料${extname(cached).toLowerCase() || '.pdf'}`,
+        path: cached,
+      }, this.#attachmentRoot);
     }
     const downloaded = await this.#client.downloadMedia(message.mediaId);
-    if (downloaded.buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
-      throw new Error('attachment_type_unsupported');
-    }
-    const fileName = safePdfName(downloaded.filename);
+    const fileName = safeAttachmentName(downloaded.filename, downloaded.buffer);
+    const extension = extname(fileName).toLowerCase() || '.bin';
+    const path = join(directory, `${stem}${extension}`);
     const temporary = join(directory, `.${stem}.${randomUUID()}.part`);
     try {
       writeFileSync(temporary, downloaded.buffer, { mode: 0o600, flag: 'wx' });
@@ -93,13 +97,31 @@ export class WechatKfFileMaterializer {
   }
 }
 
-function safePdfName(value: string | undefined): string {
+function safeAttachmentName(value: string | undefined, buffer?: Buffer): string {
   const candidate = value ? basename(value.replace(/\\/gu, '/')).trim() : '';
-  if (!candidate) return '微信客服项目材料.pdf';
-  if (candidate.length > 500 || /[\r\n\0]/u.test(candidate) || extname(candidate).toLowerCase() !== '.pdf') {
-    return '微信客服项目材料.pdf';
+  if (candidate && candidate.length <= 500 && !/[\r\n\0]/u.test(candidate)) {
+    return candidate;
   }
-  return candidate;
+  if (buffer) {
+    if (buffer.subarray(0, 5).toString('ascii') === '%PDF-') return '微信客服项目材料.pdf';
+    if (buffer.subarray(0, 4).toString('ascii') === 'PK\x03\x04') return '微信客服项目材料.zip';
+  }
+  return '微信客服项目材料.bin';
+}
+
+function findCachedPath(directory: string, stem: string): string | undefined {
+  if (!existsSync(directory)) return undefined;
+  try {
+    const files = readdirSync(directory);
+    for (const file of files) {
+      if (file.startsWith(`${stem}.`) && !file.endsWith('.part')) {
+        return join(directory, file);
+      }
+    }
+  } catch {
+    // If listing fails, fall through
+  }
+  return undefined;
 }
 
 function required(

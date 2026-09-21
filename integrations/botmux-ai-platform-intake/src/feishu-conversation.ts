@@ -42,38 +42,73 @@ export class FeishuConversationIngress {
     try {
       const buffer = await this.options.downloadImage!(image.messageId, image.imageKey);
       const extraction = await this.options.extractor!.extract({ image: buffer });
-      if (extraction.companies.length > 20) {
-        await this.#core.accept(
-          { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: '[图片名单]' },
-          undefined,
-          { kind: 'reply', text: `识别到超过 20 家公司（共 ${extraction.companies.length} 家），本次未启动分析。请按每批不超过 20 家拆分发送。` },
-        );
-      } else if (extraction.companies.length === 0) {
+      if (extraction.isCompanyList !== false && extraction.companies.length > 0) {
+        if (extraction.companies.length > 20) {
+          await this.#core.accept(
+            { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: '[图片名单]' },
+            undefined,
+            { kind: 'reply', text: `识别到超过 20 家公司（共 ${extraction.companies.length} 家），本次未启动分析。请按每批不超过 20 家拆分发送。` },
+          );
+        } else {
+          if (extraction.uncertain.length > 0) {
+            void this.options.reply(
+              { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: '' },
+              `已从图片中识别到 ${extraction.companies.length} 家公司并开始分析。以下片段较模糊暂未纳入：${extraction.uncertain.join('、')}`,
+              `${image.messageId}-ocr-uncertain`,
+            ).catch((err) => this.options.onError?.(err));
+          }
+          await this.#core.accept(
+            { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: `[图片名单] 分析 ${extraction.companies.join('、')}` },
+            {
+              chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt,
+              fileKey: `image:${image.imageKey}`, fileName: '公司名单图片.png',
+              initialResponse: extraction.transcription ?? extraction.companies.join('\n'),
+            },
+            { kind: 'research', companies: extraction.companies, focus: '' },
+          );
+        }
+        return;
+      }
+
+      if (extraction.isCompanyList === true && extraction.companies.length === 0) {
         await this.#core.accept(
           { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: '[图片名单]' },
           undefined,
           { kind: 'reply', text: '未能从图片中清晰识别出公司名称。你可以直接发送公司名称文字，或发送更清晰的名单图片。' },
         );
-      } else {
-        if (extraction.uncertain.length > 0) {
-          void this.options.reply(
-            { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: '' },
-            `已从图片中识别到 ${extraction.companies.length} 家公司并开始分析。以下片段较模糊暂未纳入：${extraction.uncertain.join('、')}`,
-            `${image.messageId}-ocr-uncertain`,
-          ).catch((err) => this.options.onError?.(err));
-        }
-        await this.#core.accept(
-          { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: `[图片名单] 分析 ${extraction.companies.join('、')}` },
-          undefined,
-          { kind: 'research', companies: extraction.companies, focus: '' },
-        );
+        return;
       }
+
+      const summary = extraction.summary || '已接收并解析图片内容。';
+      const transcription = extraction.transcription || summary;
+      const content = `【图片内容解析】\n概述：${summary}\n\n详细转录与图表描述：\n${transcription}`;
+      const replyText = `已接收并解析图片内容：\n\n${summary}\n\n你可以就图片中的业务、数据、架构或风险继续提问。`;
+
+      await this.#core.accept(
+        {
+          chatId: image.chatId,
+          senderId: image.senderId,
+          messageId: image.messageId,
+          receivedAt: image.receivedAt,
+          text: `[上传图片] ${summary}`,
+        },
+        {
+          chatId: image.chatId,
+          senderId: image.senderId,
+          messageId: image.messageId,
+          receivedAt: image.receivedAt,
+          fileKey: `image:${image.imageKey}`,
+          fileName: '图片资料.png',
+          initialResponse: content,
+        },
+        { kind: 'reply', text: replyText },
+      );
     } catch (error) {
       this.options.onError?.(error);
       await this.#core.accept(
         { chatId: image.chatId, senderId: image.senderId, messageId: image.messageId, receivedAt: image.receivedAt, text: '[图片]' },
         undefined,
-        { kind: 'reply', text: '图片识别失败，请发送清晰的 PNG/JPEG/WebP 图片或直接发送公司名单文字。' },
+        { kind: 'reply', text: '图片解析遇到异常，请确认图片清晰度（支持不超过 20MB 的 PNG/JPEG/WebP 等格式），或直接发送文字说明。' },
       );
     }
   }

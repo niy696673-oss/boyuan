@@ -32,26 +32,30 @@ describe('company list extraction', () => {
     expect(isCompanyListText('分析宁德时代')).toBe(false);
     expect(isCompanyListText('研究 宁德时代')).toBe(false);
     expect(isCompanyListText('Acme Robotics')).toBe(false);
-    expect(parseCompanyList('{"companies":[" Acme ","ACME","比亚迪"],"uncertain":["模糊"]}')).toEqual({ companies: ['Acme', '比亚迪'], uncertain: ['模糊'] });
+    expect(parseCompanyList('{"companies":[" Acme ","ACME","比亚迪"],"uncertain":["模糊"]}')).toEqual({ companies: ['Acme', '比亚迪'], uncertain: ['模糊'], isCompanyList: true });
+    expect(parseCompanyList('{"isCompanyList":false,"companies":[],"uncertain":[],"summary":"架构图","transcription":"系统架构"}')).toEqual({
+      companies: [], uncertain: [], isCompanyList: false, summary: '架构图', transcription: '系统架构',
+    });
     expect(() => parseCompanyList('{"companies":[12],"uncertain":[]}')).toThrow();
   });
   it('rejects unsupported/oversized images', () => {
     expect(imageMime(png)).toBe('image/png');
+    expect(imageMime(Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]))).toBe('image/png');
     expect(() => imageMime(Buffer.from('%PDF-fake-image'))).toThrow();
-    expect(() => imageMime(Buffer.alloc(2 * 1024 * 1024 + 1))).toThrow();
+    expect(() => imageMime(Buffer.alloc(20 * 1024 * 1024 + 1))).toThrow();
   });
   it('uses a tool-free vision request with image bytes, not an external attachment URL', async () => {
     const fetcher = vi.fn<typeof fetch>(async (url, init) => {
       if (String(url).includes('/message')) {
         const body = JSON.parse(String(init?.body));
         expect(body.tools).toEqual({ '*': false });
-        expect(body.parts[1]).toMatchObject({ type: 'file', mime: 'image/png', url: `data:image/png;base64,${png.toString('base64')}` });
-        return Response.json({ info: {}, parts: [{ type: 'text', text: '{"companies":["宁德时代"],"uncertain":[]}' }] });
+        expect(body.parts[0]).toMatchObject({ type: 'file', mime: 'image/png', url: `data:image/png;base64,${png.toString('base64')}` });
+        return Response.json({ info: {}, parts: [{ type: 'text', text: '{"isCompanyList":true,"companies":["宁德时代"],"uncertain":[]}' }] });
       }
       return Response.json({ id: 'session-1' });
     });
     const extractor = createCompanyListExtractor({ baseUrl: new URL('http://127.0.0.1:4173/'), directory: '/runtime', model: { providerId: 'openai', modelId: 'luna' }, fetcher });
-    expect(await extractor.extract({ image: png })).toEqual({ companies: ['宁德时代'], uncertain: [] });
+    expect(await extractor.extract({ image: png })).toEqual({ companies: ['宁德时代'], uncertain: [], isCompanyList: true });
   });
 });
 
@@ -108,6 +112,29 @@ describe('durable company batches', () => {
       expect(options.platform.startCompanyResearch).not.toHaveBeenCalled();
       expect(sendText).toHaveBeenCalledTimes(2);
       expect(sendText.mock.calls[1]![0].content).toContain('未启动分析');
+    } finally { temp.cleanup(); }
+  });
+  it('delivers parsed image summary for non-company list images without rejecting', async () => {
+    const temp = tempDir();
+    try {
+      const { options, sendText } = fixture(temp.path);
+      options.extractor.extract = vi.fn(async () => ({
+        isCompanyList: false,
+        companies: [],
+        uncertain: [],
+        summary: '微服务调用架构图',
+        transcription: '网关 -> 鉴权 -> 用户服务',
+      }));
+      const batch = new WechatKfCompanyBatch(options);
+      await batch.handle({
+        messageId: 'img-1', externalUserId: 'customer', openKfid: 'wk-account',
+        receivedAt: new Date().toISOString(), imageMediaId: 'media-img-1',
+      });
+      await batch.waitForIdle();
+      expect(options.platform.startCompanyResearch).not.toHaveBeenCalled();
+      expect(sendText).toHaveBeenCalledTimes(2);
+      expect(sendText.mock.calls[1]![0].content).toContain('微服务调用架构图');
+      expect(sendText.mock.calls[1]![0].content).toContain('已接收并解析图片内容');
     } finally { temp.cleanup(); }
   });
   it('continues after one company fails and includes its existing deep research link', async () => {

@@ -322,6 +322,7 @@ describe('natural Feishu conversations', () => {
     const downloadImage = vi.fn(async () => Buffer.from('fake-image-bytes'));
     const extractor = {
       extract: vi.fn(async () => ({
+        isCompanyList: true,
         companies: [],
         uncertain: [],
       })),
@@ -340,6 +341,56 @@ describe('natural Feishu conversations', () => {
       expect.any(String),
     );
     expect(research).not.toHaveBeenCalled();
+  });
+
+  it('handles general visual images (architecture, tables, BP slides) without rejecting, saving into materials for continuous dialogue', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>(async () => ({
+      kind: 'reply',
+      text: '根据架构图，数据库单点与鉴权中心可能存在性能瓶颈。',
+    }));
+    const { options, reply, research } = setup({ respond });
+    const downloadImage = vi.fn(async () => Buffer.from('fake-diagram-bytes'));
+    const extractor = {
+      extract: vi.fn(async () => ({
+        isCompanyList: false,
+        companies: [],
+        uncertain: [],
+        summary: '微服务架构拓扑图',
+        transcription: '网关模块 -> 鉴权中心 -> 用户服务 -> 单点MySQL数据库',
+      })),
+    };
+    const ingress = new FeishuConversationIngress({
+      ...options,
+      downloadImage,
+      extractor,
+    });
+
+    // 1. Send image
+    await ingress.handle(imageEvent('img_diag_1', 'om_diag_1'));
+    await ingress.waitForIdle();
+    expect(reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('已接收并解析图片内容：\n\n微服务架构拓扑图'),
+      expect.any(String),
+    );
+    expect(research).not.toHaveBeenCalled();
+
+    // 2. Follow-up question referencing the image
+    await ingress.handle(event('图里的瓶颈在哪里？', 'om_followup_1'));
+    await ingress.waitForIdle();
+    expect(respond).toHaveBeenCalledOnce();
+    const callInput = respond.mock.calls[0]![0];
+    expect(callInput.text).toBe('图里的瓶颈在哪里？');
+    expect(callInput.materials).toBeDefined();
+    expect(callInput.materials).toHaveLength(1);
+    expect(callInput.materials![0]!.fileName).toBe('图片资料.png');
+    expect(callInput.materials![0]!.content).toContain('微服务架构拓扑图');
+    expect(callInput.materials![0]!.content).toContain('单点MySQL数据库');
+    expect(reply).toHaveBeenCalledWith(
+      expect.anything(),
+      '根据架构图，数据库单点与鉴权中心可能存在性能瓶颈。',
+      expect.any(String),
+    );
   });
 
   it('replies with guidance when Feishu image contains more than 20 companies', async () => {
