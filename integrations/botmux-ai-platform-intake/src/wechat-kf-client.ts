@@ -133,11 +133,11 @@ export class WechatKfClient {
       throw new Error(`wechat_kf_media_api_${Number.isInteger(errcode) ? errcode : 'invalid'}`);
     }
     const declaredSize = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declaredSize) && declaredSize > 20 * 1_024 * 1_024) {
+    if (Number.isFinite(declaredSize) && declaredSize > 50 * 1_024 * 1_024) {
       throw new Error('wechat_kf_media_too_large');
     }
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length || buffer.length > 20 * 1_024 * 1_024) throw new Error('wechat_kf_media_size_invalid');
+    if (!buffer.length || buffer.length > 50 * 1_024 * 1_024) throw new Error('wechat_kf_media_size_invalid');
     const filename = contentDispositionFilename(response.headers.get('content-disposition'));
     return { buffer, ...(filename ? { filename } : {}) };
   }

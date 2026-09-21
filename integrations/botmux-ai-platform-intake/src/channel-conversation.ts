@@ -190,8 +190,8 @@ export class ChannelConversation {
     let deliveringReply = false;
     try {
       // A size guard protects model capacity; it never silently truncates a user's message.
-      if (message.text.length > 16_000) {
-        turn.decision = { kind: 'reply', text: '这条消息太长了，请分成几条发送，我会逐条处理。' };
+      if (message.text.length > 50_000) {
+        turn.decision = { kind: 'reply', text: '这条消息超过了 50,000 字限制，请分成几条发送，我会逐条处理。' };
       }
       if (!turn.decision) {
         const sessionId = this.#data.sessions?.[owner];

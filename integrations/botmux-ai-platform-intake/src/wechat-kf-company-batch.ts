@@ -197,12 +197,11 @@ export function renderBatch(items: CompanyItem[], uncertain: string[], _publicPr
   blocks.push('以上为快速预览，不构成投资判断。可以继续提问。');
   const pages: string[] = [];
   let page = '';
-  for (const block of blocks) {
-    if (Buffer.byteLength(block) > 2048) throw new Error('company_batch_block_too_large');
+  for (let block of blocks) {
+    if (Buffer.byteLength(block) > 2048) block = short(block, 300);
     if (Buffer.byteLength(`${page}\n\n${block}`) > 2048) { pages.push(page); page = block; }
     else page = page ? `${page}\n\n${block}` : block;
   }
   if (page) pages.push(page);
-  if (pages.length > 4) throw new Error('company_batch_reply_too_large');
   return pages;
 }
