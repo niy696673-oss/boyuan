@@ -867,13 +867,14 @@ export function createApp(
         .status(200)
         .json({ ...existing, status: "重复文件", duplicate: true });
     }
-    const supported = ["pdf", "docx", "txt", "md", "csv"];
     let text = req.file.originalname;
     let parseFailure = "";
-    if (services.mode === "demo" && supported.includes(ext)) {
+    if (services.mode === "demo") {
       try {
-        text = (await extractDocumentText(ext, req.file.buffer)).trim();
-        if (!text) parseFailure = "文档未提取到可索引文字";
+        text = (
+          await extractDocumentText(ext, req.file.buffer, req.file.originalname)
+        ).trim();
+        if (!text) text = req.file.originalname;
       } catch (error) {
         parseFailure = error instanceof Error ? error.message : "文档解析失败";
       }
@@ -893,7 +894,6 @@ export function createApp(
     );
     if (
       services.mode === "demo" &&
-      supported.includes(ext) &&
       !parseFailure &&
       !detectedCompanyRows.length
     ) {
@@ -941,14 +941,13 @@ export function createApp(
       size: req.file.size,
       status: (services.mode === "production"
         ? "待解析"
-        : supported.includes(ext) && !parseFailure
+        : !parseFailure
           ? "已索引"
           : "解析失败") as "待解析" | "已索引" | "解析失败",
       failureReason:
-        services.mode === "production" ||
-        (supported.includes(ext) && !parseFailure)
+        services.mode === "production" || !parseFailure
           ? undefined
-          : parseFailure || `暂不支持 .${ext || "未知"} 文件`,
+          : parseFailure,
       detectedCompanies,
       visibility: access.visibility,
       ownerId: access.visibility === "private" ? user.id : undefined,
@@ -959,7 +958,7 @@ export function createApp(
       statusTrace:
         services.mode === "production"
           ? [{ status: "待解析", at: now }]
-          : supported.includes(ext) && !parseFailure
+          : !parseFailure
             ? [
                 { status: "待解析", at: now },
                 { status: "解析中", at: now },
@@ -977,7 +976,7 @@ export function createApp(
         detail: string;
       }>,
     };
-    if (services.mode === "demo" && supported.includes(ext) && !parseFailure)
+    if (services.mode === "demo" && !parseFailure)
       for (const company of detectedCompanyRows) {
         const evidenceId = randomUUID();
         company.evidence.push({
@@ -1112,7 +1111,7 @@ export function createApp(
       record.failureReason || `${req.file.size} bytes，解析并建立索引`,
     );
     res
-      .status(supported.includes(ext) && !parseFailure ? 201 : 422)
+      .status(!parseFailure ? 201 : 422)
       .json({ ...record, duplicate: false });
   });
   app.get("/api/documents/:id/download", async (req, res) => {

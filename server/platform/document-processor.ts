@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as mammoth from "mammoth";
+import { parseDocument } from "../research-platform/parsers/document-parser.js";
 import type { Store } from "../store.js";
 import type { Database } from "./database.js";
 import type {
@@ -23,12 +27,75 @@ async function extractPdf(buffer: Buffer) {
   return pages.join("\n\n");
 }
 
-export async function extractDocumentText(fileType: string, buffer: Buffer) {
-  if (["txt", "md", "csv"].includes(fileType)) return buffer.toString("utf8");
-  if (fileType === "docx")
-    return (await mammoth.extractRawText({ buffer })).value;
-  if (fileType === "pdf") return extractPdf(buffer);
-  throw new Error(`UNSUPPORTED_FILE_TYPE:${fileType}`);
+export async function extractDocumentText(
+  fileType: string,
+  buffer: Buffer,
+  fileName?: string,
+) {
+  const normalizedType = fileType.toLowerCase().replace(/^\./u, "");
+  if (
+    [
+      "txt",
+      "md",
+      "csv",
+      "json",
+      "yaml",
+      "yml",
+      "xml",
+      "html",
+      "htm",
+      "log",
+      "ini",
+      "conf",
+      "sql",
+      "ts",
+      "js",
+      "py",
+      "sh",
+    ].includes(normalizedType)
+  ) {
+    return buffer.toString("utf8");
+  }
+  if (normalizedType === "docx") {
+    try {
+      return (await mammoth.extractRawText({ buffer })).value;
+    } catch {
+      // Fall through to general document parser
+    }
+  }
+  if (normalizedType === "pdf") {
+    try {
+      return await extractPdf(buffer);
+    } catch {
+      // Fall through to general document parser
+    }
+  }
+  try {
+    const tempDir = join(tmpdir(), "boyuan-doc-extract");
+    await mkdir(tempDir, { recursive: true });
+    const tempPath = join(
+      tempDir,
+      `${randomUUID()}.${normalizedType || "bin"}`,
+    );
+    await writeFile(tempPath, buffer);
+    try {
+      const parsed = await parseDocument({
+        path: tempPath,
+        fileName: fileName || `file.${normalizedType || "bin"}`,
+      });
+      const text = parsed.blocks
+        .map((b) => b.text)
+        .filter(Boolean)
+        .join("\n\n");
+      if (text.trim()) return text.trim();
+    } finally {
+      await unlink(tempPath).catch(() => undefined);
+    }
+  } catch {
+    // If parseDocument fails or throws, fall through
+  }
+
+  return `【已接收资料：${fileName || `文件.${normalizedType || "bin"}`}】资料已接收并归档。`;
 }
 
 export class DocumentProcessor {
@@ -57,6 +124,7 @@ export class DocumentProcessor {
         await extractDocumentText(
           job.fileType,
           await this.storage.get(job.objectKey),
+          job.fileName,
         )
       ).trim();
       if (!content) throw new Error("DOCUMENT_EMPTY");

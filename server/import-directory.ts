@@ -7,26 +7,16 @@ const sourceDirectory = path.resolve(sourceArgument);
 const apiBaseUrl = (
   process.env.BOYUAN_API_BASE_URL || "http://127.0.0.1:4174"
 ).replace(/\/$/, "");
-const allowedExtensions = new Set([
-  ".pdf",
-  ".docx",
-  ".txt",
-  ".md",
-  ".csv",
-  ".pptx",
-]);
-
 if (!sourceArgument) throw new Error("请提供待导入的知识库目录");
 
 async function collectFiles(directory: string): Promise<string[]> {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   const rows = await Promise.all(
     entries.map(async (entry) => {
+      if (entry.name.startsWith(".")) return [];
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) return collectFiles(target);
-      return allowedExtensions.has(path.extname(entry.name).toLowerCase())
-        ? [target]
-        : [];
+      return [target];
     }),
   );
   return rows.flat().sort((left, right) => left.localeCompare(right, "zh-CN"));

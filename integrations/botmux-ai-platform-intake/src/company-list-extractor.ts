@@ -12,7 +12,7 @@ export interface CompanyListExtraction {
 export interface CompanyListExtractor { extract(input: CompanyListInput): Promise<CompanyListExtraction> }
 
 export function imageMime(bytes: Buffer): string {
-  if (bytes.length > 20 * 1024 * 1024 || bytes.length < 8) throw new Error('company_list_image_invalid');
+  if (bytes.length > 50 * 1024 * 1024 || bytes.length < 8) throw new Error('company_list_image_invalid');
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
   if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
   if (bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
@@ -29,7 +29,7 @@ export function createCompanyListExtractor(options: OpenCodeConnectionOptions & 
     (status) => new Error(`company_list_extraction_http_${status}`), 90_000);
   return {
     async extract(input) {
-      if (!input.image && (!input.text?.trim() || input.text.length > 4096)) throw new Error('company_list_text_invalid');
+      if (!input.image && (!input.text?.trim() || input.text.length > 50_000)) throw new Error('company_list_text_invalid');
       const parts: Record<string, unknown>[] = [];
       let system: string;
       if (input.image) {

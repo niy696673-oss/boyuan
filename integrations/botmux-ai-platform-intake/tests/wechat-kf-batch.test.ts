@@ -42,7 +42,7 @@ describe('company list extraction', () => {
     expect(imageMime(png)).toBe('image/png');
     expect(imageMime(Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]))).toBe('image/png');
     expect(() => imageMime(Buffer.from('%PDF-fake-image'))).toThrow();
-    expect(() => imageMime(Buffer.alloc(20 * 1024 * 1024 + 1))).toThrow();
+    expect(() => imageMime(Buffer.alloc(50 * 1024 * 1024 + 1))).toThrow();
   });
   it('uses a tool-free vision request with image bytes, not an external attachment URL', async () => {
     const fetcher = vi.fn<typeof fetch>(async (url, init) => {

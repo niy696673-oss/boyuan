@@ -33,8 +33,6 @@ export interface LarkRequestClient {
   };
 }
 
-const SUPPORTED_EXTENSIONS = new Set(['.csv', '.docx', '.pdf', '.xlsx']);
-
 export function loadBotmuxLarkCredentials(config: IntakeConfig): BotmuxLarkCredentials {
   let parsed: unknown;
   try { parsed = JSON.parse(readFileSync(config.botmuxConfigPath, 'utf8')) as unknown; }
