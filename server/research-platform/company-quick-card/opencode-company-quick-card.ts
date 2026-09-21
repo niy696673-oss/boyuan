@@ -34,13 +34,13 @@ export function createOpenCodeCompanyQuickCardAdapter(
   );
   return {
     async analyze(input) {
-      const sessionId = await client.createSession(`博源公司快速研究：${input.companyName}`);
+      const sessionId = await client.createSession(`通约助手公司快速研究：${input.companyName}`);
       const prompt = companyQuickPrompt(input);
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const response = await client.sendMessage(sessionId, {
           model: { providerID: options.model.providerId, modelID: options.model.modelId },
           variant: options.variant,
-          system: '你是博源 AI 平台的公司快速研究器。只依据给定的平台正式知识、材料摘要和公开检索结果。缺失信息统一写“暂未检索到”。不要调用任何工具。只输出 JSON 对象。',
+          system: '你是通约助手的公司快速研究器。只依据给定的平台正式知识、材料摘要和公开检索结果。缺失信息统一写“暂未检索到”。不要调用任何工具。只输出 JSON 对象。',
           tools: { '*': false },
           parts: [{ type: 'text', text: attempt === 0 ? prompt : [
             '上一条输出未通过 JSON/字段校验。请从头输出一个完整 JSON 对象，包含全部指定字段且不增加字段；确保字符串与括号闭合。不要续写残片，不新增证据或事实。',

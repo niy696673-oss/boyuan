@@ -4,6 +4,7 @@ import { inspect } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConversationAgentError,
+  OUT_OF_SCOPE_REPLY,
   createConversationAgent,
   createRuntimeConversationAgent,
   type ConversationAgentOptions,
@@ -89,7 +90,7 @@ describe('conversation agent request contract', () => {
     expect(body.parts).toHaveLength(2);
     expect(JSON.parse(body.parts[0]!.text)).toEqual({ text, history: [] });
     const schema = JSON.parse(body.system.split('\n').at(-1)!);
-    expect(schema.oneOf).toHaveLength(2);
+    expect(schema.oneOf).toHaveLength(3);
     expect(schema.oneOf[0]).toMatchObject({
       additionalProperties: false,
       required: ['kind', 'companies', 'focus'],
@@ -101,6 +102,8 @@ describe('conversation agent request contract', () => {
     expect(schema.oneOf[1]).toMatchObject({
       additionalProperties: false, required: ['kind', 'text'], properties: { text: { maxLength: 8000 } },
     });
+    expect(schema.oneOf[2]).toEqual({ type: 'object', additionalProperties: false,
+      required: ['kind'], properties: { kind: { const: 'out_of_scope' } } });
     expect(body.system).toContain('被否定、排除、取消的公司不可研究');
     expect(body.system).toContain('翻译、改写或引用');
     expect(body.system).toContain('只在真正歧义');
@@ -152,6 +155,13 @@ describe('conversation agent request contract', () => {
 });
 
 describe('conversation agent strict output parsing', () => {
+  it('maps a scope rejection to fixed guidance without forwarding a generated answer', async () => {
+    const { agent } = agentWith(JSON.stringify({ kind: 'out_of_scope' }));
+    await expect(agent.respond({ text: '帮我写一份菜谱' })).resolves.toEqual({
+      kind: 'reply', text: OUT_OF_SCOPE_REPLY,
+    });
+  });
+
   it('regenerates a malformed reply once in the same session, without changing low thinking or repairing fields', async () => {
     const fetcher = transport();
     fetcher.mockResolvedValueOnce(Response.json({ id: 'session-1' }))
@@ -189,6 +199,8 @@ describe('conversation agent strict output parsing', () => {
     ['array', '[]'],
     ['unknown kind', JSON.stringify({ kind: 'tool', text: 'done' })],
     ['unknown reply key', JSON.stringify({ ...REPLY, companies: ['腾讯'] })],
+    ['scope rejection with answer', JSON.stringify({ kind: 'out_of_scope', text: '无关内容的答案' })],
+    ['scope rejection with research', JSON.stringify({ kind: 'out_of_scope', companies: ['腾讯'] })],
     ['unknown research key', JSON.stringify({ ...RESEARCH, result: 'fabricated' })],
     ['missing focus', JSON.stringify({ kind: 'research', companies: ['腾讯'] })],
     ['non-string focus', JSON.stringify({ ...RESEARCH, focus: null })],

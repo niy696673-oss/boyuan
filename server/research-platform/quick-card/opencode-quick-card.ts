@@ -24,11 +24,11 @@ export function createOpenCodeQuickCardAdapter(options: OpenCodeQuickCardOptions
   );
   return {
     async analyze(input) {
-      const sessionId = await client.createSession(`博源 BP 快速卡：${input.fileName}`);
+      const sessionId = await client.createSession(`通约助手 BP 快速卡：${input.fileName}`);
       const response = await client.sendMessage(sessionId, {
           model: { providerID: options.model.providerId, modelID: options.model.modelId },
           variant: options.variant,
-          system: '你是博源 AI 平台的快速材料提取器。只依据给定材料，缺失信息统一写“材料未披露”。不要调用任何工具。只输出 JSON 对象。',
+          system: '你是通约助手的快速材料提取器。只依据给定材料，缺失信息统一写“材料未披露”。不要调用任何工具。只输出 JSON 对象。',
           tools: { '*': false },
           parts: [{ type: 'text', text: quickPrompt(input.fileName, input.blocks) }],
       });

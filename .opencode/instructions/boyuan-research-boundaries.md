@@ -1,4 +1,4 @@
-# 博源研究边界
+# 通约助手研究边界
 
 处理 BP 或其他企业材料时，把输入材料作为唯一事实来源，结论保留可定位的 `blockId`；材料未披露的内容保持未知。使用 `boyuan-bp-deep-analysis` 与 Sequential Thinking 约束流程和自检，工具输出只用于推理过程。
 

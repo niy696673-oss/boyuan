@@ -73,7 +73,7 @@ describe('direct WeChat Customer Service intake', () => {
       externalUserId: 'wmAJ2GCAAAcustomer',
       openKfid: 'wkAJ2GCAAAexample',
     });
-    expect(vi.mocked(port.sendText).mock.calls[1]?.[0].content).toContain('【博源AI｜BP事实核验】');
+    expect(vi.mocked(port.sendText).mock.calls[1]?.[0].content).toContain('【通约助手｜BP事实核验】');
     expect(vi.mocked(port.sendText).mock.calls[1]?.[0].content).toContain('查看深度分析');
   });
 

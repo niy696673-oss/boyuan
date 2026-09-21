@@ -26,11 +26,11 @@ export function createOpenCodeImageOcr(options: OpenCodeAnalysisOptions): ImageO
   );
 
   return async (input) => {
-    const sessionId = await client.createSession(`博源图片识别：${input.fileName}`);
+    const sessionId = await client.createSession(`通约助手图片识别：${input.fileName}`);
     const body = {
       ...(options.model ? { model: { providerID: options.model.providerId, modelID: options.model.modelId } } : {}),
       ...(options.variant ? { variant: options.variant } : {}),
-      system: '你是博源 AI 平台的图片文字识别器。只转录图片中可见的文字，不概括、不纠错、不补造。按阅读顺序输出 JSON，不要 Markdown。',
+      system: '你是通约助手的图片文字识别器。只转录图片中可见的文字，不概括、不纠错、不补造。按阅读顺序输出 JSON，不要 Markdown。',
       tools: { bash: false, edit: false, write: false, webfetch: false, websearch: false },
       parts: [
         { type: 'file', mime: imageMimeType(input), filename: input.fileName, url: pathToFileURL(input.path).href },

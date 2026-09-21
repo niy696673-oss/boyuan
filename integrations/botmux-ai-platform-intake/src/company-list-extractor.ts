@@ -26,7 +26,7 @@ export function createCompanyListExtractor(options: OpenCodeConnectionOptions & 
         const mime = imageMime(input.image);
         parts.push({ type: 'file', mime, filename: 'company-list', url: `data:${mime};base64,${input.image.toString('base64')}` });
       }
-      const id = await client.createSession('博源：公司名单识别');
+      const id = await client.createSession('通约助手：公司名单识别');
       try {
         const response = await client.sendMessage(id, {
           model: { providerID: options.model.providerId, modelID: options.model.modelId }, variant: 'none',

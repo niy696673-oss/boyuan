@@ -48,7 +48,7 @@ describe("公司 Copilot OpenCode 适配器", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     const createBody = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
-    expect(createBody.title).toBe("博源公司 Copilot：博源科技");
+    expect(createBody.title).toBe("通约助手公司 Copilot：博源科技");
     const messageBody = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
     expect(messageBody).toMatchObject({
       model: { providerID: "openai", modelID: "gpt-5.6-sol" },
