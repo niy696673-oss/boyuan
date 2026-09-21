@@ -175,6 +175,18 @@ describe('conversation agent strict output parsing', () => {
     expect(messageBody(fetcher)).not.toHaveProperty('format');
     expect(messageBody(fetcher, 2).parts[0]?.text).toContain('上一条输出未通过协议校验');
   });
+  it('regenerates literal newlines inside JSON rather than silently modifying the answer', async () => {
+    const reply = { kind: 'reply', text: '材料第2页：\n拟融资5000万元。' };
+    const fetcher = transport();
+    fetcher.mockResolvedValueOnce(Response.json({ id: 'session-1' }))
+      .mockResolvedValueOnce(Response.json({ info: {}, parts: [{ type: 'text', text: '{"kind":"reply","text":"材料第2页：\n拟融资5000万元。"}' }] }))
+      .mockResolvedValueOnce(Response.json({ info: {}, parts: [{ type: 'text', text: JSON.stringify(reply) }] }));
+    await expect(createConversationAgent({ ...OPTIONS, fetcher }).respond({ text: 'BP融资多少？' }))
+      .resolves.toEqual(reply);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(messageBody(fetcher, 2).parts[0]!.text).toContain('JSON.stringify');
+    expect(messageBody(fetcher, 2).parts[0]!.text).toContain(JSON.stringify(reply));
+  });
   it('accepts multiline Chinese/English replies and trims only outer whitespace', async () => {
     const reply = { kind: 'reply', text: ' \n你好！\nHello, how can I help?\n ' };
     await expect(agentWith(JSON.stringify(reply)).agent.respond({ text: '你好 / hello' }))
