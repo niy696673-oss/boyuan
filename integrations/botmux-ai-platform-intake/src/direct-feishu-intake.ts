@@ -292,6 +292,51 @@ export function parseFeishuFileMessage(data: unknown, now = new Date()): FeishuF
   };
 }
 
+export interface FeishuImageMessage {
+  chatId: string;
+  messageId: string;
+  senderId: string;
+  imageKey: string;
+  receivedAt: string;
+}
+
+export function parseFeishuImageMessage(
+  data: unknown,
+  now = new Date(),
+  botOpenId?: string,
+): FeishuImageMessage | null {
+  const event = record(data);
+  const sender = record(event?.sender);
+  if (sender?.sender_type !== 'user') return null;
+  const message = record(event?.message);
+  if (!message || message.message_type !== 'image') return null;
+  const messageId = text(message.message_id);
+  const chatId = text(message.chat_id);
+  const senderId = text(record(sender.sender_id)?.open_id);
+  const rawContent = text(message.content);
+  if (!messageId || !/^om_[A-Za-z0-9_-]{1,500}$/u.test(messageId)
+    || !chatId || !/^oc_[A-Za-z0-9_-]{1,500}$/u.test(chatId)
+    || !senderId || !/^ou_[A-Za-z0-9_-]{1,500}$/u.test(senderId) || !rawContent) return null;
+  const mentions = Array.isArray(message.mentions) ? message.mentions.flatMap((value) => {
+    const mention = record(value);
+    const key = text(mention?.key);
+    return key ? [{ key, openId: text(record(mention?.id)?.open_id) }] : [];
+  }) : [];
+  if (message.chat_type !== 'p2p' && (message.chat_type !== 'group'
+    || (mentions.length > 0 && botOpenId && !mentions.some((mention) => mention.openId === botOpenId)))) return null;
+  let content: Record<string, unknown> | null;
+  try { content = record(JSON.parse(rawContent) as unknown); } catch { return null; }
+  const imageKey = text(content?.image_key);
+  if (!imageKey) return null;
+  return {
+    chatId,
+    messageId,
+    senderId,
+    imageKey,
+    receivedAt: feishuTimestamp(message.create_time, now),
+  };
+}
+
 export interface FeishuTextMessage {
   chatId: string;
   messageId: string;

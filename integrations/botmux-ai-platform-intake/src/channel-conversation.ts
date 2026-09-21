@@ -61,9 +61,15 @@ export class ChannelConversation {
   }
 
   /** Persist synchronously before returning the processing promise so a channel may acknowledge receipt safely. */
-  accept(message: ConversationMessage, file?: ConversationFile): Promise<void> {
+  accept(message: ConversationMessage, file?: ConversationFile, decision?: ConversationDecision): Promise<void> {
     if (!this.#data.turns[message.messageId]) {
-      this.#data.turns[message.messageId] = { message, research: {}, status: 'pending', ...(file ? { file } : {}) };
+      this.#data.turns[message.messageId] = {
+        message,
+        research: {},
+        status: 'pending',
+        ...(file ? { file } : {}),
+        ...(decision ? { decision } : {}),
+      };
       try { this.#save(); } catch (error) { delete this.#data.turns[message.messageId]; throw error; }
     }
     return this.#enqueue(message.messageId);

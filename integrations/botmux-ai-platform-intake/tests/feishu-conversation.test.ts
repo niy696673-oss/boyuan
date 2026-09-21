@@ -14,6 +14,19 @@ function event(text = '你好', id = 'om_1', sender = 'ou_user') {
     content: JSON.stringify({ text }), create_time: String(Date.now()),
   } };
 }
+function imageEvent(imageKey = 'img_v2_123', id = 'om_img', sender = 'ou_user') {
+  return {
+    sender: { sender_type: 'user', sender_id: { open_id: sender } },
+    message: {
+      message_id: id,
+      chat_id: 'oc_test',
+      chat_type: 'p2p',
+      message_type: 'image',
+      content: JSON.stringify({ image_key: imageKey }),
+      create_time: String(Date.now()),
+    },
+  };
+}
 function setup(agent: ConversationAgent, statePath?: string) {
   if (!statePath) {
     const path = mkdtempSync(join(tmpdir(), 'boyuan-dialogue-')); paths.push(path); statePath = join(path, 'state.json');
@@ -274,5 +287,85 @@ describe('natural Feishu conversations', () => {
     expect(file).toHaveBeenCalledTimes(3);
     expect(respond).toHaveBeenCalledOnce();
     expect(respond.mock.calls[0]?.[0].materials).toEqual([]);
+  });
+
+  it('downloads Feishu images and extracts company names for batch research', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>();
+    const { options, research } = setup({ respond });
+    const downloadImage = vi.fn(async () => Buffer.from('fake-image-bytes'));
+    const extractor = {
+      extract: vi.fn(async () => ({
+        companies: ['腾讯科技', '阿里巴巴'],
+        uncertain: [],
+      })),
+    };
+    const ingress = new FeishuConversationIngress({
+      ...options,
+      downloadImage,
+      extractor,
+    });
+
+    const result = await ingress.handle(imageEvent('img_key_1', 'om_img_1'));
+    expect(result).toEqual({ handled: true });
+    expect(downloadImage).toHaveBeenCalledWith('om_img_1', 'img_key_1');
+    expect(extractor.extract).toHaveBeenCalledWith({ image: Buffer.from('fake-image-bytes') });
+    await ingress.waitForIdle();
+    expect(research).toHaveBeenCalledTimes(2);
+    expect(research).toHaveBeenCalledWith(expect.objectContaining({ companyName: '腾讯科技' }));
+    expect(research).toHaveBeenCalledWith(expect.objectContaining({ companyName: '阿里巴巴' }));
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it('replies with guidance when Feishu image contains no company names', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>();
+    const { options, reply, research } = setup({ respond });
+    const downloadImage = vi.fn(async () => Buffer.from('fake-image-bytes'));
+    const extractor = {
+      extract: vi.fn(async () => ({
+        companies: [],
+        uncertain: [],
+      })),
+    };
+    const ingress = new FeishuConversationIngress({
+      ...options,
+      downloadImage,
+      extractor,
+    });
+
+    await ingress.handle(imageEvent('img_key_empty', 'om_img_empty'));
+    await ingress.waitForIdle();
+    expect(reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('未能从图片中清晰识别出公司名称'),
+      expect.any(String),
+    );
+    expect(research).not.toHaveBeenCalled();
+  });
+
+  it('replies with guidance when Feishu image contains more than 20 companies', async () => {
+    const respond = vi.fn<ConversationAgent['respond']>();
+    const { options, reply, research } = setup({ respond });
+    const downloadImage = vi.fn(async () => Buffer.from('fake-image-bytes'));
+    const companies = Array.from({ length: 25 }, (_, i) => `公司${i + 1}`);
+    const extractor = {
+      extract: vi.fn(async () => ({
+        companies,
+        uncertain: [],
+      })),
+    };
+    const ingress = new FeishuConversationIngress({
+      ...options,
+      downloadImage,
+      extractor,
+    });
+
+    await ingress.handle(imageEvent('img_key_large', 'om_img_large'));
+    await ingress.waitForIdle();
+    expect(reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('超过 20 家公司'),
+      expect.any(String),
+    );
+    expect(research).not.toHaveBeenCalled();
   });
 });

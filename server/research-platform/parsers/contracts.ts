@@ -19,7 +19,7 @@ export interface ParseDocumentInput {
 }
 
 export interface ParsedDocument {
-  format: 'pdf' | 'docx' | 'xlsx' | 'csv' | 'text' | 'image';
+  format: 'pdf' | 'docx' | 'xlsx' | 'csv' | 'text' | 'image' | 'pptx' | 'binary';
   blocks: ParsedBlock[];
 }
 

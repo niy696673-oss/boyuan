@@ -13,6 +13,8 @@
   "exclude": [
     "tests/feishu-company-research-e2e.test.ts",
     "tests/wecom-intake-e2e.test.ts",
-    "tests/wechat-kf-intake-e2e.test.ts"
+    "tests/wechat-kf-intake-e2e.test.ts",
+    "tests/wechat-kf-company-batch-e2e.test.ts",
+    "tests/wechat-kf-company-research-e2e.test.ts"
   ]
 }
