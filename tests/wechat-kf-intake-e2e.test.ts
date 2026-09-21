@@ -174,7 +174,7 @@ describe('微信客服本地端到端', () => {
 
     const combinedReply = sendText.mock.calls.map(([input]) => input.content).join('\n');
     expect(combinedReply).toContain('已收到项目材料');
-    expect(combinedReply).toContain('【博源AI｜BP事实核验】');
+    expect(combinedReply).toContain('【通约助手｜BP事实核验】');
     expect(combinedReply).toContain('竞品｜3家：竞品甲、竞品乙等');
     expect(combinedReply).toContain('基金匹配（确定性规则）');
     expect(combinedReply).toContain('/workbench/conversations/');

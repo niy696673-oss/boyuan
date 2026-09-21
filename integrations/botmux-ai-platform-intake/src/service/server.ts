@@ -13,6 +13,7 @@ import { JsonJobStore } from '../job-store.js';
 import { HttpPlatformClient } from '../platform-client.js';
 import { COMPANY_RESEARCH_FILE_KEY } from '../types.js';
 import { createRuntimeConversationAgent } from '../conversation-agent.js';
+import { createCompanyListExtractor } from '../company-list-extractor.js';
 import { FeishuConversationIngress } from '../feishu-conversation.js';
 import { createConversationWorkflows } from '../conversation-workflows.js';
 
@@ -79,10 +80,24 @@ const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
   process.stderr.write(`[ai-platform-intake] Feishu ingress error: ${message.slice(0, 300)}\n`);
 };
+const extractionUrl = process.env.BOYUAN_OPENCODE_BASE_URL;
+const extractionPassword = process.env.BOYUAN_OPENCODE_PASSWORD;
+const extractor = extractionUrl ? createCompanyListExtractor({
+  baseUrl: new URL(extractionUrl),
+  directory: process.env.BOYUAN_OPENCODE_DIRECTORY ?? process.cwd(),
+  ...(extractionPassword ? { credentials: { username: process.env.BOYUAN_OPENCODE_USERNAME ?? 'opencode', password: extractionPassword } } : {}),
+  model: {
+    providerId: process.env.BOYUAN_QUICK_CARD_PROVIDER_ID ?? 'openai',
+    modelId: process.env.BOYUAN_QUICK_CARD_MODEL_ID ?? 'gpt-5.6-luna',
+  },
+}) : undefined;
+
 const conversationIngress = new FeishuConversationIngress({
   botOpenId,
   statePath: `${config.statePath}.conversations.json`,
   agent: createRuntimeConversationAgent(process.env),
+  downloadImage: (messageId, imageKey) => feishu.downloadImage(messageId, imageKey),
+  ...(extractor ? { extractor } : {}),
   reply: async (message, text, uuid) => {
     await feishu.reply({ messageId: message.messageId, messageType: 'text', content: JSON.stringify({ text }), uuid });
   },

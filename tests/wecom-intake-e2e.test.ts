@@ -220,7 +220,7 @@ describe('企业微信智能机器人本地端到端', () => {
     expect(replyStream).toHaveBeenCalledTimes(2);
     expect(replyStream.mock.calls[0]?.[3]).toBe(false);
     expect(replyStream.mock.calls[1]?.[3]).toBe(true);
-    expect(replyStream.mock.calls[1]?.[2]).toContain('【博源AI｜BP事实核验】');
+    expect(replyStream.mock.calls[1]?.[2]).toContain('【通约助手｜BP事实核验】');
     expect(replyStream.mock.calls[1]?.[2]).toContain('竞品｜3家：竞品甲、竞品乙等');
     expect(replyStream.mock.calls[1]?.[2]).toContain('基金匹配（确定性规则）');
     expect(replyStream.mock.calls[1]?.[2]).toContain('/workbench/conversations/');
@@ -246,7 +246,7 @@ describe('企业微信智能机器人本地端到端', () => {
     })).resolves.toEqual({ handled: true });
 
     expect(replyStream).toHaveBeenCalledTimes(4);
-    expect(replyStream.mock.calls[3]?.[2]).toContain('【博源AI｜公司快速研究】');
+    expect(replyStream.mock.calls[3]?.[2]).toContain('【通约助手｜公司快速研究】');
     expect(replyStream.mock.calls[3]?.[2]).toContain('新研科技发布机构研究产品');
     expect(JSON.stringify(replyStream.mock.calls)).not.toContain('Sol');
     expect(quickAnalyze).toHaveBeenCalledOnce();

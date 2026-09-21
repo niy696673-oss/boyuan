@@ -78,7 +78,6 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
 
   async materialize(message: FeishuFileMessage) {
     const extension = extname(message.fileName).toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.has(extension)) throw new Error('attachment_type_unsupported');
     const directory = join(this.#config.attachmentRoot, message.messageId);
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stem = createHash('sha256').update(message.fileKey).digest('hex');
@@ -151,6 +150,16 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
     }
   }
 
+  async downloadImage(messageId: string, imageKey: string): Promise<Buffer> {
+    const response = await this.#client.request({
+      method: 'GET',
+      url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(imageKey)}`,
+      params: { type: 'image' },
+      responseType: 'stream',
+    });
+    return streamToBuffer(response);
+  }
+
   async botOpenId(): Promise<string> {
     const response = await this.#client.request({
       method: 'GET',
@@ -218,6 +227,39 @@ async function writeDownload(response: unknown, path: string): Promise<void> {
   }
   if (!response || typeof response !== 'object' || !('pipe' in response)) throw new Error('lark_download_invalid_response');
   await pipeline(response as NodeJS.ReadableStream, createWriteStream(path, { flags: 'wx', mode: 0o600 }));
+}
+
+async function streamToBuffer(response: unknown): Promise<Buffer> {
+  if (Buffer.isBuffer(response)) return response;
+  if (response && typeof response === 'object') {
+    if ('code' in response && typeof (response as { code?: unknown }).code === 'number' && (response as { code: number }).code !== 0) {
+      throw new Error(`lark_download_failed_${(response as { code: number }).code}`);
+    }
+    if ('getBuffer' in response && typeof (response as { getBuffer(): Promise<Buffer> | Buffer }).getBuffer === 'function') {
+      return (response as { getBuffer(): Promise<Buffer> | Buffer }).getBuffer();
+    }
+    if (Symbol.asyncIterator in response) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of response as AsyncIterable<Buffer | Uint8Array>) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      return Buffer.concat(chunks);
+    }
+    if ('pipe' in response) {
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        (response as NodeJS.ReadableStream).on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        (response as NodeJS.ReadableStream).on('end', () => resolve());
+        (response as NodeJS.ReadableStream).on('error', reject);
+      });
+      return Buffer.concat(chunks);
+    }
+    if ('arrayBuffer' in response && typeof (response as { arrayBuffer(): Promise<ArrayBuffer> }).arrayBuffer === 'function') {
+      const ab = await (response as { arrayBuffer(): Promise<ArrayBuffer> }).arrayBuffer();
+      return Buffer.from(ab);
+    }
+  }
+  throw new Error('lark_download_invalid_response');
 }
 
 function openApiDomain(brand: 'feishu' | 'lark'): string {

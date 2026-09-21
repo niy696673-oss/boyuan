@@ -5,8 +5,26 @@ import type { IntakeAttachment } from './types.js';
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.csv': 'text/csv',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.doc': 'application/msword',
   '.pdf': 'application/pdf',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.json': 'application/json',
+  '.yaml': 'application/yaml',
+  '.yml': 'application/yaml',
+  '.xml': 'application/xml',
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.gif': 'image/gif',
 };
 
 export function validateAttachmentPath(
@@ -33,7 +51,6 @@ export function validateAttachmentPath(
   const fileStat = statSync(path);
   if (!fileStat.isFile()) throw new Error('attachment_not_regular_file');
   if (fileStat.size <= 0) throw new Error('attachment_empty');
-  const mimeType = MIME_BY_EXTENSION[extname(input.name).toLowerCase()];
-  if (!mimeType) throw new Error('attachment_type_unsupported');
+  const mimeType = MIME_BY_EXTENSION[extname(input.name).toLowerCase()] ?? 'application/octet-stream';
   return { ...input, path, size: fileStat.size, mimeType };
 }

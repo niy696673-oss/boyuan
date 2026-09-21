@@ -56,4 +56,66 @@ describe('Lark Feishu transport', () => {
       temp.cleanup();
     }
   });
+
+  it('downloads images via OpenAPI resources endpoint and returns Buffer', async () => {
+    const temp = tempDir();
+    const imagePayload = Buffer.from('fake-png-image-bytes');
+    const request = vi.fn<LarkRequestClient['request']>(async (input) => {
+      if (input.url === '/open-apis/im/v1/messages/om_msg_123/resources/img_v2_456') {
+        return imagePayload;
+      }
+      throw new Error('unexpected_url');
+    });
+    const client: LarkRequestClient = {
+      request,
+      im: { v1: { message: { reply: vi.fn(), patch: vi.fn() } } },
+    };
+    const transport = new LarkFeishuTransport(testConfig(temp.path), {
+      appId: 'cli_test_app',
+      appSecret: 'test-app-secret',
+      brand: 'feishu',
+    }, client);
+
+    try {
+      const buffer = await transport.downloadImage('om_msg_123', 'img_v2_456');
+      expect(buffer).toEqual(imagePayload);
+      expect(request).toHaveBeenCalledWith({
+        method: 'GET',
+        url: '/open-apis/im/v1/messages/om_msg_123/resources/img_v2_456',
+        params: { type: 'image' },
+        responseType: 'stream',
+      });
+    } finally {
+      temp.cleanup();
+    }
+  });
+
+  it('materializes arbitrary file types without restricting to fixed extensions', async () => {
+    const temp = tempDir();
+    const fileContent = Buffer.from('test presentation binary data');
+    const request = vi.fn<LarkRequestClient['request']>(async () => fileContent);
+    const client: LarkRequestClient = {
+      request,
+      im: { v1: { message: { reply: vi.fn(), patch: vi.fn() } } },
+    };
+    const transport = new LarkFeishuTransport(testConfig(temp.path), {
+      appId: 'cli_test_app',
+      appSecret: 'test-app-secret',
+      brand: 'feishu',
+    }, client);
+
+    try {
+      const attachment = await transport.materialize({
+        chatId: 'oc_test',
+        messageId: 'om_pptx',
+        fileKey: 'file_key_pptx',
+        fileName: '项目路演.pptx',
+        receivedAt: new Date().toISOString(),
+      });
+      expect(attachment.name).toBe('项目路演.pptx');
+      expect(attachment.mimeType).toBe('application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    } finally {
+      temp.cleanup();
+    }
+  });
 });
