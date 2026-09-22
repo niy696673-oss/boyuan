@@ -121,9 +121,9 @@ export class UsageCollector {
     recordId: string;
     channel: BotChannel;
     userId: string;
-    text?: string;
-    fileName?: string;
-    receivedAt?: string;
+    text?: string | undefined;
+    fileName?: string | undefined;
+    receivedAt?: string | undefined;
   }): { recordId: string; sessionId: string } {
     const rawText = params.text ?? '';
     const { feature, isValid } = this.classifyFeature(rawText, params.fileName);
