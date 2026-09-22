@@ -77,23 +77,30 @@ export class FeishuBitableSyncer {
 
     const batchUrl = `https://open.feishu.cn/open-apis/bitable/v1/apps/${this.#options.appToken}/tables/${tableId}/records/batch_create`;
     const payload = {
-      records: records.map((r) => ({
-        fields: {
+      records: records.map((r) => {
+        const fields: Record<string, unknown> = {
           '记录ID': r.recordId,
           '用户标识': r.userId,
           '渠道': r.channel,
           '使用功能': r.feature,
-          '开始时间': r.startTime,
-          '结束时间': r.endTime ?? '',
+          '开始时间': r.startTimestampMs,
           '结果状态': r.status,
           '响应秒数': r.durationSeconds,
           '会话ID': r.sessionId,
-          '失败原因': r.failureReason ?? '',
-          '内部测试': r.isTest,
+          '内部测试': r.isTest === '是',
           '用户反馈': r.feedback,
-          '备注': r.notes ?? '',
-        },
-      })),
+        };
+        if (r.endTimestampMs) {
+          fields['结束时间'] = r.endTimestampMs;
+        }
+        if (r.failureReason) {
+          fields['失败原因'] = r.failureReason;
+        }
+        if (r.notes) {
+          fields['备注'] = r.notes;
+        }
+        return { fields };
+      }),
     };
 
     const res = await fetch(batchUrl, {
