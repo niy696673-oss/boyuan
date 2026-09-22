@@ -118,4 +118,40 @@ describe('Lark Feishu transport', () => {
       temp.cleanup();
     }
   });
+
+  it('sends interactive proactive messages to a chat_id or open_id', async () => {
+    const temp = tempDir();
+    const request = vi.fn<LarkRequestClient['request']>(async (input) => {
+      if (input.url === '/open-apis/im/v1/messages' && input.method === 'POST') {
+        expect(input.params).toEqual({ receive_id_type: 'chat_id' });
+        expect(input.data).toEqual({
+          receive_id: 'oc_welcome_chat',
+          msg_type: 'interactive',
+          content: '{"schema":"2.0"}',
+        });
+        return { code: 0, data: { message_id: 'om_proactive_123' } };
+      }
+      throw new Error('unexpected_call');
+    });
+    const client: LarkRequestClient = {
+      request,
+      im: { v1: { message: { reply: vi.fn(), patch: vi.fn() } } },
+    };
+    const transport = new LarkFeishuTransport(testConfig(temp.path), {
+      appId: 'cli_test_app',
+      appSecret: 'test-app-secret',
+      brand: 'feishu',
+    }, client);
+
+    try {
+      const result = await transport.sendMessage({
+        chatId: 'oc_welcome_chat',
+        messageType: 'interactive',
+        content: '{"schema":"2.0"}',
+      });
+      expect(result).toEqual({ messageId: 'om_proactive_123' });
+    } finally {
+      temp.cleanup();
+    }
+  });
 });

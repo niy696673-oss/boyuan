@@ -148,6 +148,37 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
     }
   }
 
+  async sendMessage(input: {
+    chatId?: string;
+    openId?: string;
+    messageType: 'interactive' | 'text';
+    content: string;
+    uuid?: string;
+  }): Promise<{ messageId: string }> {
+    const receiveIdType = input.chatId ? 'chat_id' : 'open_id';
+    const receiveId = input.chatId ?? input.openId;
+    if (!receiveId) throw new Error('lark_send_message_missing_recipient');
+    const response = await this.#client.request({
+      method: 'POST',
+      url: '/open-apis/im/v1/messages',
+      params: {
+        receive_id_type: receiveIdType,
+      },
+      data: {
+        receive_id: receiveId,
+        msg_type: input.messageType,
+        content: input.content,
+        ...(input.uuid ? { uuid: input.uuid } : {}),
+      },
+    }) as { code?: number; msg?: string; data?: { message_id?: string } };
+    if (typeof response?.code === 'number' && response.code !== 0) {
+      throw new Error(`lark_send_message_failed_${response.code}: ${response.msg}`);
+    }
+    const messageId = response?.data?.message_id;
+    if (!messageId) throw new Error('lark_send_message_id_missing');
+    return { messageId };
+  }
+
   async downloadImage(messageId: string, imageKey: string): Promise<Buffer> {
     const response = await this.#client.request({
       method: 'GET',
@@ -176,11 +207,27 @@ export class LarkFeishuTransport implements FeishuCardReplyPort {
     return openId;
   }
 
-  start(onMessage: (data: unknown) => Promise<unknown>, onError: (error: unknown) => void): void {
+  start(
+    onMessage: (data: unknown) => Promise<unknown>,
+    onError: (error: unknown) => void,
+    onP2pChatEntered?: (data: { chatId: string; openId?: string }) => Promise<void>,
+  ): void {
     if (this.#ws) throw new Error('lark_runtime_already_started');
     const dispatcher = new Lark.EventDispatcher({}).register({
       'im.message.receive_v1': (data) => {
         void onMessage(data).catch(onError);
+      },
+      'im.chat.access_event.bot_p2p_chat_entered_v1': (data: unknown) => {
+        if (!onP2pChatEntered) return;
+        const payload = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+        const chatId = typeof payload.chat_id === 'string' ? payload.chat_id : '';
+        const operatorId = payload.operator_id && typeof payload.operator_id === 'object'
+          ? payload.operator_id as Record<string, unknown>
+          : undefined;
+        const openId = typeof operatorId?.open_id === 'string' ? operatorId.open_id : undefined;
+        if (chatId) {
+          void onP2pChatEntered({ chatId, openId }).catch(onError);
+        }
       },
     });
     const ws = new Lark.WSClient({

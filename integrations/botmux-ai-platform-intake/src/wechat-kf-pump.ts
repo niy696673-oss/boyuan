@@ -1,7 +1,11 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { WechatKfCallbackEvent } from './wechat-kf-callback.js';
-import type { WechatKfClient, WechatKfInboundMessage } from './wechat-kf-client.js';
+import type {
+  WechatKfClient,
+  WechatKfEnterSessionEvent,
+  WechatKfInboundMessage,
+} from './wechat-kf-client.js';
 
 export interface WechatKfCursorStore {
   get(openKfid: string): string | undefined;
@@ -13,6 +17,7 @@ export interface WechatKfMessagePumpOptions {
   client: Pick<WechatKfClient, 'syncMessages'>;
   ingress: { handle(message: WechatKfInboundMessage): Promise<void> };
   cursorStore: WechatKfCursorStore;
+  onEnterSession?: (event: WechatKfEnterSessionEvent) => Promise<void>;
 }
 
 export class WechatKfMessagePump {
@@ -52,6 +57,7 @@ export class WechatKfMessagePump {
     let finalCursor = cursor;
     const messages: WechatKfInboundMessage[] = [];
     const recalledMessageIds = new Set<string>();
+    const enterSessionEvents: WechatKfEnterSessionEvent[] = [];
     for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
       const page = await this.#options.client.syncMessages({
         ...(callbackToken ? { callbackToken } : {}),
@@ -59,12 +65,22 @@ export class WechatKfMessagePump {
         ...(cursor ? { cursor } : {}),
       });
       messages.push(...page.messages);
+      if (page.enterSessionEvents) enterSessionEvents.push(...page.enterSessionEvents);
       for (const messageId of page.recalledMessageIds) recalledMessageIds.add(messageId);
       if (page.hasMore && page.nextCursor === cursor) throw new Error('wechat_kf_cursor_did_not_advance');
       cursor = page.nextCursor;
       finalCursor = page.nextCursor;
       if (!page.hasMore) break;
       if (pageNumber === 99) throw new Error('wechat_kf_sync_page_limit_exceeded');
+    }
+    if (this.#options.onEnterSession) {
+      for (const event of enterSessionEvents) {
+        try {
+          await this.#options.onEnterSession(event);
+        } catch {
+          // ignore error to avoid failing the message pump
+        }
+      }
     }
     const seenMessageIds = new Set<string>();
     for (const message of messages) {

@@ -12,11 +12,19 @@ export interface WechatKfFileMessage {
   mediaId: string;
 }
 
+export interface WechatKfEnterSessionEvent {
+  openKfid: string;
+  externalUserId: string;
+  welcomeCode?: string;
+  scene?: string;
+}
+
 export interface WechatKfSyncPage {
   nextCursor: string;
   hasMore: boolean;
   messages: WechatKfInboundMessage[];
   recalledMessageIds: string[];
+  enterSessionEvents?: WechatKfEnterSessionEvent[];
 }
 
 export interface WechatKfTextMessage extends Omit<WechatKfFileMessage, 'mediaId'> {
@@ -72,9 +80,26 @@ export class WechatKfClient {
     const nextCursor = requiredString(payload.next_cursor, 64, 'wechat_kf_next_cursor_invalid');
     if (payload.has_more !== 0 && payload.has_more !== 1) throw new Error('wechat_kf_has_more_invalid');
     if (!Array.isArray(payload.msg_list)) throw new Error('wechat_kf_message_list_invalid');
+    const enterSessionEvents = payload.msg_list.flatMap<WechatKfEnterSessionEvent>((value) => {
+      const message = record(value);
+      const event = record(message?.event);
+      if (message?.msgtype !== 'event' || event?.event_type !== 'enter_session') return [];
+      const openKfid = optionalString(event.open_kfid ?? message.open_kfid, 256);
+      const externalUserId = optionalString(event.external_userid ?? message.external_userid, 256);
+      if (!openKfid || !externalUserId) return [];
+      const welcomeCode = optionalString(event.welcome_code, 256);
+      const scene = optionalString(event.scene, 128);
+      return [{
+        openKfid,
+        externalUserId,
+        ...(welcomeCode ? { welcomeCode } : {}),
+        ...(scene ? { scene } : {}),
+      }];
+    });
     return {
       nextCursor,
       hasMore: payload.has_more === 1,
+      ...(enterSessionEvents.length > 0 ? { enterSessionEvents } : {}),
       recalledMessageIds: payload.msg_list.flatMap((value) => {
         const message = record(value);
         const event = record(message?.event);
@@ -156,6 +181,24 @@ export class WechatKfClient {
       ...(input.msgid ? { msgid: input.msgid } : {}),
       touser: externalUserId,
       open_kfid: openKfid,
+      msgtype: 'text',
+      text: { content },
+    });
+  }
+
+  async sendMsgOnEvent(input: {
+    code: string;
+    content: string;
+    msgid?: string;
+  }): Promise<void> {
+    const code = requiredString(input.code, 256, 'wechat_kf_code_invalid');
+    const content = boundedMultilineText(input.content, 2_048, 'wechat_kf_text_invalid');
+    if (input.msgid !== undefined && !/^[0-9a-zA-Z_-]{1,32}$/u.test(input.msgid)) {
+      throw new Error('wechat_kf_msgid_invalid');
+    }
+    await this.#requestJson('/cgi-bin/kf/send_msg_on_event', {
+      code,
+      ...(input.msgid ? { msgid: input.msgid } : {}),
       msgtype: 'text',
       text: { content },
     });

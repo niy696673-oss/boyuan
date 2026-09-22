@@ -8,12 +8,14 @@ import { createWechatConversationRuntime } from '../wechat-conversation-runtime.
 import type { JsonObject, StatusCardReceipt } from '../types.js';
 import { COMPANY_RESEARCH_FILE_KEY } from '../types.js';
 import { createWechatKfCallbackHandler } from '../wechat-kf-callback.js';
-import { WechatKfClient } from '../wechat-kf-client.js';
+import { WechatKfClient, type WechatKfEnterSessionEvent } from '../wechat-kf-client.js';
 import { JsonWechatKfCursorStore, WechatKfMessagePump } from '../wechat-kf-pump.js';
 import { loadWechatKfCredentials } from '../wechat-kf-runtime.js';
 import { createCompanyListExtractor } from '../company-list-extractor.js';
 import { WechatKfCompanyBatch } from '../wechat-kf-company-batch.js';
 import { UsageCollector, UsageStore, MetricsAggregator, FeishuBitableSyncer } from '../telemetry/index.js';
+import { wechatWelcomeText } from '../cards.js';
+import { JsonWelcomeStore } from '../welcome-store.js';
 
 const configPath = process.env.BOYUAN_WECHAT_KF_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('wechat_kf_intake_config_path_missing');
@@ -70,15 +72,40 @@ const { service, ingress, companyIngress, delivery, conversation } = createWecha
   config, client, agent: createRuntimeConversationAgent(process.env), onError: reportIngressError,
   telemetry: telemetryCollector,
 });
+const welcomeStore = new JsonWelcomeStore(`${config.statePath}.welcomed-users.json`);
+const sendWechatWelcome = async (event: WechatKfEnterSessionEvent) => {
+  if (!event.externalUserId || welcomeStore.has(event.externalUserId)) return;
+  welcomeStore.add(event.externalUserId);
+  const content = wechatWelcomeText();
+  if (event.welcomeCode) {
+    try {
+      await client.sendMsgOnEvent({ code: event.welcomeCode, content });
+      return;
+    } catch (error) {
+      reportIngressError(error);
+    }
+  }
+  try {
+    await client.sendText({
+      externalUserId: event.externalUserId,
+      openKfid: event.openKfid,
+      content,
+    });
+  } catch (error) {
+    reportIngressError(error);
+  }
+};
 const pump = new WechatKfMessagePump({
   client,
   ingress: {
     handle: (message) => {
+      welcomeStore.add(message.externalUserId);
       if ('imageMediaId' in message) return companyBatch.handle(message);
       return conversation.handle(message);
     },
   },
   cursorStore: new JsonWechatKfCursorStore(config.cursorStatePath),
+  onEnterSession: sendWechatWelcome,
 });
 const recoveryPollIntervalMs = parseRecoveryPollInterval(
   process.env.WECHAT_KF_RECOVERY_POLL_INTERVAL_MS,

@@ -202,4 +202,33 @@ describe('WechatKfMessagePump', () => {
       temp.cleanup();
     }
   });
+
+  it('invokes onEnterSession callback for enter_session events', async () => {
+    const onEnterSession = vi.fn(async () => undefined);
+    const syncMessages = vi.fn(async () => ({
+      nextCursor: 'cursor-after',
+      hasMore: false,
+      recalledMessageIds: [],
+      messages: [],
+      enterSessionEvents: [{
+        openKfid: 'wk-account',
+        externalUserId: 'user-new',
+        welcomeCode: 'code-123',
+      }],
+    }));
+    const pump = new WechatKfMessagePump({
+      client: { syncMessages },
+      ingress: { handle: vi.fn(async () => undefined) },
+      cursorStore: new MemoryWechatKfCursorStore(),
+      onEnterSession,
+    });
+
+    await pump.handleEvent({ token: 'callback-token', openKfid: 'wk-account' });
+
+    expect(onEnterSession).toHaveBeenCalledWith({
+      openKfid: 'wk-account',
+      externalUserId: 'user-new',
+      welcomeCode: 'code-123',
+    });
+  });
 });
