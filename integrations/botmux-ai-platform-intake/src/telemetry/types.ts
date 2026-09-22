@@ -43,6 +43,8 @@ export interface UsageRecord {
   feedback: '有帮助' | '无帮助' | '未反馈';
   /** 备注 (M列): 脱敏问题摘要或附加说明 */
   notes?: string;
+  /** 模型输出: 本次请求实际返回给用户的最终模型回复原文 */
+  modelOutput?: string;
 
   // 内部辅助字段
   isValidRequest: boolean;

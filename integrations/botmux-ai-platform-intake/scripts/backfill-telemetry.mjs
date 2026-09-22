@@ -42,8 +42,8 @@ function processConversationFile(convPath, telemetryPath, channel) {
     if (!msg || !msg.messageId) continue;
 
     const existing = store.getRecord(msg.messageId);
-    if (existing && existing.status !== '处理中') {
-      continue; // already recorded and completed
+    if (existing && existing.status !== '处理中' && existing.modelOutput) {
+      continue; // already recorded and has modelOutput
     }
 
     const startMs = msg.receivedAt ? Date.parse(msg.receivedAt) : Date.now();
@@ -72,12 +72,14 @@ function processConversationFile(convPath, telemetryPath, channel) {
         recordId,
         error: new Error(turn.response ?? '消息处理失败'),
         failedAt: endDate,
+        modelOutput: turn.response,
       });
     } else {
       collector.onTurnComplete({
         recordId,
         status: '成功',
         completedAt: endDate,
+        modelOutput: turn.response,
       });
     }
     backfilledCount++;

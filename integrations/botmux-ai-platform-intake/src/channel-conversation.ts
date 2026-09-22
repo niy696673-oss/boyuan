@@ -183,7 +183,7 @@ export class ChannelConversation {
       await this.#options.finish?.(message);
       turn.status = 'completed';
       this.#save();
-      this.#options.telemetry?.onTurnComplete({ recordId: message.messageId, status: '成功' });
+      this.#options.telemetry?.onTurnComplete({ recordId: message.messageId, status: '成功', modelOutput: turn.response });
       return;
     }
     const owner = conversationKey(message);
@@ -258,11 +258,11 @@ export class ChannelConversation {
       deliveringReply = true;
       await this.#options.finish?.(message);
       turn.status = 'completed';
-      this.#options.telemetry?.onTurnComplete({ recordId: message.messageId, status: '成功' });
+      this.#options.telemetry?.onTurnComplete({ recordId: message.messageId, status: '成功', modelOutput: turn.response });
     } catch (error) {
       this.#options.onError?.(error);
       if (deliveringReply || turn.decision?.kind === 'research') {
-        this.#options.telemetry?.onTurnFail({ recordId: message.messageId, error });
+        this.#options.telemetry?.onTurnFail({ recordId: message.messageId, error, modelOutput: turn.response });
         this.#save();
         throw error;
       }
@@ -272,7 +272,7 @@ export class ChannelConversation {
       this.#save();
       await this.#reply(message, turn.response);
       turn.status = 'failed';
-      this.#options.telemetry?.onTurnFail({ recordId: message.messageId, error });
+      this.#options.telemetry?.onTurnFail({ recordId: message.messageId, error, modelOutput: turn.response });
     }
     this.#save();
   }

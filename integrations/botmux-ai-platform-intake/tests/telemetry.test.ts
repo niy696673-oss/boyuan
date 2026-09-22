@@ -121,18 +121,21 @@ describe('UsageCollector (意图分类与生命周期采集)', () => {
         recordId,
         completedAt: tEnd,
         status: '成功',
+        modelOutput: '宁德时代是全球领先的新能源创新科技公司。',
       });
 
       const completed = store.getRecord(recordId)!;
       expect(completed.status).toBe('成功');
       expect(completed.durationSeconds).toBe(3.5);
       expect(completed.endTime).toBeDefined();
+      expect(completed.modelOutput).toBe('宁德时代是全球领先的新能源创新科技公司。');
 
       // Check file content
       expect(existsSync(filePath)).toBe(true);
       const fileContent = readFileSync(filePath, 'utf8');
       expect(fileContent).toContain('msg-001');
       expect(fileContent).toContain('宁德时代');
+      expect(fileContent).toContain('全球领先的新能源创新科技公司');
     } finally {
       temp.cleanup();
     }

@@ -99,6 +99,9 @@ export class FeishuBitableSyncer {
         if (r.notes) {
           fields['备注'] = r.notes;
         }
+        if (r.modelOutput) {
+          fields['模型输出'] = r.modelOutput;
+        }
         return { fields };
       }),
     };
