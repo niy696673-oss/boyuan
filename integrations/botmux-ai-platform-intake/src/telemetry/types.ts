@@ -115,6 +115,6 @@ export interface MetricsSummary {
     feature: string;
     question: string;
     status: string;
-    reason?: string;
+    reason?: string | undefined;
   }>;
 }
