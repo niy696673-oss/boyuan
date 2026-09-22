@@ -16,3 +16,4 @@ export * from './wechat-kf-callback.js';
 export * from './wechat-kf-client.js';
 export * from './wechat-kf-pump.js';
 export * from './wechat-kf-runtime.js';
+export * from './telemetry/index.js';

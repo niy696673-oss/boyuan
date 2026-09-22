@@ -13,6 +13,7 @@ import { JsonWechatKfCursorStore, WechatKfMessagePump } from '../wechat-kf-pump.
 import { loadWechatKfCredentials } from '../wechat-kf-runtime.js';
 import { createCompanyListExtractor } from '../company-list-extractor.js';
 import { WechatKfCompanyBatch } from '../wechat-kf-company-batch.js';
+import { UsageCollector, UsageStore, MetricsAggregator } from '../telemetry/index.js';
 
 const configPath = process.env.BOYUAN_WECHAT_KF_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('wechat_kf_intake_config_path_missing');
@@ -37,8 +38,17 @@ const reportIngressError = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'unknown_error';
   process.stderr.write(`[wechat-kf-intake] ingress error: ${message.slice(0, 300)}\n`);
 };
+
+const telemetryPath = process.env.BOYUAN_WECHAT_KF_TELEMETRY_PATH
+  ?? process.env.BOYUAN_TELEMETRY_PATH
+  ?? `${config.statePath}.telemetry.jsonl`;
+const telemetryStore = new UsageStore({ filePath: telemetryPath });
+const testUserIds = (process.env.BOYUAN_TEST_USER_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const telemetryCollector = new UsageCollector({ store: telemetryStore, testUserIds });
+
 const { service, ingress, companyIngress, delivery, conversation } = createWechatConversationRuntime({
   config, client, agent: createRuntimeConversationAgent(process.env), onError: reportIngressError,
+  telemetry: telemetryCollector,
 });
 const pump = new WechatKfMessagePump({
   client,
@@ -60,6 +70,7 @@ const companyBatch = new WechatKfCompanyBatch({
   statePath: `${config.statePath}.company-batches.json`,
   client,
   publicProductUrl: config.publicProductUrl,
+  telemetry: telemetryCollector,
   onError: reportIngressError,
   extractor: extractionUrl ? createCompanyListExtractor({
     baseUrl: new URL(extractionUrl),
@@ -98,6 +109,15 @@ recoveryPollTimer.unref();
 const server = createServer((request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
     respond(response, 200, { ok: true, channel: 'wechat-kf', conversationMode: 'natural', conversationEngine: 'shared' });
+    return;
+  }
+  if (request.method === 'GET' && request.url === '/telemetry/metrics') {
+    const summary = MetricsAggregator.aggregate(telemetryStore.getAllRecords());
+    respond(response, 200, { ok: true, metrics: summary });
+    return;
+  }
+  if (request.method === 'GET' && request.url === '/telemetry/records') {
+    respond(response, 200, { ok: true, records: telemetryStore.getAllRecords() });
     return;
   }
   callbackHandler(request, response);

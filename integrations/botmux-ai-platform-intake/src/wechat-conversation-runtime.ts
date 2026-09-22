@@ -1,4 +1,5 @@
 import type { ConversationAgent } from './conversation-agent.js';
+import type { UsageCollector } from './telemetry/usage-collector.js';
 import { createConversationWorkflows, type ConversationPlatform } from './conversation-workflows.js';
 import { DirectWechatKfCompanyResearchIngress, DirectWechatKfFileIngress } from './direct-wechat-kf-intake.js';
 import { IntakeService } from './intake-service.js';
@@ -16,6 +17,7 @@ export function createWechatConversationRuntime(options: {
   client: Pick<WechatKfClient, 'sendText' | 'downloadMedia'>;
   agent: ConversationAgent;
   platform?: ConversationPlatform;
+  telemetry?: UsageCollector;
   onError(error: unknown): void;
 }) {
   const { config, client } = options;
@@ -43,6 +45,8 @@ export function createWechatConversationRuntime(options: {
     researchCompany: (turn) => service.researchCompany(turn) });
   const conversation = new WechatConversationIngress({
     statePath: `${config.statePath}.conversations.json`, agent: options.agent,
+    telemetry: options.telemetry,
+    channel: '微信客服',
     reply: (message, text) => delivery.reply(message, text),
     finish: (message) => delivery.flush(message.messageId),
     ...createConversationWorkflows({ store, platform, service,
