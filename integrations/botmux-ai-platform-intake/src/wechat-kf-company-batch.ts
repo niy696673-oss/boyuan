@@ -184,6 +184,7 @@ export class WechatKfCompanyBatch {
       recordId: batch.input.messageId,
       feature: '批量公司研究',
       status: '成功',
+      modelOutput: batch.pages.join('\n\n'),
     });
   }
 

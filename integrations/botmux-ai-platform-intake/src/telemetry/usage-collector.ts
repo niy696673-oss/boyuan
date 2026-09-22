@@ -165,6 +165,7 @@ export class UsageCollector {
     feature?: BotFeature;
     status?: BotResultStatus;
     completedAt?: Date;
+    modelOutput?: string;
   }): void {
     const record = this.#store.getRecord(params.recordId);
     if (!record) return;
@@ -179,6 +180,7 @@ export class UsageCollector {
       durationSeconds,
       status: params.status ?? '成功',
       ...(params.feature ? { feature: params.feature } : {}),
+      ...(params.modelOutput !== undefined ? { modelOutput: params.modelOutput } : {}),
     });
 
     this.#sessionManager.recordResponse(record.sessionId, endMs);
@@ -188,6 +190,7 @@ export class UsageCollector {
     recordId: string;
     error: unknown;
     failedAt?: Date;
+    modelOutput?: string;
   }): void {
     const record = this.#store.getRecord(params.recordId);
     if (!record) return;
@@ -205,6 +208,7 @@ export class UsageCollector {
       durationSeconds,
       status,
       failureReason: errMsg.slice(0, 150),
+      ...(params.modelOutput !== undefined ? { modelOutput: params.modelOutput } : {}),
     });
 
     this.#sessionManager.recordResponse(record.sessionId, endMs);
