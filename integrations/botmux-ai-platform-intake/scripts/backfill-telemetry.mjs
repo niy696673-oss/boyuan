@@ -95,8 +95,8 @@ const allRecords = [...feishuRecords, ...wechatRecords];
 console.log(`\n=== 统计概览 (总记录数: ${allRecords.length}) ===`);
 
 if (allRecords.length > 0) {
-  const metrics = MetricsAggregator.aggregate(allRecords);
-  console.log(JSON.stringify(metrics, null, 2));
+  const metrics = MetricsAggregator.compute(allRecords);
+  console.log('\n' + MetricsAggregator.renderMarkdownReport(metrics));
 } else {
   console.log('无有效记录。');
 }

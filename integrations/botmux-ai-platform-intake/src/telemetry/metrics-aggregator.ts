@@ -1,6 +1,10 @@
 import type { BotChannel, BotFeature, MetricsSummary, UsageRecord } from './types.js';
 
 export class MetricsAggregator {
+  static aggregate(records: UsageRecord[]): MetricsSummary {
+    return this.compute(records);
+  }
+
   static compute(records: UsageRecord[]): MetricsSummary {
     if (!records.length) {
       return this.#emptySummary();
