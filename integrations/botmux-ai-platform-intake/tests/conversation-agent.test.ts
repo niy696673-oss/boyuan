@@ -108,6 +108,8 @@ describe('conversation agent request contract', () => {
     expect(body.system).toContain('翻译、改写或引用');
     expect(body.system).toContain('只在真正歧义');
     expect(body.system).toContain('不能静默截断');
+    expect(body.system).not.toContain('你没有任何工具或联网能力');
+    expect(body.system).toContain('严禁主动自我限制');
     expect(body.system).toContain('不得伪造工具调用、来源或研究结果');
     expect(body.system).toContain('后续正式研究链路');
     expect(JSON.stringify(body)).not.toContain('test-secret');
