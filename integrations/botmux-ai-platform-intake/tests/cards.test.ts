@@ -6,6 +6,8 @@ import {
   completionCard,
   industryChainUrl,
   processingCard,
+  wechatWelcomeText,
+  welcomeCard,
 } from '../src/cards.js';
 import { companyQuickCard, quickCard } from './helpers.js';
 
@@ -152,5 +154,31 @@ describe('Feishu completion card', () => {
     expect(ambiguous).toContain('系统不会自动猜测主体');
     expect(ambiguous).not.toContain(deepAnalysisUrl);
     expect(ambiguous).toContain('请补充公司全称或地区');
+  });
+
+  it('renders a welcome onboarding card for first-time Feishu bot users', () => {
+    const card = welcomeCard();
+    expect(card.schema).toBe('2.0');
+    expect(card.header).toMatchObject({
+      template: 'blue',
+      title: { content: '博源 AI 投研助手' },
+      subtitle: { content: 'BP 深度分析 · 公司快速调研 · 投研问答' },
+    });
+    const serialized = JSON.stringify(card);
+    expect(serialized).toContain('商业计划书');
+    expect(serialized).toContain('深度分析');
+    expect(serialized).toContain('企业快速调研');
+    expect(serialized).toContain('投研多轮交互问答');
+    expect(serialized).toContain('发送 PDF');
+    expect(serialized).toContain('发送公司名');
+  });
+
+  it('generates a clean onboarding text for WeChat Customer Service within length constraints', () => {
+    const text = wechatWelcomeText();
+    expect(text).toContain('博源 AI 平台');
+    expect(text).toContain('商业计划书 (BP) 深度分析');
+    expect(text).toContain('企业快速调研');
+    expect(text).toContain('投研多轮交互问答');
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(2_048);
   });
 });

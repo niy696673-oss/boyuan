@@ -17,6 +17,8 @@ import { createCompanyListExtractor } from '../company-list-extractor.js';
 import { FeishuConversationIngress } from '../feishu-conversation.js';
 import { createConversationWorkflows } from '../conversation-workflows.js';
 import { UsageCollector, UsageStore, FeishuBitableSyncer, MetricsAggregator } from '../telemetry/index.js';
+import { welcomeCard } from '../cards.js';
+import { JsonWelcomeStore } from '../welcome-store.js';
 
 const configPath = process.env.BOTMUX_AI_PLATFORM_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('intake_config_path_missing');
@@ -135,10 +137,32 @@ const conversationIngress = new FeishuConversationIngress({
   }),
   onError: reportIngressError,
 });
-feishu.start(async (data) => {
-  const conversation = await conversationIngress.handle(data);
-  return conversation.handled ? conversation : ingress.handle(data);
-}, reportIngressError);
+const welcomeStore = new JsonWelcomeStore(`${config.statePath}.welcomed-users.json`);
+const sendFeishuWelcome = async (recipient: { chatId: string; openId?: string }) => {
+  const userKey = recipient.openId || recipient.chatId;
+  if (!userKey || welcomeStore.has(userKey)) return;
+  welcomeStore.add(userKey);
+  const card = welcomeCard();
+  await feishu.sendMessage({
+    chatId: recipient.chatId,
+    messageType: 'interactive',
+    content: JSON.stringify(card),
+  });
+};
+feishu.start(
+  async (data) => {
+    const sender = data && typeof data === 'object' ? (data as Record<string, unknown>).sender : undefined;
+    const senderId = sender && typeof sender === 'object' ? (sender as Record<string, unknown>).sender_id : undefined;
+    const openId = senderId && typeof senderId === 'object' && typeof (senderId as Record<string, unknown>).open_id === 'string'
+      ? (senderId as Record<string, unknown>).open_id as string
+      : undefined;
+    if (openId) welcomeStore.add(openId);
+    const conversation = await conversationIngress.handle(data);
+    return conversation.handled ? conversation : ingress.handle(data);
+  },
+  reportIngressError,
+  sendFeishuWelcome,
+);
 service.resumePending((job) => !conversationIngress.has(job.messageId));
 for (const receipt of service.listOrphanStatusCards()) {
   if (conversationIngress.has(receipt.messageId)) continue;

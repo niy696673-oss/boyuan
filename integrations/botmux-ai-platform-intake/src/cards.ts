@@ -28,7 +28,7 @@ function markdown(content: string, textSize?: string): JsonObject {
   return { tag: 'markdown', content: plain(content, 5_000), ...(textSize ? { text_size: textSize } : {}) };
 }
 
-function card(template: 'green' | 'orange' | 'red', title: string, subtitle: string, tagText: string, elements: JsonObject[]): JsonObject {
+function card(template: 'green' | 'orange' | 'red' | 'blue', title: string, subtitle: string, tagText: string, elements: JsonObject[]): JsonObject {
   return {
     schema: '2.0',
     config: {
@@ -44,7 +44,7 @@ function card(template: 'green' | 'orange' | 'red', title: string, subtitle: str
       text_tag_list: [{
         tag: 'text_tag',
         text: { tag: 'plain_text', content: plain(tagText, 40) },
-        color: template === 'green' ? 'green' : template === 'orange' ? 'orange' : 'red',
+        color: template === 'green' ? 'green' : template === 'orange' ? 'orange' : template === 'red' ? 'red' : 'blue',
       }],
     },
     body: {
@@ -365,3 +365,35 @@ export function companyResearchFailureCard(companyName: string, _workbenchUrl?: 
   ];
   return card('red', '公司研究接入失败', '研究任务未完成', '需要处理', elements);
 }
+
+export function welcomeCard(): JsonObject {
+  return card(
+    'blue',
+    '博源 AI 投研助手',
+    'BP 深度分析 · 公司快速调研 · 投研问答',
+    '使用指南',
+    [
+      markdown('👋 **欢迎使用博源 AI 平台！** 我是您的 AI 投研助手，专注于商业计划书（BP）智能解析与企业投研信息挖掘。', 'normal'),
+      designPanel('💡 您可以随时向我发起以下任务', [
+        factCard('📄 商业计划书 (BP) 深度分析', '直接发送 BP 或项目材料 PDF 文件（50MB 内），我将自动为您生成 13 维深度分析卡片，并提取核心事实依据。', '发送 PDF'),
+        factCard('🔍 企业快速调研', '在对话框直接发送公司全称（如“北京极智嘉科技股份有限公司”），我将检索公开信息并生成核心速览。', '发送公司名'),
+        factCard('💬 投研多轮交互问答', '围绕已上传的材料或调研企业进行持续追问、交叉核验与深入交流。', '多轮对话'),
+      ]),
+      markdown("<font color='grey'>💡 提示：您现在就可以直接发送一份 BP PDF 文件，或输入一家感兴趣的企业名称开始体验！</font>", 'notation'),
+    ],
+  );
+}
+
+export function wechatWelcomeText(): string {
+  return [
+    '👋 欢迎使用博源 AI 平台！我是您的 AI 投研助手，专注于商业计划书（BP）智能解析与企业投研信息挖掘。',
+    '',
+    '💡 您可以随时向我发起以下任务：',
+    '1. 📄 商业计划书 (BP) 深度分析：直接发送 BP 或项目材料 PDF 文件（50MB 内），我将自动为您生成深度分析卡片与核心事实核验。',
+    '2. 🔍 企业快速调研：直接发送公司全称（如“北京极智嘉科技股份有限公司”），我将检索公开信息并生成核心速览。',
+    '3. 💬 投研多轮交互问答：围绕已上传材料或调研企业进行持续追问、交叉核验与交流。',
+    '',
+    '提示：您现在就可以直接发送一份 BP PDF 文件，或输入一家感兴趣的企业名称开始体验！',
+  ].join('\n');
+}
+

@@ -174,4 +174,84 @@ describe('WechatKfClient', () => {
     expect(fetcher.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/cgi-bin/gettoken'))
       .toHaveLength(1);
   });
+
+  it('syncs enter_session events and extracts welcome_code', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/cgi-bin/gettoken') {
+        return Response.json({ errcode: 0, errmsg: 'ok', access_token: 'access-token', expires_in: 7200 });
+      }
+      if (url.pathname === '/cgi-bin/kf/sync_msg') {
+        return Response.json({
+          errcode: 0,
+          errmsg: 'ok',
+          next_cursor: 'cursor-2',
+          has_more: 0,
+          msg_list: [
+            {
+              msgid: 'event-msg-1',
+              open_kfid: 'wkAJ2GCAAAexample',
+              external_userid: 'wmAJ2GCAAAsomeone',
+              send_time: 1_788_000_000,
+              origin: 4,
+              msgtype: 'event',
+              event: {
+                event_type: 'enter_session',
+                open_kfid: 'wkAJ2GCAAAexample',
+                external_userid: 'wmAJ2GCAAAsomeone',
+                welcome_code: 'code_welcome_123',
+                scene: '1',
+              },
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected_url:${url.pathname}`);
+    });
+    const client = new WechatKfClient({
+      corpId: 'ww1234567890abcdef',
+      secret: 'application-secret',
+    }, fetcher);
+
+    const page = await client.syncMessages({
+      openKfid: 'wkAJ2GCAAAexample',
+      cursor: 'cursor-1',
+    });
+    expect(page.enterSessionEvents).toEqual([
+      {
+        openKfid: 'wkAJ2GCAAAexample',
+        externalUserId: 'wmAJ2GCAAAsomeone',
+        welcomeCode: 'code_welcome_123',
+        scene: '1',
+      },
+    ]);
+  });
+
+  it('sends event response message using sendMsgOnEvent', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/cgi-bin/gettoken') {
+        return Response.json({ errcode: 0, errmsg: 'ok', access_token: 'access-token', expires_in: 7200 });
+      }
+      if (url.pathname === '/cgi-bin/kf/send_msg_on_event') {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          code: 'code_welcome_123',
+          msgtype: 'text',
+          text: { content: '欢迎使用博源 AI 平台！' },
+        });
+        return Response.json({ errcode: 0, errmsg: 'ok', msgid: 'event-reply-1' });
+      }
+      throw new Error(`unexpected_url:${url.pathname}`);
+    });
+    const client = new WechatKfClient({
+      corpId: 'ww1234567890abcdef',
+      secret: 'application-secret',
+    }, fetcher);
+
+    await expect(client.sendMsgOnEvent({
+      code: 'code_welcome_123',
+      content: '欢迎使用博源 AI 平台！',
+    })).resolves.toBeUndefined();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
