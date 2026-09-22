@@ -13,7 +13,7 @@ import { JsonWechatKfCursorStore, WechatKfMessagePump } from '../wechat-kf-pump.
 import { loadWechatKfCredentials } from '../wechat-kf-runtime.js';
 import { createCompanyListExtractor } from '../company-list-extractor.js';
 import { WechatKfCompanyBatch } from '../wechat-kf-company-batch.js';
-import { UsageCollector, UsageStore, MetricsAggregator } from '../telemetry/index.js';
+import { UsageCollector, UsageStore, MetricsAggregator, FeishuBitableSyncer } from '../telemetry/index.js';
 
 const configPath = process.env.BOYUAN_WECHAT_KF_INTAKE_CONFIG_PATH;
 if (!configPath) throw new Error('wechat_kf_intake_config_path_missing');
@@ -45,6 +45,26 @@ const telemetryPath = process.env.BOYUAN_WECHAT_KF_TELEMETRY_PATH
 const telemetryStore = new UsageStore({ filePath: telemetryPath });
 const testUserIds = (process.env.BOYUAN_TEST_USER_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const telemetryCollector = new UsageCollector({ store: telemetryStore, testUserIds });
+
+const bitableAppToken = process.env.BOYUAN_BITABLE_APP_TOKEN ?? process.env.BITABLE_APP_TOKEN;
+const feishuAppId = process.env.BOYUAN_LARK_APP_ID ?? process.env.FEISHU_APP_ID ?? 'cli_aa06d0ff93b89bfb';
+const feishuAppSecret = process.env.BOYUAN_LARK_APP_SECRET ?? process.env.FEISHU_APP_SECRET ?? 'yJAy45hNGuQ6VQvVRCRxyhImEony1iDN';
+if (bitableAppToken && feishuAppId && feishuAppSecret) {
+  const syncer = new FeishuBitableSyncer({
+    appId: feishuAppId,
+    appSecret: feishuAppSecret,
+    appToken: bitableAppToken,
+    tableId: process.env.BOYUAN_BITABLE_TABLE_ID,
+    store: telemetryStore,
+  });
+  const syncIntervalMs = Math.max(10_000, Number(process.env.BOYUAN_BITABLE_SYNC_INTERVAL_MS ?? 60_000));
+  const syncTimer = setInterval(() => {
+    void syncer.syncBatch().catch((err) => {
+      process.stderr.write(`[telemetry] WeChat KF Feishu Bitable sync failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    });
+  }, syncIntervalMs);
+  syncTimer.unref();
+}
 
 const { service, ingress, companyIngress, delivery, conversation } = createWechatConversationRuntime({
   config, client, agent: createRuntimeConversationAgent(process.env), onError: reportIngressError,
